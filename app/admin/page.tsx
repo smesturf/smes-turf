@@ -10,6 +10,19 @@ export default function AdminPage() {
   const [bookings, setBookings] = useState<any[]>([]);
   const [todaySlots, setTodaySlots] = useState(0);
 
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString("en-CA", {
+      timeZone: "Asia/Kolkata",
+    });
+  };
+
+  const today = formatDate(new Date());
+
+  const tomorrowDate = new Date();
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+
+  const tomorrow = formatDate(tomorrowDate);
+
   useEffect(() => {
     const loggedIn = localStorage.getItem("adminLoggedIn");
 
@@ -34,20 +47,14 @@ export default function AdminPage() {
 
     setBookings(data || []);
 
-    const today = new Date().toISOString().split("T")[0];
-
     const todaysBookings =
       data?.filter(
-        (booking) => booking.booking_date === today
+        (booking) =>
+          booking.booking_date?.split("T")[0] === today
       ) || [];
 
     setTodaySlots(todaysBookings.length);
   };
-
-  const today = new Date().toISOString().split("T")[0];
-  const tomorrow = new Date(Date.now() + 86400000)
-    .toISOString()
-    .split("T")[0];
 
   const totalRevenue = bookings.reduce(
     (sum, booking) => sum + (booking.advance_amount || 0),
@@ -105,14 +112,15 @@ export default function AdminPage() {
 
           <tbody>
             {bookings.map((booking) => {
-              let rowColor = "bg-white";
+              const bookingDate =
+                booking.booking_date?.split("T")[0];
 
-              if (booking.booking_date === today) {
-                rowColor = "bg-green-100";
-              } else if (booking.booking_date === tomorrow) {
-                rowColor = "bg-yellow-100";
-              } else if (booking.booking_date > tomorrow) {
-                rowColor = "bg-blue-50";
+              let rowColor = "bg-blue-50";
+
+              if (bookingDate === today) {
+                rowColor = "bg-green-200";
+              } else if (bookingDate === tomorrow) {
+                rowColor = "bg-yellow-200";
               }
 
               return (
@@ -129,13 +137,13 @@ export default function AdminPage() {
                   <td className="p-4">
                     {booking.booking_date}
 
-                    {booking.booking_date === today && (
+                    {bookingDate === today && (
                       <span className="ml-2 bg-green-600 text-white px-2 py-1 rounded text-xs">
                         TODAY
                       </span>
                     )}
 
-                    {booking.booking_date === tomorrow && (
+                    {bookingDate === tomorrow && (
                       <span className="ml-2 bg-yellow-500 text-white px-2 py-1 rounded text-xs">
                         TOMORROW
                       </span>
@@ -152,11 +160,11 @@ export default function AdminPage() {
                     ₹{booking.total_amount}
                   </td>
 
-                  <td className="p-4 text-green-600 font-semibold">
+                  <td className="p-4 text-green-700 font-semibold">
                     ₹{booking.advance_amount}
                   </td>
 
-                  <td className="p-4 text-red-600 font-semibold">
+                  <td className="p-4 text-red-700 font-semibold">
                     ₹{booking.balance_amount}
                   </td>
 
