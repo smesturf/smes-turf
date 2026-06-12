@@ -184,7 +184,28 @@ const handleBooking = async (paymentData?: any) => {
     return;
   }
 
-  alert("✅ Payment Successful & Booking Saved");
+  const balanceAmount = totalAmount - advanceAmount;
+
+const message =
+`🏟️ SMES Turf Booking Confirmed
+
+Name: ${name}
+Date: ${bookingDate}
+Time: ${startTime}
+Sport: ${sport}
+
+💰 Total Amount: ₹${totalAmount}
+✅ Advance Paid: ₹${advanceAmount}
+💳 Balance Due: ₹${balanceAmount}
+
+Thank you for choosing SMES Turf!`;
+
+window.open(
+  `https://wa.me/${phone}?text=${encodeURIComponent(message)}`,
+  "_blank"
+);
+
+alert("✅ Payment Successful & Booking Saved");
 
   setName("");
   setPhone("");
