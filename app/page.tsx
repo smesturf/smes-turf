@@ -619,13 +619,15 @@ return (
 
 
 
-        <div className="bg-green-800 p-4 rounded">
+        <div className="bg-green-800 p-4 rounded-lg">
+  <p className="text-yellow-300 text-xl font-bold">
+    Advance Payment: ₹200
+  </p>
 
-          <p>Advance Payment: ₹200</p>
-
-          <p>Amount to Pay: ₹{advanceAmount}</p>
-
-        </div>
+  <p className="mt-2 text-white">
+    Total Amount: ₹{totalAmount}
+  </p>
+</div>
 
 
 
