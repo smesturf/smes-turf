@@ -20,6 +20,20 @@ const [monthlyBalance, setMonthlyBalance] = useState(0);
 const [showManageSlots, setShowManageSlots] = useState(false);
 
 const [slotDate, setSlotDate] = useState("");
+const adminTimeSlots = Array.from({ length: 48 }, (_, i) => {
+  const hours = Math.floor(i / 2);
+  const minutes = i % 2 === 0 ? "00" : "30";
+
+  const date = new Date();
+  date.setHours(hours);
+  date.setMinutes(Number(minutes));
+
+  return date.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+});
 const [slotTime, setSlotTime] = useState("");
 const [slotReason, setSlotReason] = useState("MAINTENANCE");
 const [slotDuration, setSlotDuration] = useState(60);
@@ -349,18 +363,26 @@ worksheet["!cols"] = [
             </h2>
 
             <input
-              type="date"
-              value={slotDate}
-              onChange={(e) => setSlotDate(e.target.value)}
-              className="w-full border p-3 rounded mb-3 text-black"
-            />
+  type="date"
+  min={new Date().toISOString().split("T")[0]}
+  value={slotDate}
+  onChange={(e) => setSlotDate(e.target.value)}
+  className="w-full border p-3 rounded mb-3 text-black"
+/>
 
-            <input
-              type="time"
-              value={slotTime}
-              onChange={(e) => setSlotTime(e.target.value)}
-              className="w-full border p-3 rounded mb-3 text-black"
-            />
+            <select
+  value={slotTime}
+  onChange={(e) => setSlotTime(e.target.value)}
+  className="w-full border p-3 rounded mb-3 text-black"
+>
+  <option value="">Select Time</option>
+
+  {adminTimeSlots.map((time) => (
+    <option key={time} value={time}>
+      {time}
+    </option>
+  ))}
+</select>
 
             <select
               value={slotDuration}
