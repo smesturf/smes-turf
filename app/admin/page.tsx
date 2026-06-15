@@ -228,150 +228,89 @@ const totalRevenue = bookings.reduce(
         <div className="bg-red-600 text-white p-6 rounded-xl shadow">
           <h3 className="text-sm">Pending Balance</h3>
           <p className="text-3xl font-bold">₹{totalBalance}</p>
-        </div><div className="grid md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
-          <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-  <h2 className="text-2xl font-bold text-black mb-4">
-    📅 Monthly Summary
-  </h2>
-
-  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-
-    <div className="bg-cyan-700 text-white p-4 rounded-xl">
-      <p className="text-sm">Bookings</p>
-      <p className="text-3xl font-bold">{monthlyBookings}</p>
-    </div>
-
-    <div className="bg-emerald-700 text-white p-4 rounded-xl">
-      <p className="text-sm">Revenue</p>
-      <p className="text-3xl font-bold">₹{monthlyRevenue}</p>
-    </div>
-
-    <div className="bg-green-600 text-white p-4 rounded-xl">
-      <p className="text-sm">Advance Collected</p>
-      <p className="text-3xl font-bold">₹{monthlyAdvance}</p>
-    </div>
-
-    <div className="bg-red-600 text-white p-4 rounded-xl">
-      <p className="text-sm">Pending Balance</p>
-      <p className="text-3xl font-bold">₹{monthlyBalance}</p>
-    </div>
-
-  </div>
-</div>
-  ...
-</div>
-
-{/* ADD THE NEW MONTHLY DASHBOARD HERE */}
-<div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-  <div className="bg-cyan-700 text-white p-4 rounded-xl shadow min-h-[120px]">
-    <h3 className="text-sm">This Month Bookings</h3>
-    <p className="text-3xl font-bold">
-      {monthlyBookings}
-    </p>
-  </div>
-
-  <div className="bg-emerald-700 text-white p-6 rounded-xl shadow">
-    <h3 className="text-sm">This Month Revenue</h3>
-    <p className="text-3xl font-bold">
-      ₹{monthlyRevenue}
-    </p>
-  </div>
-
-  <div className="bg-green-600 text-white p-6 rounded-xl shadow">
-    <h3 className="text-sm">Collected Advance</h3>
-    <p className="text-3xl font-bold">
-      ₹{monthlyAdvance}
-    </p>
-  </div>
-
-  <div className="bg-red-600 text-white p-6 rounded-xl shadow">
-    <h3 className="text-sm">Pending Balance</h3>
-    <p className="text-3xl font-bold">
-      ₹{monthlyBalance}
-    </p>
-  </div>
-</div>
-
-<div className="flex gap-4 mb-6">
-  ...
-</div>
+                 </div>
       </div>
-<div className="mb-6">
-  <input
-    type="text"
-    placeholder="🔍 Search by name, phone or date..."
-    value={searchTerm}
-    onChange={(e) => setSearchTerm(e.target.value)}
-    className="w-full md:w-96 border p-3 rounded text-black"
-  />
-</div>
+
+      <div className="mb-6">
+        <input
+          type="text"
+          placeholder="🔍 Search by name, phone or date..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full md:w-96 border p-3 rounded text-black"
+        />
+      </div>
+
       <div className="flex gap-4 mb-6">
-  <button
-    className="bg-purple-700 text-white px-6 py-3 rounded-lg font-bold shadow-lg border-2 border-purple-900"
-    onClick={() => setShowManageSlots(true)}
-  >
-    ⚙️ MANAGE SLOTS
-  </button>
-</div>
-{showManageSlots && (
-  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-    <div className="bg-white p-6 rounded-xl w-[400px] shadow-xl">
-
-      <h2 className="text-2xl font-bold mb-4 text-black">
-        Manage Slots
-      </h2>
-
-      <input
-        type="date"
-        value={slotDate}
-        onChange={(e) => setSlotDate(e.target.value)}
-        className="w-full border p-3 rounded mb-3 text-black"
-      />
-
-      <input
-        type="time"
-        value={slotTime}
-        onChange={(e) => setSlotTime(e.target.value)}
-        className="w-full border p-3 rounded mb-3 text-black"
-      />
-<select
-  value={slotDuration}
-  onChange={(e) => setSlotDuration(Number(e.target.value))}
-  className="w-full border p-3 rounded mb-3 text-black"
->
-  <option value={60}>60 Minutes</option>
-  <option value={90}>90 Minutes</option>
-  <option value={120}>120 Minutes</option>
-</select>
-      <select
-        value={slotReason}
-        onChange={(e) => setSlotReason(e.target.value)}
-        className="w-full border p-3 rounded mb-4 text-black"
-      >
-        <option value="MAINTENANCE">Maintenance</option>
-        <option value="TOURNAMENT">Tournament</option>
-        <option value="OFFLINE BOOKING">Offline Booking</option>
-      </select>
-
-      <div className="flex gap-3">
         <button
-          onClick={saveBlockedSlot}
-          className="bg-green-600 text-white px-4 py-2 rounded"
+          className="bg-purple-700 text-white px-6 py-3 rounded-lg font-bold shadow-lg border-2 border-purple-900"
+          onClick={() => setShowManageSlots(true)}
         >
-          Save
-        </button>
-
-        <button
-          onClick={() => setShowManageSlots(false)}
-          className="bg-gray-500 text-white px-4 py-2 rounded"
-        >
-          Cancel
+          ⚙️ MANAGE SLOTS
         </button>
       </div>
 
-    </div>
-  </div>
-)}
+      {showManageSlots && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-xl w-[400px] shadow-xl">
+
+            <h2 className="text-2xl font-bold mb-4 text-black">
+              Manage Slots
+            </h2>
+
+            <input
+              type="date"
+              value={slotDate}
+              onChange={(e) => setSlotDate(e.target.value)}
+              className="w-full border p-3 rounded mb-3 text-black"
+            />
+
+            <input
+              type="time"
+              value={slotTime}
+              onChange={(e) => setSlotTime(e.target.value)}
+              className="w-full border p-3 rounded mb-3 text-black"
+            />
+
+            <select
+              value={slotDuration}
+              onChange={(e) => setSlotDuration(Number(e.target.value))}
+              className="w-full border p-3 rounded mb-3 text-black"
+            >
+              <option value={60}>60 Minutes</option>
+              <option value={90}>90 Minutes</option>
+              <option value={120}>120 Minutes</option>
+            </select>
+
+            <select
+              value={slotReason}
+              onChange={(e) => setSlotReason(e.target.value)}
+              className="w-full border p-3 rounded mb-4 text-black"
+            >
+              <option value="MAINTENANCE">Maintenance</option>
+              <option value="TOURNAMENT">Tournament</option>
+              <option value="OFFLINE BOOKING">Offline Booking</option>
+            </select>
+
+            <div className="flex gap-3">
+              <button
+                onClick={saveBlockedSlot}
+                className="bg-green-600 text-white px-4 py-2 rounded"
+              >
+                Save
+              </button>
+
+              <button
+                onClick={() => setShowManageSlots(false)}
+                className="bg-gray-500 text-white px-4 py-2 rounded"
+              >
+                Cancel
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 <p className="mb-3 text-gray-700 font-medium">
   Showing {
     bookings.filter((booking) => {
