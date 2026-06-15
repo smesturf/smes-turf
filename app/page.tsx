@@ -17,20 +17,22 @@ const [bookingDate, setBookingDate] = useState("");
 const [startTime, setStartTime] = useState("06:00 AM");
 
 const [duration, setDuration] = useState("60");
+const [bookingType, setBookingType] = useState("Full Court");
 const [bookedSlots, setBookedSlots] = useState<string[]>([]);
 
 
 const totalAmount =
-
-duration === "60"
-
-  ? 1250
-
-  : duration === "90"
-
-  ? 1875
-
-  : 2500;
+  bookingType === "Half Court"
+    ? duration === "60"
+      ? 750
+      : duration === "90"
+      ? 1125
+      : 1500
+    : duration === "60"
+    ? 1250
+    : duration === "90"
+    ? 1875
+    : 2500;
 
 const advanceAmount = Math.round(totalAmount * 0.1);
 const allSlots = [
@@ -160,9 +162,12 @@ const handleBooking = async (paymentData?: any) => {
   }
 
   const { error } = await supabase.from("bookings").insert([
-  {
+{
   customer_name: name,
   phone: phone,
+
+  booking_type: bookingType,
+
   sport: sport.toLowerCase(),
   booking_date: bookingDate,
   start_time: startTime,
@@ -362,23 +367,32 @@ return (
           <option>Cricket</option>
 
         </select>
+        <select
+  value={bookingType}
+  onChange={(e) => setBookingType(e.target.value)}
+  className="w-full p-3 rounded text-black"
+>
+  <option value="Half Court">
+    Half Court
+  </option>
+
+  <option value="Full Court">
+    Full Court
+  </option>
+</select>
 
 
 
         <input
-
-          type="date"
-
-          value={bookingDate}
-
-          onChange={(e) => {
-  setBookingDate(e.target.value);
-  loadBookedSlots(e.target.value);
-}}
-
-          className="w-full p-3 rounded text-black"
-
-        />
+  type="date"
+  min={new Date().toISOString().split("T")[0]}
+  value={bookingDate}
+  onChange={(e) => {
+    setBookingDate(e.target.value);
+    loadBookedSlots(e.target.value);
+  }}
+  className="w-full p-3 rounded text-black"
+/>
 
 
 
@@ -393,12 +407,34 @@ return (
         >
 
           {allSlots
-  .filter((slot) => !bookedSlots.includes(slot))
+  .filter((slot) => {
+    if (bookedSlots.includes(slot)) return false;
+
+    const today = new Date().toISOString().split("T")[0];
+
+    if (bookingDate !== today) return true;
+
+    const now = new Date();
+
+    const currentMinutes =
+      now.getHours() * 60 + now.getMinutes();
+
+    const [time, ampm] = slot.split(" ");
+    let [hours, minutes] = time.split(":").map(Number);
+
+    if (ampm === "PM" && hours !== 12) hours += 12;
+    if (ampm === "AM" && hours === 12) hours = 0;
+
+    const slotMinutes = hours * 60 + minutes;
+
+    return slotMinutes > currentMinutes;
+  })
   .map((slot) => (
     <option key={slot} value={slot}>
       {slot}
     </option>
   ))}
+    
 
         </select>
 
@@ -414,11 +450,17 @@ return (
 
         >
 
-          <option value="60">60 Minutes - ₹1250</option>
+          <option value="60">
+  60 Minutes - ₹{bookingType === "Half Court" ? 750 : 1250}
+</option>
 
-          <option value="90">90 Minutes - ₹1875</option>
+<option value="90">
+  90 Minutes - ₹{bookingType === "Half Court" ? 1125 : 1875}
+</option>
 
-          <option value="120">120 Minutes - ₹2500</option>
+<option value="120">
+  120 Minutes - ₹{bookingType === "Half Court" ? 1500 : 2500}
+</option>
 
         </select>
 
