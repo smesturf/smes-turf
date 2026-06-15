@@ -8,6 +8,7 @@ export default function AdminPage() {
   const router = useRouter();
 
   const [bookings, setBookings] = useState<any[]>([]);
+  const [blockedSlots, setBlockedSlots] = useState<any[]>([]);
 const [todaySlots, setTodaySlots] = useState(0);
 const [tomorrowSlots, setTomorrowSlots] = useState(0);
 
@@ -16,6 +17,7 @@ const [showManageSlots, setShowManageSlots] = useState(false);
 const [slotDate, setSlotDate] = useState("");
 const [slotTime, setSlotTime] = useState("");
 const [slotReason, setSlotReason] = useState("MAINTENANCE");
+const [slotDuration, setSlotDuration] = useState(60);
 
   const formatDate = (date: Date) => {
     return date.toLocaleDateString("en-CA", {
@@ -55,7 +57,13 @@ const [slotReason, setSlotReason] = useState("MAINTENANCE");
     }
 
     setBookings(data || []);
+const { data: blockedData } = await supabase
+  .from("blocked_slots")
+  .select("*")
+  .order("booking_date", { ascending: true })
+  .order("start_time", { ascending: true });
 
+setBlockedSlots(blockedData || []);
     const todaysBookings =
       data?.filter(
         (booking) =>
@@ -78,14 +86,15 @@ const [slotReason, setSlotReason] = useState("MAINTENANCE");
   }
 
   const { error } = await supabase
-    .from("blocked_slots")
-    .insert([
-      {
-        booking_date: slotDate,
-        start_time: slotTime,
-        reason: slotReason,
-      },
-    ]);
+  .from("blocked_slots")
+  .insert([
+    {
+      booking_date: slotDate,
+      start_time: slotTime,
+      duration_minutes: slotDuration,
+      reason: slotReason,
+    },
+  ]);
 
   if (error) {
     alert(error.message);
@@ -95,9 +104,29 @@ const [slotReason, setSlotReason] = useState("MAINTENANCE");
   alert("✅ Slot saved");
 
   setSlotDate("");
-  setSlotTime("");
-  setSlotReason("MAINTENANCE");
+setSlotTime("");
+setSlotDuration(60);
+setSlotReason("MAINTENANCE");
   setShowManageSlots(false);
+};
+const deleteBlockedSlot = async (id: number) => {
+  const confirmed = confirm(
+    "Delete this blocked slot?"
+  );
+
+  if (!confirmed) return;
+
+  const { error } = await supabase
+    .from("blocked_slots")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  loadBookings();
 };
 
   const totalRevenue = bookings.reduce(
@@ -172,7 +201,15 @@ const [slotReason, setSlotReason] = useState("MAINTENANCE");
         onChange={(e) => setSlotTime(e.target.value)}
         className="w-full border p-3 rounded mb-3 text-black"
       />
-
+<select
+  value={slotDuration}
+  onChange={(e) => setSlotDuration(Number(e.target.value))}
+  className="w-full border p-3 rounded mb-3 text-black"
+>
+  <option value={60}>60 Minutes</option>
+  <option value={90}>90 Minutes</option>
+  <option value={120}>120 Minutes</option>
+</select>
       <select
         value={slotReason}
         onChange={(e) => setSlotReason(e.target.value)}
@@ -211,7 +248,8 @@ const [slotReason, setSlotReason] = useState("MAINTENANCE");
               <th className="p-4 text-left">Phone</th>
               <th className="p-4 text-left">Date</th>
               <th className="p-4 text-left">Time</th>
-              <th className="p-4 text-left">Sport</th>
+<th className="p-4 text-left">Duration</th>
+<th className="p-4 text-left">Sport</th>
 <th className="p-4 text-left">Type</th>
 <th className="p-4 text-left">Total</th>
               <th className="p-4 text-left">Advance</th>
@@ -262,7 +300,11 @@ if (bookingDate === today) {
 
                   <td className="p-4">{booking.start_time}</td>
 
-                  <td className="p-4 capitalize">
+<td className="p-4">
+  {booking.duration_minutes || 60} mins
+</td>
+
+<td className="p-4 capitalize">
   {booking.sport}
 </td>
 
@@ -300,7 +342,60 @@ if (bookingDate === today) {
             })}
           </tbody>
         </table>
-      </div>
-    </main>
+</div>
+
+<div className="bg-white rounded-xl shadow-lg mt-8 overflow-x-auto">
+  <h2 className="text-2xl font-bold p-4 text-black">
+    🚫 Blocked Slots
+  </h2>
+
+  <table className="w-full">
+    <thead className="bg-red-600 text-white">
+      <tr>
+        <th className="p-4 text-left">Date</th>
+        <th className="p-4 text-left">Time</th>
+        <th className="p-4 text-left">Duration</th>
+        <th className="p-4 text-left">Reason</th>
+<th className="p-4 text-left">Action</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {blockedSlots.map((slot) => (
+        <tr
+          key={slot.id}
+          className="border-b text-black"
+        >
+          <td className="p-4">
+            {slot.booking_date}
+          </td>
+
+          <td className="p-4">
+            {slot.start_time}
+          </td>
+
+          <td className="p-4">
+            {slot.duration_minutes || 60} mins
+          </td>
+
+          <td className="p-4">
+  {slot.reason}
+</td>
+
+<td className="p-4">
+  <button
+    onClick={() => deleteBlockedSlot(slot.id)}
+    className="bg-red-600 text-white px-3 py-1 rounded"
+  >
+    🗑 Delete
+  </button>
+</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>
+
+</main>
   );
 }

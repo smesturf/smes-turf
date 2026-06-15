@@ -49,9 +49,15 @@ const allSlots = [
 
 const loadBookedSlots = async (date: string) => {
   const { data, error } = await supabase
-    .from("bookings")
-    .select("start_time, duration_minutes")
-    .eq("booking_date", date);
+  .from("bookings")
+  .select("start_time, duration_minutes")
+  .eq("booking_date", date);
+
+
+const { data: blockedData } = await supabase
+  .from("blocked_slots")
+  .select("start_time, duration_minutes")
+  .eq("booking_date", date);
 
   if (error) {
     console.log(error);
@@ -84,7 +90,34 @@ const loadBookedSlots = async (date: string) => {
     }
   });
 
-  setBookedSlots(blocked);
+  if (blockedData) {
+  blockedData.forEach((slot: any) => {
+    const time = slot.start_time.substring(0, 5);
+
+    const [h, m] = time.split(":");
+
+    let minutes = Number(h) * 60 + Number(m);
+
+    const slotsToBlock =
+      (slot.duration_minutes || 60) / 30;
+
+    for (let i = 0; i < slotsToBlock; i++) {
+      const current = minutes + i * 30;
+
+      const hour24 = Math.floor(current / 60);
+      const minute = current % 60;
+
+      const ampm = hour24 >= 12 ? "PM" : "AM";
+      const hour12 = hour24 % 12 || 12;
+
+      blocked.push(
+        `${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${ampm}`
+      );
+    }
+  });
+}
+
+setBookedSlots(blocked);
 }
 };
 const openRazorpay = async () => {
