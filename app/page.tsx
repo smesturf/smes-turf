@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "./lib/supabase";
+
 
 
 export default function Home() {
@@ -19,7 +20,11 @@ const [startTime, setStartTime] = useState("06:00 AM");
 const [duration, setDuration] = useState("60");
 const [bookingType, setBookingType] = useState("Full Court");
 const [bookedSlots, setBookedSlots] = useState<string[]>([]);
-
+useEffect(() => {
+  if (bookingDate) {
+    loadBookedSlots(bookingDate);
+  }
+}, [bookingDate, bookingType]);
 
 const totalAmount =
   bookingType === "Half Court"
@@ -34,7 +39,7 @@ const totalAmount =
     ? 1875
     : 2500;
 
-const advanceAmount = Math.round(totalAmount * 0.1);
+const advanceAmount = 200;
 const allSlots = [
   "06:00 AM","06:30 AM","07:00 AM","07:30 AM",
   "08:00 AM","08:30 AM","09:00 AM","09:30 AM",
@@ -104,8 +109,14 @@ data.forEach((booking: any) => {
 
 Object.entries(slotCounts).forEach(
   ([slot, count]) => {
-    if (count >= 2 || count === 999) {
-      blocked.push(slot);
+    if (bookingType === "Full Court") {
+      if (count >= 1) {
+        blocked.push(slot);
+      }
+    } else {
+      if (count >= 2 || count === 999) {
+        blocked.push(slot);
+      }
     }
   }
 );
@@ -146,7 +157,11 @@ const openRazorpay = async () => {
       alert("Please fill all fields");
       return;
     }
+const availabilityCheck = await handleBooking("CHECK_ONLY");
 
+if (!availabilityCheck) {
+  return;
+}
     const response = await fetch("/api/create-order", {
       method: "POST",
       headers: {
@@ -294,7 +309,10 @@ if (bookingType === "Full Court") {
 
   courtNumber = "Both Courts";
 }
-
+if (paymentData === "CHECK_ONLY") {
+  return true;
+}
+console.log("Assigned court:", courtNumber);
   const { error } = await supabase.from("bookings").insert([
 {
   customer_name: name,
@@ -603,7 +621,7 @@ return (
 
         <div className="bg-green-800 p-4 rounded">
 
-          <p>Advance Payment: 10%</p>
+          <p>Advance Payment: ₹200</p>
 
           <p>Amount to Pay: ₹{advanceAmount}</p>
 
