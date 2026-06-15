@@ -7,9 +7,11 @@ import { supabase } from "../lib/supabase";
 export default function AdminPage() {
   const router = useRouter();
 
-  const [bookings, setBookings] = useState<any[]>([]);
-  const [todaySlots, setTodaySlots] = useState(0);
-  const [tomorrowSlots, setTomorrowSlots] = useState(0);
+  const [showManageSlots, setShowManageSlots] = useState(false);
+
+const [slotDate, setSlotDate] = useState("");
+const [slotTime, setSlotTime] = useState("");
+const [slotReason, setSlotReason] = useState("MAINTENANCE");
 
   const formatDate = (date: Date) => {
     return date.toLocaleDateString("en-CA", {
@@ -65,6 +67,34 @@ export default function AdminPage() {
     setTodaySlots(todaysBookings.length);
     setTomorrowSlots(tomorrowsBookings.length);
   };
+  const saveBlockedSlot = async () => {
+  if (!slotDate || !slotTime) {
+    alert("Please select date and time");
+    return;
+  }
+
+  const { error } = await supabase
+    .from("blocked_slots")
+    .insert([
+      {
+        booking_date: slotDate,
+        start_time: slotTime,
+        reason: slotReason,
+      },
+    ]);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  alert("✅ Slot saved");
+
+  setSlotDate("");
+  setSlotTime("");
+  setSlotReason("MAINTENANCE");
+  setShowManageSlots(false);
+};
 
   const totalRevenue = bookings.reduce(
     (sum, booking) => sum + (booking.advance_amount || 0),
@@ -112,11 +142,62 @@ export default function AdminPage() {
       <div className="flex gap-4 mb-6">
   <button
     className="bg-purple-700 text-white px-6 py-3 rounded-lg font-bold shadow-lg border-2 border-purple-900"
-    onClick={() => alert("Manage Slots Feature Coming Soon")}
+    onClick={() => setShowManageSlots(true)}
   >
     ⚙️ MANAGE SLOTS
   </button>
 </div>
+{showManageSlots && (
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div className="bg-white p-6 rounded-xl w-[400px] shadow-xl">
+
+      <h2 className="text-2xl font-bold mb-4 text-black">
+        Manage Slots
+      </h2>
+
+      <input
+        type="date"
+        value={slotDate}
+        onChange={(e) => setSlotDate(e.target.value)}
+        className="w-full border p-3 rounded mb-3 text-black"
+      />
+
+      <input
+        type="time"
+        value={slotTime}
+        onChange={(e) => setSlotTime(e.target.value)}
+        className="w-full border p-3 rounded mb-3 text-black"
+      />
+
+      <select
+        value={slotReason}
+        onChange={(e) => setSlotReason(e.target.value)}
+        className="w-full border p-3 rounded mb-4 text-black"
+      >
+        <option value="MAINTENANCE">Maintenance</option>
+        <option value="TOURNAMENT">Tournament</option>
+        <option value="OFFLINE BOOKING">Offline Booking</option>
+      </select>
+
+      <div className="flex gap-3">
+        <button
+          onClick={saveBlockedSlot}
+          className="bg-green-600 text-white px-4 py-2 rounded"
+        >
+          Save
+        </button>
+
+        <button
+          onClick={() => setShowManageSlots(false)}
+          className="bg-gray-500 text-white px-4 py-2 rounded"
+        >
+          Cancel
+        </button>
+      </div>
+
+    </div>
+  </div>
+)}
 
       <div className="bg-white rounded-xl shadow-lg overflow-x-auto">
         <table className="w-full">
