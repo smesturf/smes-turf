@@ -518,21 +518,18 @@ return (
 </select>
 
 <div>
-  <label className="block text-white font-semibold mb-2">
-    📅 Select Date
-  </label>
-
   <input
-    type="date"
-    min={new Date().toISOString().split("T")[0]}
-    value={bookingDate}
-    onChange={(e) => {
-      setBookingDate(e.target.value);
-      loadBookedSlots(e.target.value);
-    }}
-    className="w-full p-3 rounded bg-green-700 text-white border border-green-600"
-    style={{ colorScheme: "light" }}
-  />
+  type="date"
+  min={new Date().toISOString().split("T")[0]}
+  value={bookingDate}
+  onChange={(e) => {
+    setBookingDate(e.target.value);
+    loadBookedSlots(e.target.value);
+  }}
+  className="w-full p-3 rounded bg-green-700 text-white border border-green-600"
+  style={{ colorScheme: "light" }}
+  placeholder="📅 Select Date"
+/>
 </div>
 
 <select
