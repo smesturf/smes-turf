@@ -12,7 +12,10 @@ export default function AdminPage() {
   const [blockedSlots, setBlockedSlots] = useState<any[]>([]);
 const [todaySlots, setTodaySlots] = useState(0);
 const [tomorrowSlots, setTomorrowSlots] = useState(0);
-
+const [monthlyBookings, setMonthlyBookings] = useState(0);
+const [monthlyRevenue, setMonthlyRevenue] = useState(0);
+const [monthlyAdvance, setMonthlyAdvance] = useState(0);
+const [monthlyBalance, setMonthlyBalance] = useState(0);
 const [showManageSlots, setShowManageSlots] = useState(false);
 
 const [slotDate, setSlotDate] = useState("");
@@ -58,6 +61,41 @@ const [slotDuration, setSlotDuration] = useState(60);
     }
 
     setBookings(data || []);
+ const currentMonth = new Date().getMonth() + 1;
+const currentYear = new Date().getFullYear();
+
+const thisMonthBookings =
+  data?.filter((booking) => {
+    const d = new Date(booking.booking_date);
+
+    return (
+      d.getMonth() + 1 === currentMonth &&
+      d.getFullYear() === currentYear
+    );
+  }) || [];
+
+setMonthlyBookings(thisMonthBookings.length);
+
+setMonthlyRevenue(
+  thisMonthBookings.reduce(
+    (sum, b) => sum + (b.total_amount || 0),
+    0
+  )
+);
+
+setMonthlyAdvance(
+  thisMonthBookings.reduce(
+    (sum, b) => sum + (b.advance_amount || 0),
+    0
+  )
+);
+
+setMonthlyBalance(
+  thisMonthBookings.reduce(
+    (sum, b) => sum + (b.balance_amount || 0),
+    0
+  )
+);   
 const { data: blockedData } = await supabase
   .from("blocked_slots")
   .select("*")
@@ -166,7 +204,7 @@ const totalRevenue = bookings.reduce(
         🏟️ SMES Turf Admin Dashboard
       </h1>
 
-      <div className="grid md:grid-cols-5 gap-4 mb-8">
+      <div className="grid md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
         <div className="bg-green-700 text-white p-6 rounded-xl shadow">
           <h3 className="text-sm">Total Bookings</h3>
           <p className="text-3xl font-bold">{bookings.length}</p>
@@ -190,7 +228,44 @@ const totalRevenue = bookings.reduce(
         <div className="bg-red-600 text-white p-6 rounded-xl shadow">
           <h3 className="text-sm">Pending Balance</h3>
           <p className="text-3xl font-bold">₹{totalBalance}</p>
-        </div>
+        </div><div className="grid md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+  ...
+</div>
+
+{/* ADD THE NEW MONTHLY DASHBOARD HERE */}
+<div className="grid md:grid-cols-4 gap-4 mb-8">
+  <div className="bg-cyan-700 text-white p-6 rounded-xl shadow">
+    <h3 className="text-sm">This Month Bookings</h3>
+    <p className="text-3xl font-bold">
+      {monthlyBookings}
+    </p>
+  </div>
+
+  <div className="bg-emerald-700 text-white p-6 rounded-xl shadow">
+    <h3 className="text-sm">This Month Revenue</h3>
+    <p className="text-3xl font-bold">
+      ₹{monthlyRevenue}
+    </p>
+  </div>
+
+  <div className="bg-green-600 text-white p-6 rounded-xl shadow">
+    <h3 className="text-sm">Collected Advance</h3>
+    <p className="text-3xl font-bold">
+      ₹{monthlyAdvance}
+    </p>
+  </div>
+
+  <div className="bg-red-600 text-white p-6 rounded-xl shadow">
+    <h3 className="text-sm">Pending Balance</h3>
+    <p className="text-3xl font-bold">
+      ₹{monthlyBalance}
+    </p>
+  </div>
+</div>
+
+<div className="flex gap-4 mb-6">
+  ...
+</div>
       </div>
 <div className="mb-6">
   <input
