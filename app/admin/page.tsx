@@ -229,12 +229,41 @@ const totalRevenue = bookings.reduce(
           <h3 className="text-sm">Pending Balance</h3>
           <p className="text-3xl font-bold">₹{totalBalance}</p>
         </div><div className="grid md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+          <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
+  <h2 className="text-2xl font-bold text-black mb-4">
+    📅 Monthly Summary
+  </h2>
+
+  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+
+    <div className="bg-cyan-700 text-white p-4 rounded-xl">
+      <p className="text-sm">Bookings</p>
+      <p className="text-3xl font-bold">{monthlyBookings}</p>
+    </div>
+
+    <div className="bg-emerald-700 text-white p-4 rounded-xl">
+      <p className="text-sm">Revenue</p>
+      <p className="text-3xl font-bold">₹{monthlyRevenue}</p>
+    </div>
+
+    <div className="bg-green-600 text-white p-4 rounded-xl">
+      <p className="text-sm">Advance Collected</p>
+      <p className="text-3xl font-bold">₹{monthlyAdvance}</p>
+    </div>
+
+    <div className="bg-red-600 text-white p-4 rounded-xl">
+      <p className="text-sm">Pending Balance</p>
+      <p className="text-3xl font-bold">₹{monthlyBalance}</p>
+    </div>
+
+  </div>
+</div>
   ...
 </div>
 
 {/* ADD THE NEW MONTHLY DASHBOARD HERE */}
-<div className="grid md:grid-cols-4 gap-4 mb-8">
-  <div className="bg-cyan-700 text-white p-6 rounded-xl shadow">
+<div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+  <div className="bg-cyan-700 text-white p-4 rounded-xl shadow min-h-[120px]">
     <h3 className="text-sm">This Month Bookings</h3>
     <p className="text-3xl font-bold">
       {monthlyBookings}
