@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabase";
+import * as XLSX from "xlsx";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -194,9 +195,91 @@ const totalRevenue = bookings.reduce(
   );
 
   const totalBalance = bookings.reduce(
+    
     (sum, booking) => sum + (booking.balance_amount || 0),
     0
   );
+ const exportToExcel = () => {
+  const exportData = bookings.map((booking) => ({
+    Name: booking.customer_name,
+    Phone: booking.phone,
+    Date: booking.booking_date?.split("T")[0],
+    Time: booking.start_time,
+    Duration: booking.duration_minutes || 60,
+    Sport: booking.sport,
+    Type: booking.booking_type,
+    Court: booking.court_number || "-",
+    Total: booking.total_amount,
+    Advance: booking.advance_amount,
+    Balance: booking.balance_amount,
+    Status: booking.payment_status,
+  }));
+
+  const totalRevenue = bookings.reduce(
+    (sum, booking) => sum + (booking.total_amount || 0),
+    0
+  );
+
+  const totalAdvance = bookings.reduce(
+    (sum, booking) => sum + (booking.advance_amount || 0),
+    0
+  );
+
+  const totalBalance = bookings.reduce(
+    (sum, booking) => sum + (booking.balance_amount || 0),
+    0
+  );
+
+  const workbook = XLSX.utils.book_new();
+
+  const worksheet = XLSX.utils.aoa_to_sheet([
+  ["SMES TURF BOOKING REPORT"],
+  [`Export Date: ${new Date().toLocaleString("en-IN")}`],
+  [],
+  ["Total Bookings", bookings.length],
+  ["Total Revenue (₹)", totalRevenue],
+  ["Total Advance Collected (₹)", totalAdvance],
+  ["Total Pending Balance (₹)", totalBalance],
+  [],
+  [],
+]);
+
+  XLSX.utils.sheet_add_json(
+    worksheet,
+    exportData,
+    {
+      origin: "A9",
+    }
+  );
+  // Auto-size columns
+worksheet["!cols"] = [
+  { wch: 20 }, // Name
+  { wch: 15 }, // Phone
+  { wch: 15 }, // Date
+  { wch: 12 }, // Time
+  { wch: 12 }, // Duration
+  { wch: 15 }, // Sport
+  { wch: 15 }, // Type
+  { wch: 15 }, // Court
+  { wch: 12 }, // Total
+  { wch: 12 }, // Advance
+  { wch: 12 }, // Balance
+  { wch: 15 }, // Status
+];
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    worksheet,
+    "Bookings"
+  );
+
+  XLSX.writeFile(
+    workbook,
+    `SMES_Bookings_${new Date()
+      .toISOString()
+      .split("T")[0]}.xlsx`
+  );
+}; 
 
   return (
     <main className="min-h-screen bg-gray-100 p-8">
@@ -242,13 +325,20 @@ const totalRevenue = bookings.reduce(
       </div>
 
       <div className="flex gap-4 mb-6">
-        <button
-          className="bg-purple-700 text-white px-6 py-3 rounded-lg font-bold shadow-lg border-2 border-purple-900"
-          onClick={() => setShowManageSlots(true)}
-        >
-          ⚙️ MANAGE SLOTS
-        </button>
-      </div>
+  <button
+    className="bg-purple-700 text-white px-6 py-3 rounded-lg font-bold shadow-lg border-2 border-purple-900"
+    onClick={() => setShowManageSlots(true)}
+  >
+    ⚙️ MANAGE SLOTS
+  </button>
+
+  <button
+    onClick={exportToExcel}
+    className="bg-green-700 text-white px-6 py-3 rounded-lg font-bold shadow-lg border-2 border-green-900"
+  >
+    📊 EXPORT EXCEL
+  </button>
+</div>
 
       {showManageSlots && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
