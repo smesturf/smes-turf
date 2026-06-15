@@ -258,6 +258,7 @@ const todaysBalance = bookings
   );
 
   const workbook = XLSX.utils.book_new();
+  const today = new Date().toISOString().split("T")[0];
 
   const worksheet = XLSX.utils.aoa_to_sheet([
   ["SMES TURF BOOKING REPORT"],
@@ -303,23 +304,12 @@ worksheet["!cols"] = [
 // TODAY SUMMARY
 const todayBookings = bookings.filter(
   (booking) =>
-    booking.booking_date?.split("T")[0] === today
+    booking.booking_date === today
 );
 
-const todayRevenue = todayBookings.reduce(
-  (sum, b) => sum + (b.total_amount || 0),
-  0
-);
-
-const todayAdvance = todayBookings.reduce(
-  (sum, b) => sum + (b.advance_amount || 0),
-  0
-);
-
-const todayBalance = todayBookings.reduce(
-  (sum, b) => sum + (b.balance_amount || 0),
-  0
-);
+const todayRevenue = todaysAdvance + todaysBalance;
+const todayAdvance = todaysAdvance;
+const todayBalance = todaysBalance;
 
 const todaySheet = XLSX.utils.aoa_to_sheet([
   ["TODAY'S COLLECTION"],
@@ -388,7 +378,7 @@ XLSX.writeFile(
         </div>
 
         <div className="bg-red-600 text-white p-6 rounded-xl shadow">
-          <h3 className="text-sm">Today's Balance</h3>
+          <h3 className="text-sm"> Today's Balance</h3>
           <p className="text-3xl font-bold">₹{todaysBalance}</p>
                  </div>
       </div>

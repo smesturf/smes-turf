@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
@@ -8,15 +8,81 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const router = useRouter();
 
+  useEffect(() => {
+    const loggedIn = localStorage.getItem("adminLoggedIn");
+    const loginTime = localStorage.getItem("adminLoginTime");
+
+    if (loggedIn === "true" && loginTime) {
+      const hoursPassed =
+        (Date.now() - Number(loginTime)) /
+        (1000 * 60 * 60);
+
+      if (hoursPassed < 12) {
+        router.push("/admin");
+      } else {
+        localStorage.removeItem("adminLoggedIn");
+        localStorage.removeItem("adminLoginTime");
+      }
+    }
+  }, [router]);
+
   const handleLogin = () => {
+    const lockUntil = localStorage.getItem("adminLockUntil");
+
+    if (
+      lockUntil &&
+      Date.now() < Number(lockUntil)
+    ) {
+      alert(
+        "Too many failed attempts. Try again in 5 minutes."
+      );
+      return;
+    }
+
     if (
       username === "admin" &&
       password === "SMES@2026"
     ) {
       localStorage.setItem("adminLoggedIn", "true");
+      localStorage.setItem(
+        "adminLoginTime",
+        Date.now().toString()
+      );
+
+      localStorage.removeItem("loginAttempts");
+      localStorage.removeItem("adminLockUntil");
+
       router.push("/admin");
     } else {
-      alert("Invalid Username or Password");
+      const attempts =
+        Number(
+          localStorage.getItem("loginAttempts") || "0"
+        ) + 1;
+
+      localStorage.setItem(
+        "loginAttempts",
+        attempts.toString()
+      );
+
+      if (attempts >= 3) {
+        localStorage.setItem(
+          "adminLockUntil",
+          (
+            Date.now() +
+            5 * 60 * 1000
+          ).toString()
+        );
+
+        alert(
+          "Too many failed attempts. Login locked for 5 minutes."
+        );
+      } else {
+        alert(
+          `Invalid Username or Password. ${
+            3 - attempts
+          } attempt(s) remaining.`
+        );
+      }
     }
   };
 
