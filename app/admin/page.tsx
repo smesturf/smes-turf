@@ -110,20 +110,13 @@ export default function AdminPage() {
       </div>
 
       <div className="flex gap-4 mb-6">
-        <button
-          className="bg-red-600 text-white px-5 py-3 rounded-lg font-semibold hover:bg-red-700"
-          onClick={() => alert("Block Slot Feature Coming Soon")}
-        >
-          🚫 Block Slot
-        </button>
-
-        <button
-          className="bg-blue-600 text-white px-5 py-3 rounded-lg font-semibold hover:bg-blue-700"
-          onClick={() => alert("Offline Booking Feature Coming Soon")}
-        >
-          ➕ Offline Booking
-        </button>
-      </div>
+  <button
+    className="bg-purple-700 text-white px-6 py-3 rounded-lg font-bold shadow-lg border-2 border-purple-900"
+    onClick={() => alert("Manage Slots Feature Coming Soon")}
+  >
+    ⚙️ MANAGE SLOTS
+  </button>
+</div>
 
       <div className="bg-white rounded-xl shadow-lg overflow-x-auto">
         <table className="w-full">
@@ -134,7 +127,8 @@ export default function AdminPage() {
               <th className="p-4 text-left">Date</th>
               <th className="p-4 text-left">Time</th>
               <th className="p-4 text-left">Sport</th>
-              <th className="p-4 text-left">Total</th>
+<th className="p-4 text-left">Type</th>
+<th className="p-4 text-left">Total</th>
               <th className="p-4 text-left">Advance</th>
               <th className="p-4 text-left">Balance</th>
               <th className="p-4 text-left">Status</th>
@@ -146,19 +140,19 @@ export default function AdminPage() {
               const bookingDate =
                 booking.booking_date?.split("T")[0];
 
-              let rowColor = "bg-blue-50";
+              let rowColor = "bg-white";
 
-              if (bookingDate === today) {
-                rowColor = "bg-green-200";
-              } else if (bookingDate === tomorrow) {
-                rowColor = "bg-yellow-200";
-              }
+if (bookingDate === today) {
+  rowColor = "bg-green-100";
+} else if (bookingDate === tomorrow) {
+  rowColor = "bg-yellow-100";
+}
 
               return (
                 <tr
-                  key={booking.id}
-                  className={`${rowColor} border-b hover:bg-gray-50 text-black`}
-                >
+  key={booking.id}
+  className={`${rowColor} border-b text-black`}
+>
                   <td className="p-4 font-medium">
                     {booking.customer_name}
                   </td>
@@ -184,12 +178,24 @@ export default function AdminPage() {
                   <td className="p-4">{booking.start_time}</td>
 
                   <td className="p-4 capitalize">
-                    {booking.sport}
-                  </td>
+  {booking.sport}
+</td>
 
-                  <td className="p-4 font-semibold">
-                    ₹{booking.total_amount}
-                  </td>
+<td className="p-4">
+  <span
+    className={`px-3 py-1 rounded-full text-sm font-semibold ${
+      booking.booking_type === "Half Court"
+        ? "bg-blue-100 text-blue-700"
+        : "bg-purple-100 text-purple-700"
+    }`}
+  >
+    {booking.booking_type || "Full Court"}
+  </span>
+</td>
+
+<td className="p-4 font-semibold">
+  ₹{booking.total_amount}
+</td>
 
                   <td className="p-4 text-green-700 font-semibold">
                     ₹{booking.advance_amount || 0}

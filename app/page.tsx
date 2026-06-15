@@ -145,21 +145,51 @@ const handleBooking = async (paymentData?: any) => {
     return;
   }
 
-  const { data: existingBooking, error: checkError } = await supabase
-    .from("bookings")
-    .select("*")
-    .eq("booking_date", bookingDate)
-    .eq("start_time", startTime);
+  const { data: existingBookings, error: checkError } = await supabase
+  .from("bookings")
+  .select("*")
+  .eq("booking_date", bookingDate);
 
-  if (checkError) {
-    alert(checkError.message);
-    return;
-  }
+if (checkError) {
+  alert(checkError.message);
+  return;
+}
 
-  if (existingBooking && existingBooking.length > 0) {
-    alert("❌ This slot is already booked.");
-    return;
-  }
+const selectedDuration = Number(duration);
+
+const convertToMinutes = (time: string) => {
+  const [timePart, ampm] = time.split(" ");
+  let [hours, minutes] = timePart.split(":").map(Number);
+
+  if (ampm === "PM" && hours !== 12) hours += 12;
+  if (ampm === "AM" && hours === 12) hours = 0;
+
+  return hours * 60 + minutes;
+};
+
+const selectedStart = convertToMinutes(startTime);
+const selectedEnd = selectedStart + selectedDuration;
+
+const conflict = existingBookings?.some((booking) => {
+  const [hours, minutes] = booking.start_time
+    .substring(0, 5)
+    .split(":")
+    .map(Number);
+
+  const bookingStart = hours * 60 + minutes;
+  const bookingEnd =
+    bookingStart + booking.duration_minutes;
+
+  return (
+    selectedStart < bookingEnd &&
+    selectedEnd > bookingStart
+  );
+});
+
+if (conflict) {
+  alert("❌ This slot overlaps with an existing booking.");
+  return;
+}
 
   const { error } = await supabase.from("bookings").insert([
 {
