@@ -457,7 +457,6 @@ worksheet["!cols"] = [
 <th className="p-4 text-left">Total</th>
               <th className="p-4 text-left">Advance</th>
               <th className="p-4 text-left">Balance</th>
-              <th className="p-4 text-left">Status</th>
 <th className="p-4 text-left">Action</th>
             </tr>
           </thead>
@@ -554,11 +553,6 @@ if (bookingDate === today) {
                     ₹{booking.balance_amount || 0}
                   </td>
 
-                  <td className="p-4">
-  <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">
-    {booking.payment_status || "Pending"}
-  </span>
-</td>
 
 <td className="p-4">
   <button
