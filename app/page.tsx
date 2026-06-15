@@ -39,7 +39,7 @@ const totalAmount =
     ? 1850
     : 2500;
 
-const advanceAmount = 200;
+const advanceAmount = 205;
 const allSlots = [
   "05:00 AM","05:30 AM",
   "06:00 AM","06:30 AM",
@@ -582,8 +582,8 @@ return (
 
 <div className="bg-green-800 p-4 rounded-lg">
   <p className="text-yellow-300 text-xl font-bold">
-    Advance Payment: ₹200
-  </p>
+  Advance Payment: ₹200 + Platform Fee
+</p>
 
   <p className="mt-2 text-white">
     Total Amount: ₹{totalAmount}
