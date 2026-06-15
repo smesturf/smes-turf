@@ -31,12 +31,12 @@ const totalAmount =
     ? duration === "60"
       ? 750
       : duration === "90"
-      ? 1125
+      ? 1100
       : 1500
     : duration === "60"
     ? 1250
     : duration === "90"
-    ? 1875
+    ? 1850
     : 2500;
 
 const advanceAmount = 200;
@@ -608,7 +608,7 @@ return (
 </option>
 
 <option value="90">
-  90 Minutes - ₹{bookingType === "Half Court" ? 1125 : 1875}
+  90 Minutes - ₹{bookingType === "Half Court" ? 1100 : 1850}
 </option>
 
 <option value="120">
