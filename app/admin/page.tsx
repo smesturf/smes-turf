@@ -8,6 +8,7 @@ export default function AdminPage() {
   const router = useRouter();
 
   const [bookings, setBookings] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
   const [blockedSlots, setBlockedSlots] = useState<any[]>([]);
 const [todaySlots, setTodaySlots] = useState(0);
 const [tomorrowSlots, setTomorrowSlots] = useState(0);
@@ -129,7 +130,27 @@ const deleteBlockedSlot = async (id: number) => {
   loadBookings();
 };
 
-  const totalRevenue = bookings.reduce(
+const deleteBooking = async (id: number) => {
+  const confirmed = confirm(
+    "Cancel this booking?"
+  );
+
+  if (!confirmed) return;
+
+  const { error } = await supabase
+    .from("bookings")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  loadBookings();
+};
+
+const totalRevenue = bookings.reduce(
     (sum, booking) => sum + (booking.advance_amount || 0),
     0
   );
@@ -171,7 +192,15 @@ const deleteBlockedSlot = async (id: number) => {
           <p className="text-3xl font-bold">₹{totalBalance}</p>
         </div>
       </div>
-
+<div className="mb-6">
+  <input
+    type="text"
+    placeholder="🔍 Search by name, phone or date..."
+    value={searchTerm}
+    onChange={(e) => setSearchTerm(e.target.value)}
+    className="w-full md:w-96 border p-3 rounded text-black"
+  />
+</div>
       <div className="flex gap-4 mb-6">
   <button
     className="bg-purple-700 text-white px-6 py-3 rounded-lg font-bold shadow-lg border-2 border-purple-900"
@@ -239,7 +268,25 @@ const deleteBlockedSlot = async (id: number) => {
     </div>
   </div>
 )}
+<p className="mb-3 text-gray-700 font-medium">
+  Showing {
+    bookings.filter((booking) => {
+      const search = searchTerm.toLowerCase();
 
+      return (
+        booking.customer_name
+          ?.toLowerCase()
+          .includes(search) ||
+        booking.phone
+          ?.toLowerCase()
+          .includes(search) ||
+        booking.booking_date
+          ?.toLowerCase()
+          .includes(search)
+      );
+    }).length
+  } booking(s)
+</p>
       <div className="bg-white rounded-xl shadow-lg overflow-x-auto">
         <table className="w-full">
           <thead className="bg-green-700 text-white">
@@ -251,15 +298,33 @@ const deleteBlockedSlot = async (id: number) => {
 <th className="p-4 text-left">Duration</th>
 <th className="p-4 text-left">Sport</th>
 <th className="p-4 text-left">Type</th>
+<th className="p-4 text-left">Court</th>
 <th className="p-4 text-left">Total</th>
               <th className="p-4 text-left">Advance</th>
               <th className="p-4 text-left">Balance</th>
               <th className="p-4 text-left">Status</th>
+<th className="p-4 text-left">Action</th>
             </tr>
           </thead>
 
           <tbody>
-            {bookings.map((booking) => {
+            {bookings
+  .filter((booking) => {
+    const search = searchTerm.toLowerCase();
+
+    return (
+      booking.customer_name
+        ?.toLowerCase()
+        .includes(search) ||
+      booking.phone
+        ?.toLowerCase()
+        .includes(search) ||
+      booking.booking_date
+        ?.toLowerCase()
+        .includes(search)
+    );
+  })
+  .map((booking) => {
               const bookingDate =
                 booking.booking_date?.split("T")[0];
 
@@ -319,7 +384,9 @@ if (bookingDate === today) {
     {booking.booking_type || "Full Court"}
   </span>
 </td>
-
+<td className="p-4">
+  {booking.court_number || "-"}
+</td>
 <td className="p-4 font-semibold">
   ₹{booking.total_amount}
 </td>
@@ -333,10 +400,19 @@ if (bookingDate === today) {
                   </td>
 
                   <td className="p-4">
-                    <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">
-                      {booking.payment_status || "Pending"}
-                    </span>
-                  </td>
+  <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">
+    {booking.payment_status || "Pending"}
+  </span>
+</td>
+
+<td className="p-4">
+  <button
+    onClick={() => deleteBooking(booking.id)}
+    className="bg-red-600 text-white px-3 py-1 rounded"
+  >
+    Cancel
+  </button>
+</td>
                 </tr>
               );
             })}

@@ -219,9 +219,60 @@ const conflict = existingBookings?.some((booking) => {
   );
 });
 
-if (conflict) {
-  alert("❌ This slot overlaps with an existing booking.");
-  return;
+let courtNumber = "";
+
+const overlappingBookings =
+  existingBookings?.filter((booking) => {
+    const [hours, minutes] = booking.start_time
+      .substring(0, 5)
+      .split(":")
+      .map(Number);
+
+    const bookingStart = hours * 60 + minutes;
+    const bookingEnd =
+      bookingStart + booking.duration_minutes;
+
+    return (
+      selectedStart < bookingEnd &&
+      selectedEnd > bookingStart
+    );
+  }) || [];
+
+if (bookingType === "Half Court") {
+  const fullCourtExists = overlappingBookings.some(
+    (b) => b.booking_type === "Full Court"
+  );
+
+  if (fullCourtExists) {
+    alert("❌ No Half Court Available.");
+    return;
+  }
+
+  const court1Taken = overlappingBookings.some(
+    (b) => b.court_number === "Court 1"
+  );
+
+  const court2Taken = overlappingBookings.some(
+    (b) => b.court_number === "Court 2"
+  );
+
+  if (!court1Taken) {
+    courtNumber = "Court 1";
+  } else if (!court2Taken) {
+    courtNumber = "Court 2";
+  } else {
+    alert("❌ No Half Court Available.");
+    return;
+  }
+}
+
+if (bookingType === "Full Court") {
+  if (overlappingBookings.length > 0) {
+    alert("❌ Full Court Not Available.");
+    return;
+  }
+
+  courtNumber = "Both Courts";
 }
 
   const { error } = await supabase.from("bookings").insert([
