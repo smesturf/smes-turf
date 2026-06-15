@@ -526,7 +526,10 @@ return (
     loadBookedSlots(e.target.value);
   }}
   className="w-full p-3 rounded bg-green-700 text-white border border-green-600"
-  style={{ colorScheme: "dark" }}
+  style={{
+    color: "white",
+    colorScheme: "light",
+  }}
 />
 
 <select
