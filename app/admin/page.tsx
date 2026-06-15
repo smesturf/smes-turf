@@ -7,7 +7,11 @@ import { supabase } from "../lib/supabase";
 export default function AdminPage() {
   const router = useRouter();
 
-  const [showManageSlots, setShowManageSlots] = useState(false);
+  const [bookings, setBookings] = useState<any[]>([]);
+const [todaySlots, setTodaySlots] = useState(0);
+const [tomorrowSlots, setTomorrowSlots] = useState(0);
+
+const [showManageSlots, setShowManageSlots] = useState(false);
 
 const [slotDate, setSlotDate] = useState("");
 const [slotTime, setSlotTime] = useState("");
