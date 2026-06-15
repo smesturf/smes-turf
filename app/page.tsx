@@ -479,61 +479,34 @@ return (
       <div className="space-y-4">
 
         <input
+  type="text"
+  placeholder="Full Name"
+  value={name}
+  onChange={(e) => setName(e.target.value)}
+  className="w-full p-3 rounded bg-green-700 text-white border border-green-600"
+/>
 
-          type="text"
+<input
+  type="tel"
+  placeholder="Phone Number"
+  value={phone}
+  onChange={(e) => setPhone(e.target.value)}
+  className="w-full p-3 rounded bg-green-700 text-white border border-green-600"
+/>
 
-          placeholder="Full Name"
+<select
+  value={sport}
+  onChange={(e) => setSport(e.target.value)}
+  className="w-full p-3 rounded bg-green-700 text-white border border-green-600"
+>
+  <option value="Football">Football</option>
+  <option value="Cricket">Cricket</option>
+</select>
 
-          value={name}
-
-          onChange={(e) => setName(e.target.value)}
-
-          className="w-full p-3 rounded text-black"
-
-        />
-
-
-
-        <input
-
-          type="tel"
-
-          placeholder="Phone Number"
-
-          value={phone}
-
-          onChange={(e) => setPhone(e.target.value)}
-
-          className="w-full p-3 rounded text-black"
-
-        />
-        
-
-
-
-
-
-
-
-        <select
-
-          value={sport}
-
-          onChange={(e) => setSport(e.target.value)}
-
-          className="w-full p-3 rounded text-black"
-
-        >
-
-          <option>Football</option>
-
-          <option>Cricket</option>
-
-        </select>
-        <select
+<select
   value={bookingType}
   onChange={(e) => setBookingType(e.target.value)}
-  className="w-full p-3 rounded text-black"
+  className="w-full p-3 rounded bg-green-700 text-white border border-green-600"
 >
   <option value="Half Court">
     Half Court
@@ -544,9 +517,7 @@ return (
   </option>
 </select>
 
-
-
-        <input
+<input
   type="date"
   min={new Date().toISOString().split("T")[0]}
   value={bookingDate}
@@ -554,82 +525,64 @@ return (
     setBookingDate(e.target.value);
     loadBookedSlots(e.target.value);
   }}
-  className="w-full p-3 rounded text-black"
+  className="w-full p-3 rounded bg-green-700 text-white border border-green-600"
+  style={{ colorScheme: "dark" }}
 />
 
+<select
+  value={startTime}
+  onChange={(e) => setStartTime(e.target.value)}
+  className="w-full p-3 rounded bg-green-700 text-white border border-green-600"
+>
+  {allSlots
+    .filter((slot) => {
+      if (bookedSlots.includes(slot)) return false;
 
+      const today = new Date().toISOString().split("T")[0];
 
-        <select
+      if (bookingDate !== today) return true;
 
-          value={startTime}
+      const now = new Date();
 
-          onChange={(e) => setStartTime(e.target.value)}
+      const currentMinutes =
+        now.getHours() * 60 + now.getMinutes();
 
-          className="w-full p-3 rounded text-black"
+      const [time, ampm] = slot.split(" ");
+      let [hours, minutes] = time.split(":").map(Number);
 
-        >
+      if (ampm === "PM" && hours !== 12) hours += 12;
+      if (ampm === "AM" && hours === 12) hours = 0;
 
-          {allSlots
-  .filter((slot) => {
-    if (bookedSlots.includes(slot)) return false;
+      const slotMinutes = hours * 60 + minutes;
 
-    const today = new Date().toISOString().split("T")[0];
+      return slotMinutes > currentMinutes;
+    })
+    .map((slot) => (
+      <option key={slot} value={slot}>
+        {slot}
+      </option>
+    ))}
+</select>
 
-    if (bookingDate !== today) return true;
+<select
+  value={duration}
+  onChange={(e) => setDuration(e.target.value)}
+  className="w-full p-3 rounded bg-green-700 text-white border border-green-600"
+>
+  <option value="60">
+    60 Minutes - ₹{bookingType === "Half Court" ? 750 : 1250}
+  </option>
 
-    const now = new Date();
+  <option value="90">
+    90 Minutes - ₹{bookingType === "Half Court" ? 1100 : 1850}
+  </option>
 
-    const currentMinutes =
-      now.getHours() * 60 + now.getMinutes();
+  <option value="120">
+    120 Minutes - ₹{bookingType === "Half Court" ? 1500 : 2500}
+  </option>
+</select>
 
-    const [time, ampm] = slot.split(" ");
-    let [hours, minutes] = time.split(":").map(Number);
-
-    if (ampm === "PM" && hours !== 12) hours += 12;
-    if (ampm === "AM" && hours === 12) hours = 0;
-
-    const slotMinutes = hours * 60 + minutes;
-
-    return slotMinutes > currentMinutes;
-  })
-  .map((slot) => (
-    <option key={slot} value={slot}>
-      {slot}
-    </option>
-  ))}
-    
-
-        </select>
-
-
-
-        <select
-
-          value={duration}
-
-          onChange={(e) => setDuration(e.target.value)}
-
-          className="w-full p-3 rounded text-black"
-
-        >
-
-          <option value="60">
-  60 Minutes - ₹{bookingType === "Half Court" ? 750 : 1250}
-</option>
-
-<option value="90">
-  90 Minutes - ₹{bookingType === "Half Court" ? 1100 : 1850}
-</option>
-
-<option value="120">
-  120 Minutes - ₹{bookingType === "Half Court" ? 1500 : 2500}
-</option>
-
-        </select>
-
-
-
-        <div className="bg-green-800 p-4 rounded-lg">
+<div className="bg-green-800 p-4 rounded-lg">
   <p className="text-yellow-300 text-xl font-bold">
     Advance Payment: ₹200
   </p>
@@ -639,21 +592,13 @@ return (
   </p>
 </div>
 
-
-
-        <button
-
-          type="button"
-
-          onClick={openRazorpay}
-
-          className="w-full bg-yellow-400 text-black font-bold py-3 rounded"
-
-        >
-
-          Book Now
-
-        </button>
+<button
+  type="button"
+  onClick={openRazorpay}
+  className="w-full bg-yellow-400 text-black font-bold py-3 rounded"
+>
+  Book Now
+</button>
 
       </div>
 
