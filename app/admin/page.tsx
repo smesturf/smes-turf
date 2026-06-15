@@ -9,6 +9,7 @@ export default function AdminPage() {
 
   const [bookings, setBookings] = useState<any[]>([]);
   const [todaySlots, setTodaySlots] = useState(0);
+  const [tomorrowSlots, setTomorrowSlots] = useState(0);
 
   const formatDate = (date: Date) => {
     return date.toLocaleDateString("en-CA", {
@@ -38,7 +39,9 @@ export default function AdminPage() {
     const { data, error } = await supabase
       .from("bookings")
       .select("*")
-      .order("booking_date", { ascending: true });
+      .gte("booking_date", today)
+      .order("booking_date", { ascending: true })
+      .order("start_time", { ascending: true });
 
     if (error) {
       console.log(error);
@@ -53,7 +56,14 @@ export default function AdminPage() {
           booking.booking_date?.split("T")[0] === today
       ) || [];
 
+    const tomorrowsBookings =
+      data?.filter(
+        (booking) =>
+          booking.booking_date?.split("T")[0] === tomorrow
+      ) || [];
+
     setTodaySlots(todaysBookings.length);
+    setTomorrowSlots(tomorrowsBookings.length);
   };
 
   const totalRevenue = bookings.reduce(
@@ -72,15 +82,20 @@ export default function AdminPage() {
         🏟️ SMES Turf Admin Dashboard
       </h1>
 
-      <div className="grid md:grid-cols-4 gap-4 mb-8">
+      <div className="grid md:grid-cols-5 gap-4 mb-8">
         <div className="bg-green-700 text-white p-6 rounded-xl shadow">
           <h3 className="text-sm">Total Bookings</h3>
           <p className="text-3xl font-bold">{bookings.length}</p>
         </div>
 
         <div className="bg-blue-700 text-white p-6 rounded-xl shadow">
-          <h3 className="text-sm">Today's Slots Booked</h3>
+          <h3 className="text-sm">Today's Slots</h3>
           <p className="text-3xl font-bold">{todaySlots}</p>
+        </div>
+
+        <div className="bg-indigo-700 text-white p-6 rounded-xl shadow">
+          <h3 className="text-sm">Tomorrow's Slots</h3>
+          <p className="text-3xl font-bold">{tomorrowSlots}</p>
         </div>
 
         <div className="bg-yellow-600 text-white p-6 rounded-xl shadow">
@@ -92,6 +107,22 @@ export default function AdminPage() {
           <h3 className="text-sm">Pending Balance</h3>
           <p className="text-3xl font-bold">₹{totalBalance}</p>
         </div>
+      </div>
+
+      <div className="flex gap-4 mb-6">
+        <button
+          className="bg-red-600 text-white px-5 py-3 rounded-lg font-semibold hover:bg-red-700"
+          onClick={() => alert("Block Slot Feature Coming Soon")}
+        >
+          🚫 Block Slot
+        </button>
+
+        <button
+          className="bg-blue-600 text-white px-5 py-3 rounded-lg font-semibold hover:bg-blue-700"
+          onClick={() => alert("Offline Booking Feature Coming Soon")}
+        >
+          ➕ Offline Booking
+        </button>
       </div>
 
       <div className="bg-white rounded-xl shadow-lg overflow-x-auto">
@@ -135,7 +166,7 @@ export default function AdminPage() {
                   <td className="p-4">{booking.phone}</td>
 
                   <td className="p-4">
-                    {booking.booking_date}
+                    {bookingDate}
 
                     {bookingDate === today && (
                       <span className="ml-2 bg-green-600 text-white px-2 py-1 rounded text-xs">
@@ -161,16 +192,16 @@ export default function AdminPage() {
                   </td>
 
                   <td className="p-4 text-green-700 font-semibold">
-                    ₹{booking.advance_amount}
+                    ₹{booking.advance_amount || 0}
                   </td>
 
                   <td className="p-4 text-red-700 font-semibold">
-                    ₹{booking.balance_amount}
+                    ₹{booking.balance_amount || 0}
                   </td>
 
                   <td className="p-4">
                     <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">
-                      {booking.payment_status}
+                      {booking.payment_status || "Pending"}
                     </span>
                   </td>
                 </tr>
