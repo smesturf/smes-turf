@@ -50,7 +50,9 @@ const allSlots = [
 const loadBookedSlots = async (date: string) => {
   const { data, error } = await supabase
   .from("bookings")
-  .select("start_time, duration_minutes")
+  .select(
+    "start_time, duration_minutes, booking_type, court_number"
+  )
   .eq("booking_date", date);
 
 
@@ -67,28 +69,46 @@ const { data: blockedData } = await supabase
   if (data) {
   const blocked: string[] = [];
 
-  data.forEach((booking: any) => {
-    const time = booking.start_time.substring(0, 5);
-    const [h, m] = time.split(":");
+  const slotCounts: Record<string, number> = {};
 
-    let minutes = Number(h) * 60 + Number(m);
+data.forEach((booking: any) => {
+  const time = booking.start_time.substring(0, 5);
 
-    const slotsToBlock = booking.duration_minutes / 30;
+  const [h, m] = time.split(":");
 
-    for (let i = 0; i < slotsToBlock; i++) {
-      const current = minutes + i * 30;
+  let minutes = Number(h) * 60 + Number(m);
 
-      const hour24 = Math.floor(current / 60);
-      const minute = current % 60;
+  const slotsToBlock =
+    booking.duration_minutes / 30;
 
-      const ampm = hour24 >= 12 ? "PM" : "AM";
-      const hour12 = hour24 % 12 || 12;
+  for (let i = 0; i < slotsToBlock; i++) {
+    const current = minutes + i * 30;
 
-      blocked.push(
-        `${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${ampm}`
-      );
+    const hour24 = Math.floor(current / 60);
+    const minute = current % 60;
+
+    const ampm = hour24 >= 12 ? "PM" : "AM";
+    const hour12 = hour24 % 12 || 12;
+
+    const slotLabel =
+      `${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${ampm}`;
+
+    if (booking.booking_type === "Full Court") {
+      slotCounts[slotLabel] = 999;
+    } else {
+      slotCounts[slotLabel] =
+        (slotCounts[slotLabel] || 0) + 1;
     }
-  });
+  }
+});
+
+Object.entries(slotCounts).forEach(
+  ([slot, count]) => {
+    if (count >= 2 || count === 999) {
+      blocked.push(slot);
+    }
+  }
+);
 
   if (blockedData) {
   blockedData.forEach((slot: any) => {
@@ -281,8 +301,9 @@ if (bookingType === "Full Court") {
   phone: phone,
 
   booking_type: bookingType,
+court_number: courtNumber,
 
-  sport: sport.toLowerCase(),
+sport: sport.toLowerCase(),
   booking_date: bookingDate,
   start_time: startTime,
   duration_minutes: Number(duration),
