@@ -282,17 +282,69 @@ worksheet["!cols"] = [
 ];
 
   XLSX.utils.book_append_sheet(
-    workbook,
-    worksheet,
-    "Bookings"
-  );
+  workbook,
+  worksheet,
+  "Bookings"
+);
 
-  XLSX.writeFile(
-    workbook,
-    `SMES_Bookings_${new Date()
-      .toISOString()
-      .split("T")[0]}.xlsx`
-  );
+// TODAY SUMMARY
+const todayBookings = bookings.filter(
+  (booking) =>
+    booking.booking_date?.split("T")[0] === today
+);
+
+const todayRevenue = todayBookings.reduce(
+  (sum, b) => sum + (b.total_amount || 0),
+  0
+);
+
+const todayAdvance = todayBookings.reduce(
+  (sum, b) => sum + (b.advance_amount || 0),
+  0
+);
+
+const todayBalance = todayBookings.reduce(
+  (sum, b) => sum + (b.balance_amount || 0),
+  0
+);
+
+const todaySheet = XLSX.utils.aoa_to_sheet([
+  ["TODAY'S COLLECTION"],
+  [],
+  ["Total Bookings", todayBookings.length],
+  ["Total Revenue (₹)", todayRevenue],
+  ["Advance Collected (₹)", todayAdvance],
+  ["Pending Balance (₹)", todayBalance],
+]);
+
+XLSX.utils.book_append_sheet(
+  workbook,
+  todaySheet,
+  "Today"
+);
+
+// MONTHLY SUMMARY
+const monthlySheet = XLSX.utils.aoa_to_sheet([
+  ["MONTHLY COLLECTION"],
+  [],
+  ["Total Bookings", monthlyBookings],
+  ["Total Revenue (₹)", monthlyRevenue],
+  ["Advance Collected (₹)", monthlyAdvance],
+  ["Pending Balance (₹)", monthlyBalance],
+]);
+
+XLSX.utils.book_append_sheet(
+  workbook,
+  monthlySheet,
+  "Monthly"
+);
+
+XLSX.writeFile(
+  workbook,
+  `SMES_Bookings_${new Date()
+    .toISOString()
+    .split("T")[0]}.xlsx`
+);
 }; 
 
   return (
@@ -318,12 +370,12 @@ worksheet["!cols"] = [
         </div>
 
         <div className="bg-yellow-600 text-white p-6 rounded-xl shadow">
-          <h3 className="text-sm">Revenue Collected</h3>
+          <h3 className="text-sm">Advance Collected</h3>
           <p className="text-3xl font-bold">₹{totalRevenue}</p>
         </div>
 
         <div className="bg-red-600 text-white p-6 rounded-xl shadow">
-          <h3 className="text-sm">Pending Balance</h3>
+          <h3 className="text-sm"> Balance</h3>
           <p className="text-3xl font-bold">₹{totalBalance}</p>
                  </div>
       </div>
