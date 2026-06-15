@@ -404,33 +404,28 @@ return (
 
     <div className="flex flex-col md:flex-row gap-4 justify-center">
 
-      <a
+  <a
+    href="https://wa.me/918453095258"
+    className="bg-green-600 px-6 py-3 rounded-lg font-semibold"
+  >
+    WhatsApp Us
+  </a>
 
-        href="https://wa.me/918453095258"
+  <a
+    href="https://maps.google.com/?q=12.329329,76.612008"
+    className="bg-blue-600 px-6 py-3 rounded-lg font-semibold"
+  >
+    Get Directions
+  </a>
 
-        className="bg-green-600 px-6 py-3 rounded-lg font-semibold"
+  <a
+    href="tel:+918453095258"
+    className="bg-yellow-500 text-black px-6 py-3 rounded-lg font-semibold"
+  >
+    📞 Contact Us
+  </a>
 
-      >
-
-        WhatsApp Us
-
-      </a>
-
-
-
-      <a
-
-        href="https://maps.google.com/?q=12.329329,76.612008"
-
-        className="bg-blue-600 px-6 py-3 rounded-lg font-semibold"
-
-      >
-
-        Get Directions
-
-      </a>
-
-    </div>
+</div>
 
   </section>
 
