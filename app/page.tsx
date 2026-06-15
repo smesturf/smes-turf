@@ -337,8 +337,8 @@ sport: sport.toLowerCase(),
   duration_minutes: Number(duration),
   total_amount: totalAmount,
 
-  advance_amount: advanceAmount,
-  balance_amount: totalAmount - advanceAmount,
+  advance_amount: 200,
+balance_amount: totalAmount - 200,
 
   razorpay_order_id: paymentData?.razorpay_order_id,
   razorpay_payment_id: paymentData?.razorpay_payment_id,
@@ -352,7 +352,7 @@ sport: sport.toLowerCase(),
     return;
   }
 
-  const balanceAmount = totalAmount - advanceAmount;
+  const balanceAmount = totalAmount - 200;
 
 const message =
 `🏟️ SMES Turf Booking Confirmed
