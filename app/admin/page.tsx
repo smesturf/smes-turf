@@ -203,14 +203,27 @@ const deleteBooking = async (id: number) => {
   loadBookings();
 };
 
-const totalRevenue = bookings.reduce(
-    (sum, booking) => sum + (booking.advance_amount || 0),
+const todaysAdvance = bookings
+  .filter((booking) => {
+    return (
+      booking.created_at?.split("T")[0] === today
+    );
+  })
+  .reduce(
+    (sum, booking) =>
+      sum + (booking.advance_amount || 0),
     0
   );
 
-  const totalBalance = bookings.reduce(
-    
-    (sum, booking) => sum + (booking.balance_amount || 0),
+const todaysBalance = bookings
+  .filter((booking) => {
+    return (
+      booking.booking_date?.split("T")[0] === today
+    );
+  })
+  .reduce(
+    (sum, booking) =>
+      sum + (booking.balance_amount || 0),
     0
   );
  const exportToExcel = () => {
@@ -370,13 +383,13 @@ XLSX.writeFile(
         </div>
 
         <div className="bg-yellow-600 text-white p-6 rounded-xl shadow">
-          <h3 className="text-sm">Advance Collected</h3>
-          <p className="text-3xl font-bold">₹{totalRevenue}</p>
+          <h3 className="text-sm">Today's Advance </h3>
+          <p className="text-3xl font-bold">₹{todaysAdvance}</p>
         </div>
 
         <div className="bg-red-600 text-white p-6 rounded-xl shadow">
-          <h3 className="text-sm"> Balance</h3>
-          <p className="text-3xl font-bold">₹{totalBalance}</p>
+          <h3 className="text-sm">Today's Balance</h3>
+          <p className="text-3xl font-bold">₹{todaysBalance}</p>
                  </div>
       </div>
 
