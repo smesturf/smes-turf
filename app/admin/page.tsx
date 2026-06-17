@@ -979,7 +979,7 @@ const resetPayment = async (booking: any) => {
 </div>
 
 <div className="bg-purple-600 text-white p-6 rounded-xl shadow">
-  <h3 className="text-sm">💰 Total Collection</h3>
+  <h3 className="text-sm">💰 Total Balance Collection</h3>
   <p className="text-3xl font-bold">
     ₹{todayTotalCollection}
   </p>
