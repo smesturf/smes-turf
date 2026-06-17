@@ -617,14 +617,14 @@ const handleLogout = () => {
 };
   return (
     <main className="min-h-screen bg-gray-100 p-8">
-      <div className="flex justify-between items-center mb-8">
-  <h1 className="text-4xl font-bold text-green-700">
+      <div className="relative mb-8">
+  <h1 className="text-4xl font-bold text-center text-green-700">
     🏟️ SMES Turf Admin Dashboard
   </h1>
 
   <button
     onClick={handleLogout}
-    className="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-lg font-bold"
+    className="absolute right-0 top-1/2 -translate-y-1/2 bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-lg font-bold"
   >
     🚪 Logout
   </button>
