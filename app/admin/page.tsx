@@ -1244,9 +1244,17 @@ if (bookingDate === today) {
                     ₹{booking.advance_amount || 0}
                   </td>
 
-                  <td className="p-4 text-red-700 font-semibold">
-                    ₹{booking.balance_amount || 0}
-                  </td>
+                  <td className="p-4 font-semibold">
+  {booking.balance_amount > 0 ? (
+    <span className="text-red-700">
+      ₹{booking.balance_amount}
+    </span>
+  ) : (
+    <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">
+      ✅ Paid
+    </span>
+  )}
+</td>
 
 
 <td className="p-4">
