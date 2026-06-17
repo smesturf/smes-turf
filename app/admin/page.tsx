@@ -17,6 +17,9 @@ const [monthlyBookings, setMonthlyBookings] = useState(0);
 const [monthlyRevenue, setMonthlyRevenue] = useState(0);
 const [monthlyAdvance, setMonthlyAdvance] = useState(0);
 const [monthlyBalance, setMonthlyBalance] = useState(0);
+const [todayCashCollection, setTodayCashCollection] = useState(0);
+const [todayUpiCollection, setTodayUpiCollection] = useState(0);
+const [todayTotalCollection, setTodayTotalCollection] = useState(0);
 const [showManageSlots, setShowManageSlots] = useState(false);
 
 const [slotDate, setSlotDate] = useState("");
@@ -278,6 +281,21 @@ setBlockedSlots(blockedData || []);
 
     setTodaySlots(todaysBookings.length);
     setTomorrowSlots(tomorrowsBookings.length);
+    const cashCollectedToday = todaysBookings.reduce(
+  (sum, booking) => sum + (booking.cash_received || 0),
+  0
+);
+
+const upiCollectedToday = todaysBookings.reduce(
+  (sum, booking) => sum + (booking.upi_received || 0),
+  0
+);
+
+setTodayCashCollection(cashCollectedToday);
+setTodayUpiCollection(upiCollectedToday);
+setTodayTotalCollection(
+  cashCollectedToday + upiCollectedToday
+);
   };
   const loadAvailableAdminSlots = async (date: string) => {
   const { data: bookings } = await supabase
@@ -746,6 +764,26 @@ const savePayment = async () => {
           <h3 className="text-sm"> Today's Balance</h3>
           <p className="text-3xl font-bold">₹{todaysBalance}</p>
                  </div>
+       <div className="bg-green-500 text-white p-6 rounded-xl shadow">
+  <h3 className="text-sm">💵 Today's Cash</h3>
+  <p className="text-3xl font-bold">
+    ₹{todayCashCollection}
+  </p>
+</div>
+
+<div className="bg-blue-500 text-white p-6 rounded-xl shadow">
+  <h3 className="text-sm">📱 Today's UPI</h3>
+  <p className="text-3xl font-bold">
+    ₹{todayUpiCollection}
+  </p>
+</div>
+
+<div className="bg-purple-600 text-white p-6 rounded-xl shadow">
+  <h3 className="text-sm">💰 Total Collection</h3>
+  <p className="text-3xl font-bold">
+    ₹{todayTotalCollection}
+  </p>
+</div>          
       </div>
 
       <div className="mb-6">
@@ -1149,7 +1187,7 @@ if (bookingDate === today) {
 
       <div className="flex gap-3">
         <button
-  onClick={() => alert("Save clicked")}
+  onClick={savePayment}
   className="bg-green-600 text-white px-4 py-2 rounded"
 >
   Save Payment
