@@ -282,19 +282,22 @@ setBlockedSlots(blockedData || []);
     setTodaySlots(todaysBookings.length);
     setTomorrowSlots(tomorrowsBookings.length);
     const cashCollectedToday = todaysBookings.reduce(
-  (sum, booking) => sum + (booking.cash_received || 0),
+  (sum, booking) =>
+    sum + Number(booking.cash_received || 0),
   0
 );
 
 const upiCollectedToday = todaysBookings.reduce(
-  (sum, booking) => sum + (booking.upi_received || 0),
+  (sum, booking) =>
+    sum + Number(booking.upi_received || 0),
   0
 );
 
 setTodayCashCollection(cashCollectedToday);
 setTodayUpiCollection(upiCollectedToday);
 setTodayTotalCollection(
-  cashCollectedToday + upiCollectedToday
+  Number(cashCollectedToday) +
+    Number(upiCollectedToday)
 );
   };
   const loadAvailableAdminSlots = async (date: string) => {
@@ -557,114 +560,247 @@ const todaysBalance = bookings
     Advance: booking.advance_amount,
     Balance: booking.balance_amount,
     Status: booking.payment_status,
+    Payment_Method:
+      booking.payment_method || "-",
+    Cash_Received:
+      booking.cash_received || 0,
+    UPI_Received:
+      booking.upi_received || 0,
+    Payment_Status:
+      booking.payment_completed
+        ? "Paid"
+        : "Pending",
   }));
 
   const totalRevenue = bookings.reduce(
-    (sum, booking) => sum + (booking.total_amount || 0),
+    (sum, booking) =>
+      sum + (booking.total_amount || 0),
     0
   );
 
   const totalAdvance = bookings.reduce(
-    (sum, booking) => sum + (booking.advance_amount || 0),
+    (sum, booking) =>
+      sum + (booking.advance_amount || 0),
     0
   );
 
   const totalBalance = bookings.reduce(
-    (sum, booking) => sum + (booking.balance_amount || 0),
+    (sum, booking) =>
+      sum + (booking.balance_amount || 0),
     0
   );
 
-  const workbook = XLSX.utils.book_new();
-  const today = new Date().toISOString().split("T")[0];
+  const totalCashCollected = bookings.reduce(
+    (sum, booking) =>
+      sum +
+      Number(booking.cash_received || 0),
+    0
+  );
 
-  const worksheet = XLSX.utils.aoa_to_sheet([
-  ["SMES TURF BOOKING REPORT"],
-  [`Export Date: ${new Date().toLocaleString("en-IN")}`],
-  [],
-  ["Total Bookings", bookings.length],
-  ["Total Revenue (₹)", totalRevenue],
-  ["Total Advance Collected (₹)", totalAdvance],
-  ["Total Pending Balance (₹)", totalBalance],
-  [],
-  [],
-]);
+  const totalUpiCollected = bookings.reduce(
+    (sum, booking) =>
+      sum +
+      Number(booking.upi_received || 0),
+    0
+  );
+
+  const totalCollection =
+    totalCashCollected +
+    totalUpiCollected;
+
+  const workbook = XLSX.utils.book_new();
+
+  const today = new Date()
+    .toISOString()
+    .split("T")[0];
+
+  const worksheet =
+    XLSX.utils.aoa_to_sheet([
+      ["SMES TURF BOOKING REPORT"],
+      [
+        `Export Date: ${new Date().toLocaleString(
+          "en-IN"
+        )}`,
+      ],
+      [],
+      ["Total Bookings", bookings.length],
+      ["Total Revenue (₹)", totalRevenue],
+      [
+        "Total Advance Collected (₹)",
+        totalAdvance,
+      ],
+      [
+        "Total Pending Balance (₹)",
+        totalBalance,
+      ],
+      [
+        "Total Cash Collected (₹)",
+        totalCashCollected,
+      ],
+      [
+        "Total UPI Collected (₹)",
+        totalUpiCollected,
+      ],
+      [
+        "Total Collection (₹)",
+        totalCollection,
+      ],
+      [],
+      [],
+    ]);
 
   XLSX.utils.sheet_add_json(
     worksheet,
     exportData,
     {
-      origin: "A9",
+      origin: "A13",
     }
   );
-  // Auto-size columns
-worksheet["!cols"] = [
-  { wch: 20 }, // Name
-  { wch: 15 }, // Phone
-  { wch: 15 }, // Date
-  { wch: 12 }, // Time
-  { wch: 12 }, // Duration
-  { wch: 15 }, // Sport
-  { wch: 15 }, // Type
-  { wch: 15 }, // Court
-  { wch: 12 }, // Total
-  { wch: 12 }, // Advance
-  { wch: 12 }, // Balance
-  { wch: 15 }, // Status
-];
+
+  worksheet["!cols"] = [
+    { wch: 20 },
+    { wch: 15 },
+    { wch: 15 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 15 },
+    { wch: 15 },
+    { wch: 15 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 15 },
+    { wch: 18 },
+    { wch: 15 },
+    { wch: 15 },
+    { wch: 15 },
+  ];
 
   XLSX.utils.book_append_sheet(
-  workbook,
-  worksheet,
-  "Bookings"
-);
+    workbook,
+    worksheet,
+    "Bookings"
+  );
 
-// TODAY SUMMARY
-const todayBookings = bookings.filter(
-  (booking) =>
-    booking.booking_date === today
-);
+  // TODAY SUMMARY
 
-const todayRevenue = todaysAdvance + todaysBalance;
-const todayAdvance = todaysAdvance;
-const todayBalance = todaysBalance;
+  const todayBookings = bookings.filter(
+    (booking) =>
+      booking.booking_date?.split("T")[0] ===
+      today
+  );
 
-const todaySheet = XLSX.utils.aoa_to_sheet([
-  ["TODAY'S COLLECTION"],
-  [],
-  ["Total Bookings", todayBookings.length],
-  ["Total Revenue (₹)", todayRevenue],
-  ["Advance Collected (₹)", todayAdvance],
-  ["Pending Balance (₹)", todayBalance],
-]);
+  const todayRevenue =
+    todaysAdvance + todaysBalance;
 
-XLSX.utils.book_append_sheet(
-  workbook,
-  todaySheet,
-  "Today"
-);
+  const todayAdvance = todaysAdvance;
 
-// MONTHLY SUMMARY
-const monthlySheet = XLSX.utils.aoa_to_sheet([
-  ["MONTHLY COLLECTION"],
-  [],
-  ["Total Bookings", monthlyBookings],
-  ["Total Revenue (₹)", monthlyRevenue],
-  ["Advance Collected (₹)", monthlyAdvance],
-  ["Pending Balance (₹)", monthlyBalance],
-]);
+  const todayBalance = todaysBalance;
 
-XLSX.utils.book_append_sheet(
-  workbook,
-  monthlySheet,
-  "Monthly"
-);
+  const todayCash = todayBookings.reduce(
+    (sum, booking) =>
+      sum +
+      Number(booking.cash_received || 0),
+    0
+  );
 
-XLSX.writeFile(
-  workbook,
-  `SMES_Bookings_${new Date()
-    .toISOString()
-    .split("T")[0]}.xlsx`
-);
+  const todayUpi = todayBookings.reduce(
+    (sum, booking) =>
+      sum +
+      Number(booking.upi_received || 0),
+    0
+  );
+
+  const todayCollection =
+    todayCash + todayUpi;
+
+  const todaySheet =
+    XLSX.utils.aoa_to_sheet([
+      ["TODAY'S COLLECTION"],
+      [],
+      [
+        "Total Bookings",
+        todayBookings.length,
+      ],
+      ["Total Revenue (₹)", todayRevenue],
+      [
+        "Advance Collected (₹)",
+        todayAdvance,
+      ],
+      [
+        "Pending Balance (₹)",
+        todayBalance,
+      ],
+      ["Cash Collected (₹)", todayCash],
+      ["UPI Collected (₹)", todayUpi],
+      [
+        "Total Collection (₹)",
+        todayCollection,
+      ],
+    ]);
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    todaySheet,
+    "Today"
+  );
+
+  // MONTHLY SUMMARY
+
+  const monthlyCash = bookings.reduce(
+    (sum, booking) =>
+      sum +
+      Number(booking.cash_received || 0),
+    0
+  );
+
+  const monthlyUpi = bookings.reduce(
+    (sum, booking) =>
+      sum +
+      Number(booking.upi_received || 0),
+    0
+  );
+
+  const monthlyCollection =
+    monthlyCash + monthlyUpi;
+
+  const monthlySheet =
+    XLSX.utils.aoa_to_sheet([
+      ["MONTHLY COLLECTION"],
+      [],
+      [
+        "Total Bookings",
+        monthlyBookings,
+      ],
+      ["Total Revenue (₹)", monthlyRevenue],
+      [
+        "Advance Collected (₹)",
+        monthlyAdvance,
+      ],
+      [
+        "Pending Balance (₹)",
+        monthlyBalance,
+      ],
+      ["Cash Collected (₹)", monthlyCash],
+      ["UPI Collected (₹)", monthlyUpi],
+      [
+        "Total Collection (₹)",
+        monthlyCollection,
+      ],
+    ]);
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    monthlySheet,
+    "Monthly"
+  );
+
+  XLSX.writeFile(
+    workbook,
+    `SMES_Bookings_${new Date()
+      .toISOString()
+      .split("T")[0]}.xlsx`
+  );
 }; 
 const handleLogout = () => {
   localStorage.removeItem("adminLoggedIn");
@@ -672,6 +808,39 @@ const handleLogout = () => {
   router.push("/admin/login");
 };
 const savePayment = async () => {
+  
+  const resetPayment = async (booking: any) => {
+  const confirmed = confirm(
+    "Reset this payment?"
+  );
+
+  if (!confirmed) return;
+
+  const originalBalance =
+    (booking.total_amount || 0) -
+    (booking.advance_amount || 0);
+
+  const { error } = await supabase
+    .from("bookings")
+    .update({
+      cash_received: 0,
+      upi_received: 0,
+      payment_method: null,
+      payment_completed: false,
+      balance_amount: originalBalance,
+    })
+    .eq("id", booking.id);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  alert("✅ Payment Reset");
+
+  loadBookings();
+};
+
   if (!selectedBooking) return;
 
   const balance =
@@ -721,6 +890,37 @@ const savePayment = async () => {
   setShowPaymentModal(false);
   setCashAmount("");
   setUpiAmount("");
+
+  loadBookings();
+};
+const resetPayment = async (booking: any) => {
+  const confirmed = confirm(
+    "Reset this payment?"
+  );
+
+  if (!confirmed) return;
+
+  const originalBalance =
+    (booking.total_amount || 0) -
+    (booking.advance_amount || 0);
+
+  const { error } = await supabase
+    .from("bookings")
+    .update({
+      cash_received: 0,
+      upi_received: 0,
+      payment_method: null,
+      payment_completed: false,
+      balance_amount: originalBalance,
+    })
+    .eq("id", booking.id);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  alert("✅ Payment Reset");
 
   loadBookings();
 };
@@ -1051,23 +1251,35 @@ if (bookingDate === today) {
 
 <td className="p-4">
   <div className="flex gap-2">
-    <button
-  onClick={() => {
-    console.log("Booking:", booking);
-    setSelectedBooking(booking);
-    setShowPaymentModal(true);
-  }}
-  className="bg-green-600 text-white px-3 py-1 rounded"
->
-  💰 Collect
-</button>
+
+    {booking.balance_amount > 0 && (
+      <button
+        onClick={() => {
+          setSelectedBooking(booking);
+          setShowPaymentModal(true);
+        }}
+        className="bg-green-600 text-white px-3 py-1 rounded"
+      >
+        💰 Collect
+      </button>
+    )}
+
+    {booking.balance_amount === 0 && (
+      <button
+        onClick={() => resetPayment(booking)}
+        className="bg-yellow-500 text-white px-3 py-1 rounded"
+      >
+        🔄 Reset
+      </button>
+    )}
 
     <button
       onClick={() => deleteBooking(booking.id)}
       className="bg-red-600 text-white px-3 py-1 rounded"
     >
-      Cancel
+      ❌ Cancel
     </button>
+
   </div>
 </td>
                 </tr>
