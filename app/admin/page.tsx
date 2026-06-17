@@ -610,12 +610,25 @@ XLSX.writeFile(
     .split("T")[0]}.xlsx`
 );
 }; 
-
+const handleLogout = () => {
+  localStorage.removeItem("adminLoggedIn");
+  localStorage.removeItem("adminLoginTime");
+  router.push("/admin/login");
+};
   return (
     <main className="min-h-screen bg-gray-100 p-8">
-      <h1 className="text-4xl font-bold mb-8 text-center text-green-700">
-        🏟️ SMES Turf Admin Dashboard
-      </h1>
+      <div className="flex justify-between items-center mb-8">
+  <h1 className="text-4xl font-bold text-green-700">
+    🏟️ SMES Turf Admin Dashboard
+  </h1>
+
+  <button
+    onClick={handleLogout}
+    className="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-lg font-bold"
+  >
+    🚪 Logout
+  </button>
+</div>
 
       <div className="grid md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
         <div className="bg-green-700 text-white p-6 rounded-xl shadow">
