@@ -108,7 +108,17 @@ const loadAvailableCourts = async (
 };
 const [availableAdminSlots, setAvailableAdminSlots] = useState<string[]>([]);
 const [slotDuration, setSlotDuration] = useState(60);
+const [showPaymentModal, setShowPaymentModal] = useState(false);
+const [selectedBooking, setSelectedBooking] = useState<any>(null);
 
+const [paymentType, setPaymentType] =
+  useState("Full Cash");
+
+const [cashAmount, setCashAmount] =
+  useState("");
+
+const [upiAmount, setUpiAmount] =
+  useState("");
   const formatDate = (date: Date) => {
     return date.toLocaleDateString("en-CA", {
       timeZone: "Asia/Kolkata",
@@ -373,7 +383,35 @@ setBlockedSlots(blockedData || []);
       availableTimes.push(slot);
     }
   });
+const todayDate = new Date()
+  .toLocaleDateString("en-CA", {
+    timeZone: "Asia/Kolkata",
+  });
 
+if (date === todayDate) {
+  const now = new Date();
+
+  const currentMinutes =
+    now.getHours() * 60 +
+    now.getMinutes();
+
+  const futureSlots = availableTimes.filter(
+    (slot) => {
+      const parsed = new Date(
+        `2000-01-01 ${slot}`
+      );
+
+      const slotMinutes =
+        parsed.getHours() * 60 +
+        parsed.getMinutes();
+
+      return slotMinutes > currentMinutes;
+    }
+  );
+
+  setAvailableAdminSlots(futureSlots);
+  return;
+}
   setAvailableAdminSlots(availableTimes);
 };
   const saveBlockedSlot = async () => {
@@ -615,6 +653,59 @@ const handleLogout = () => {
   localStorage.removeItem("adminLoginTime");
   router.push("/admin/login");
 };
+const savePayment = async () => {
+  if (!selectedBooking) return;
+
+  const balance =
+    selectedBooking.balance_amount || 0;
+
+  let cash = 0;
+  let upi = 0;
+
+  if (paymentType === "Full Cash") {
+    cash = balance;
+  }
+
+  if (paymentType === "Full UPI") {
+    upi = balance;
+  }
+
+  if (paymentType === "Cash + UPI") {
+    cash = Number(cashAmount);
+    upi = Number(upiAmount);
+
+    if (cash + upi !== balance) {
+      alert(
+        `Cash + UPI must equal ₹${balance}`
+      );
+      return;
+    }
+  }
+
+  const { error } = await supabase
+    .from("bookings")
+    .update({
+      cash_received: cash,
+      upi_received: upi,
+      payment_method: paymentType,
+      payment_completed: true,
+      balance_amount: 0,
+    })
+    .eq("id", selectedBooking.id);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  alert("✅ Payment Saved");
+
+  setShowPaymentModal(false);
+  setCashAmount("");
+  setUpiAmount("");
+
+  loadBookings();
+};
   return (
     <main className="min-h-screen bg-gray-100 p-8">
       <div className="relative mb-8">
@@ -684,7 +775,7 @@ const handleLogout = () => {
 </div>
 
       {showManageSlots && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999]">
           <div className="bg-white p-6 rounded-xl w-[400px] shadow-xl">
 
             <h2 className="text-2xl font-bold mb-4 text-black">
@@ -921,12 +1012,25 @@ if (bookingDate === today) {
 
 
 <td className="p-4">
-  <button
-    onClick={() => deleteBooking(booking.id)}
-    className="bg-red-600 text-white px-3 py-1 rounded"
-  >
-    Cancel
-  </button>
+  <div className="flex gap-2">
+    <button
+  onClick={() => {
+    console.log("Booking:", booking);
+    setSelectedBooking(booking);
+    setShowPaymentModal(true);
+  }}
+  className="bg-green-600 text-white px-3 py-1 rounded"
+>
+  💰 Collect
+</button>
+
+    <button
+      onClick={() => deleteBooking(booking.id)}
+      className="bg-red-600 text-white px-3 py-1 rounded"
+    >
+      Cancel
+    </button>
+  </div>
 </td>
                 </tr>
               );
@@ -997,7 +1101,74 @@ if (bookingDate === today) {
     </tbody>
   </table>
 </div>
+{showPaymentModal && (
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div className="bg-white p-6 rounded-xl w-[450px] shadow-2xl border">
 
+      <h2 className="text-2xl font-bold mb-4 text-black">
+        💰 Collect Payment
+      </h2>
+
+      <p className="mb-4 text-black font-semibold">
+        Amount Due: ₹{selectedBooking?.balance_amount || 0}
+      </p>
+
+      <select
+        value={paymentType}
+        onChange={(e) => setPaymentType(e.target.value)}
+        className="w-full border p-3 rounded mb-3 text-black"
+      >
+        <option value="Full Cash">Full Cash</option>
+        <option value="Full UPI">Full UPI</option>
+        <option value="Cash + UPI">Cash + UPI</option>
+      </select>
+
+      {paymentType === "Cash + UPI" && (
+        <>
+          <input
+            type="number"
+            placeholder="Cash Amount"
+            value={cashAmount}
+            onChange={(e) =>
+              setCashAmount(e.target.value)
+            }
+            className="w-full border p-3 rounded mb-3 text-black"
+          />
+
+          <input
+            type="number"
+            placeholder="UPI Amount"
+            value={upiAmount}
+            onChange={(e) =>
+              setUpiAmount(e.target.value)
+            }
+            className="w-full border p-3 rounded mb-3 text-black"
+          />
+        </>
+      )}
+
+      <div className="flex gap-3">
+        <button
+  onClick={() => alert("Save clicked")}
+  className="bg-green-600 text-white px-4 py-2 rounded"
+>
+  Save Payment
+</button>
+
+        <button
+          onClick={() => {
+  setShowPaymentModal(false);
+  setSelectedBooking(null);
+}}
+          className="bg-gray-500 text-white px-4 py-2 rounded"
+        >
+          Cancel
+        </button>
+      </div>
+
+    </div>
+  </div>
+)}
 </main>
   );
 }
