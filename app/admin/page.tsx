@@ -23,7 +23,6 @@ const [slotDate, setSlotDate] = useState("");
 const adminTimeSlots = Array.from({ length: 48 }, (_, i) => {
   const hours = Math.floor(i / 2);
   const minutes = i % 2 === 0 ? "00" : "30";
-
   const date = new Date();
   date.setHours(hours);
   date.setMinutes(Number(minutes));
@@ -36,6 +35,78 @@ const adminTimeSlots = Array.from({ length: 48 }, (_, i) => {
 });
 const [slotTime, setSlotTime] = useState("");
 const [slotReason, setSlotReason] = useState("MAINTENANCE");
+const [slotCourt, setSlotCourt] = useState("Full Court");
+const [availableCourts, setAvailableCourts] = useState([
+  "Full Court",
+  "Court 1",
+  "Court 2",
+]);
+const loadAvailableCourts = async (
+  date: string,
+  time: string
+) => {
+  const { data } = await supabase
+    .from("blocked_slots")
+    .select("*")
+    .eq("booking_date", date);
+
+  let courts = [
+    "Full Court",
+    "Court 1",
+    "Court 2",
+  ];
+
+  const selected = new Date(
+    `2000-01-01 ${time}`
+  );
+
+  const selectedMinutes =
+    selected.getHours() * 60 +
+    selected.getMinutes();
+
+  data?.forEach((b: any) => {
+    const start = new Date(
+      `2000-01-01T${b.start_time}`
+    );
+
+    const startMinutes =
+      start.getHours() * 60 +
+      start.getMinutes();
+
+    const endMinutes =
+      startMinutes +
+      (b.duration_minutes || 60);
+
+    const overlaps =
+      selectedMinutes >= startMinutes &&
+      selectedMinutes < endMinutes;
+
+    if (!overlaps) return;
+
+    if (b.court_number === "Court 1") {
+      courts = courts.filter(
+        (c) =>
+          c !== "Court 1" &&
+          c !== "Full Court"
+      );
+    }
+
+    if (b.court_number === "Court 2") {
+      courts = courts.filter(
+        (c) =>
+          c !== "Court 2" &&
+          c !== "Full Court"
+      );
+    }
+
+    if (b.court_number === "Full Court") {
+      courts = [];
+    }
+  });
+
+  setAvailableCourts(courts);
+};
+const [availableAdminSlots, setAvailableAdminSlots] = useState<string[]>([]);
 const [slotDuration, setSlotDuration] = useState(60);
 
   const formatDate = (date: Date) => {
@@ -52,15 +123,80 @@ const [slotDuration, setSlotDuration] = useState(60);
   const tomorrow = formatDate(tomorrowDate);
 
   useEffect(() => {
-    const loggedIn = localStorage.getItem("adminLoggedIn");
+  const loggedIn = localStorage.getItem("adminLoggedIn");
 
-    if (loggedIn !== "true") {
+  if (loggedIn !== "true") {
+    router.push("/admin/login");
+    return;
+  }
+
+  loadBookings();
+
+  const bookingsChannel = supabase
+    .channel("bookings-realtime")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "bookings",
+      },
+      () => {
+        loadBookings();
+      }
+    )
+    .subscribe();
+
+  const blockedChannel = supabase
+    .channel("blocked-slots-realtime")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "blocked_slots",
+      },
+      () => {
+        loadBookings();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(bookingsChannel);
+    supabase.removeChannel(blockedChannel);
+  };
+}, [router]);
+useEffect(() => {
+  let timeout: NodeJS.Timeout;
+
+  const resetTimer = () => {
+    clearTimeout(timeout);
+
+    timeout = setTimeout(() => {
+      localStorage.removeItem("adminLoggedIn");
+      localStorage.removeItem("adminLoginTime");
+
+      alert("Logged out due to inactivity");
+
       router.push("/admin/login");
-      return;
-    }
+    }, 15 * 60 * 1000);
+  };
 
-    loadBookings();
-  }, [router]);
+  window.addEventListener("mousemove", resetTimer);
+  window.addEventListener("keypress", resetTimer);
+  window.addEventListener("click", resetTimer);
+
+  resetTimer();
+
+  return () => {
+    clearTimeout(timeout);
+
+    window.removeEventListener("mousemove", resetTimer);
+    window.removeEventListener("keypress", resetTimer);
+    window.removeEventListener("click", resetTimer);
+  };
+}, [router]);
 
   const loadBookings = async () => {
     const { data, error } = await supabase
@@ -133,21 +269,140 @@ setBlockedSlots(blockedData || []);
     setTodaySlots(todaysBookings.length);
     setTomorrowSlots(tomorrowsBookings.length);
   };
+  const loadAvailableAdminSlots = async (date: string) => {
+  const { data: bookings } = await supabase
+    .from("bookings")
+    .select(
+      "start_time,duration_minutes,booking_type,court_number"
+    )
+    .eq("booking_date", date);
+
+  const { data: blocked } = await supabase
+    .from("blocked_slots")
+    .select(
+      "start_time,duration_minutes,court_number"
+    )
+    .eq("booking_date", date);
+
+  const availableTimes: string[] = [];
+
+  adminTimeSlots.forEach((slot) => {
+    const selected = new Date(
+      `2000-01-01 ${slot}`
+    );
+
+    const selectedMinutes =
+      selected.getHours() * 60 +
+      selected.getMinutes();
+
+    let court1Available = true;
+    let court2Available = true;
+
+    // CHECK BOOKINGS
+    bookings?.forEach((b: any) => {
+      const start = new Date(
+        `2000-01-01T${b.start_time}`
+      );
+
+      const startMinutes =
+        start.getHours() * 60 +
+        start.getMinutes();
+
+      const endMinutes =
+        startMinutes +
+        (b.duration_minutes || 60);
+
+      const overlaps =
+        selectedMinutes >= startMinutes &&
+        selectedMinutes < endMinutes;
+
+      if (!overlaps) return;
+
+      if (
+        b.booking_type === "Full Court" ||
+        b.court_number === "Full Court"
+      ) {
+        court1Available = false;
+        court2Available = false;
+      }
+
+      if (b.court_number === "Court 1") {
+        court1Available = false;
+      }
+
+      if (b.court_number === "Court 2") {
+        court2Available = false;
+      }
+    });
+
+    // CHECK BLOCKED SLOTS
+    blocked?.forEach((b: any) => {
+      const start = new Date(
+        `2000-01-01T${b.start_time}`
+      );
+
+      const startMinutes =
+        start.getHours() * 60 +
+        start.getMinutes();
+
+      const endMinutes =
+        startMinutes +
+        (b.duration_minutes || 60);
+
+      const overlaps =
+        selectedMinutes >= startMinutes &&
+        selectedMinutes < endMinutes;
+
+      if (!overlaps) return;
+
+      if (b.court_number === "Full Court") {
+        court1Available = false;
+        court2Available = false;
+      }
+
+      if (b.court_number === "Court 1") {
+        court1Available = false;
+      }
+
+      if (b.court_number === "Court 2") {
+        court2Available = false;
+      }
+    });
+
+    if (court1Available || court2Available) {
+      availableTimes.push(slot);
+    }
+  });
+
+  setAvailableAdminSlots(availableTimes);
+};
   const saveBlockedSlot = async () => {
   if (!slotDate || !slotTime) {
     alert("Please select date and time");
     return;
   }
+  const { data: existing } = await supabase
+  .from("blocked_slots")
+  .select("*")
+  .eq("booking_date", slotDate)
+  .eq("start_time", slotTime)
+  .eq("court_number", slotCourt);
+
+if (existing && existing.length > 0) {
+  alert("⚠️ This court is already blocked at that time");
+  return;
+}
 
   const { error } = await supabase
   .from("blocked_slots")
   .insert([
     {
-      booking_date: slotDate,
-      start_time: slotTime,
-      duration_minutes: slotDuration,
-      reason: slotReason,
-    },
+  booking_date: slotDate,
+  start_time: slotTime,
+  duration_minutes: Number(slotDuration),
+  reason: slotReason,
+  court_number: slotCourt,
+}
   ]);
 
   if (error) {
@@ -157,11 +412,17 @@ setBlockedSlots(blockedData || []);
 
   alert("✅ Slot saved");
 
-  setSlotDate("");
+await loadBookings();
+if (slotDate) {
+  loadAvailableAdminSlots(slotDate);
+}
+setSlotDate("");
 setSlotTime("");
 setSlotDuration(60);
 setSlotReason("MAINTENANCE");
-  setShowManageSlots(false);
+setSlotCourt("Full Court");
+
+setShowManageSlots(false);
 };
 const deleteBlockedSlot = async (id: number) => {
   const confirmed = confirm(
@@ -421,20 +682,32 @@ XLSX.writeFile(
   type="date"
   min={new Date().toISOString().split("T")[0]}
   value={slotDate}
-  onChange={(e) => setSlotDate(e.target.value)}
+  onChange={(e) => {
+  setSlotDate(e.target.value);
+  loadAvailableAdminSlots(e.target.value);
+}}
   className="w-full border p-3 rounded mb-3 text-black"
 />
 
             <select
   value={slotTime}
-  onChange={(e) => setSlotTime(e.target.value)}
+  onChange={(e) => {
+  setSlotTime(e.target.value);
+
+  if (slotDate) {
+    loadAvailableCourts(
+      slotDate,
+      e.target.value
+    );
+  }
+}}
   className="w-full border p-3 rounded mb-3 text-black"
 >
   <option value="">Select Time</option>
 
-  {adminTimeSlots.map((time) => (
-    <option key={time} value={time}>
-      {time}
+  {availableAdminSlots.map((slot) => (
+    <option key={slot} value={slot}>
+      {slot}
     </option>
   ))}
 </select>
@@ -449,6 +722,23 @@ XLSX.writeFile(
               <option value={120}>120 Minutes</option>
             </select>
 
+            <select
+  value={slotCourt}
+  onChange={(e) => setSlotCourt(e.target.value)}
+  className="w-full border p-3 rounded mb-3 text-black"
+>
+  {availableCourts.length === 0 ? (
+    <option value="">
+      No Courts Available
+    </option>
+  ) : (
+    availableCourts.map((court) => (
+      <option key={court} value={court}>
+        {court}
+      </option>
+    ))
+  )}
+</select>
             <select
               value={slotReason}
               onChange={(e) => setSlotReason(e.target.value)}
@@ -557,22 +847,30 @@ if (bookingDate === today) {
                   <td className="p-4">{booking.phone}</td>
 
                   <td className="p-4">
-                    {bookingDate}
+  {new Date(bookingDate).toLocaleDateString("en-GB")}
 
-                    {bookingDate === today && (
-                      <span className="ml-2 bg-green-600 text-white px-2 py-1 rounded text-xs">
-                        TODAY
-                      </span>
-                    )}
+  {bookingDate === today && (
+    <span className="ml-2 bg-green-600 text-white px-2 py-1 rounded text-xs">
+      TODAY
+    </span>
+  )}
 
-                    {bookingDate === tomorrow && (
-                      <span className="ml-2 bg-yellow-500 text-white px-2 py-1 rounded text-xs">
-                        TOMORROW
-                      </span>
-                    )}
-                  </td>
+  {bookingDate === tomorrow && (
+    <span className="ml-2 bg-yellow-500 text-white px-2 py-1 rounded text-xs">
+      TOMORROW
+    </span>
+  )}
+</td>
 
-                  <td className="p-4">{booking.start_time}</td>
+<td className="p-4">
+  {new Date(
+    `2000-01-01T${booking.start_time}`
+  ).toLocaleTimeString("en-IN", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  })}
+</td>
 
 <td className="p-4">
   {booking.duration_minutes || 60} mins
@@ -631,14 +929,15 @@ if (bookingDate === today) {
 
   <table className="w-full">
     <thead className="bg-red-600 text-white">
-      <tr>
-        <th className="p-4 text-left">Date</th>
-        <th className="p-4 text-left">Time</th>
-        <th className="p-4 text-left">Duration</th>
-        <th className="p-4 text-left">Reason</th>
-<th className="p-4 text-left">Action</th>
-      </tr>
-    </thead>
+  <tr>
+    <th className="p-4 text-left">Date</th>
+    <th className="p-4 text-left">Time</th>
+    <th className="p-4 text-left">Duration</th>
+    <th className="p-4 text-left">Court</th>
+    <th className="p-4 text-left">Reason</th>
+    <th className="p-4 text-left">Action</th>
+  </tr>
+</thead>
 
     <tbody>
       {blockedSlots.map((slot) => (
@@ -647,18 +946,28 @@ if (bookingDate === today) {
           className="border-b text-black"
         >
           <td className="p-4">
-            {slot.booking_date}
-          </td>
+  {new Date(slot.booking_date).toLocaleDateString("en-GB")}
+</td>
+
+<td className="p-4">
+  {new Date(
+    `2000-01-01T${slot.start_time}`
+  ).toLocaleTimeString("en-IN", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  })}
+</td>
 
           <td className="p-4">
-            {slot.start_time}
-          </td>
+  {slot.duration_minutes} mins
+</td>
 
-          <td className="p-4">
-            {slot.duration_minutes || 60} mins
-          </td>
+<td className="p-4 font-semibold text-blue-700">
+  {slot.court_number}
+</td>
 
-          <td className="p-4">
+<td className="p-4">
   {slot.reason}
 </td>
 
