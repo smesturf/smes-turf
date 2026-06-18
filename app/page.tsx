@@ -2,10 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "./lib/supabase";
-import { motion } from "framer-motion";
+import { motion, useMotionValue, useSpring } from "framer-motion";
 
 export default function Home() {
-  // Existing state hooks completely untouched
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [sport, setSport] = useState("Football");
@@ -15,18 +14,30 @@ export default function Home() {
   const [bookingType, setBookingType] = useState("Full Court");
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
 
-  // NEW: Dedicated state tracker exclusively for the premium custom cursor pointer
-  const [mousePos, setMousePos] = useState({ x: -100, y: -100 });
+  // Kinetic Frame Trail Motion Vectors
+  const cursorX = useMotionValue(-100);
+  const cursorY = useMotionValue(-100);
+
+  // Layer 1: High-Response Structural Spring (Tight Tracking)
+  const quickSpringConfig = { stiffness: 450, damping: 28, mass: 0.3 };
+  const targetX = useSpring(cursorX, quickSpringConfig);
+  const targetY = useSpring(cursorY, quickSpringConfig);
+
+  // Layer 2: Elastic Ghost Trail Spring (Fluid Velocity Delay)
+  const fluidTrailConfig = { stiffness: 120, damping: 20, mass: 0.6 };
+  const trailX = useSpring(cursorX, fluidTrailConfig);
+  const trailY = useSpring(cursorY, fluidTrailConfig);
 
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePos({ x: e.clientX, y: e.clientY });
+    const moveCursor = (e: MouseEvent) => {
+      cursorX.set(e.clientX);
+      cursorY.set(e.clientY);
     };
-    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mousemove", moveCursor);
     return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mousemove", moveCursor);
     };
-  }, []);
+  }, [cursorX, cursorY]);
 
   useEffect(() => {
     if (bookingDate) {
@@ -313,185 +324,164 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative md:cursor-none">
-      {/* PREMIUM DUAL-RING INTERACTIVE RADAR MOUSE
-        Hidden on mobile/touch interfaces automatically to protect native gesture taps.
-      */}
+    <main className="min-h-screen bg-slate-950 text-slate-100 selection:bg-lime-400 selection:text-slate-950 font-sans relative overflow-x-hidden antialiased lg:cursor-none">
+      
+      {/* ── HIGH PERFORMANCE MULTI-STAGE TRAILING KINETIC CURSOR GRID ── */}
+      {/* Element A: Core Focal Dot (0-latency tracking input position) */}
       <motion.div
-        className="fixed top-0 left-0 w-8 h-8 rounded-full border border-lime-400 pointer-events-none z-50 mix-blend-screen hidden md:block"
-        animate={{ x: mousePos.x - 16, y: mousePos.y - 16 }}
-        transition={{ type: "spring", stiffness: 220, damping: 24, mass: 0.5 }}
+        className="fixed top-0 left-0 w-2 h-2 bg-lime-400 rounded-full pointer-events-none z-50 mix-blend-screen hidden lg:block"
+        style={{ x: cursorX, y: cursorY, translateX: "-50%", translateY: "-50%" }}
       />
+      
+      {/* Element B: High-Tension Response Ring */}
       <motion.div
-        className="fixed top-0 left-0 w-2 h-2 rounded-full bg-lime-400 pointer-events-none z-50 hidden md:block"
-        animate={{ x: mousePos.x - 4, y: mousePos.y - 4 }}
-        transition={{ type: "spring", stiffness: 400, damping: 28, mass: 0.2 }}
+        className="fixed top-0 left-0 w-8 h-8 border border-lime-400/80 rounded-full pointer-events-none z-50 mix-blend-screen hidden lg:block"
+        style={{ x: targetX, y: targetY, translateX: "-50%", translateY: "-50%" }}
       />
 
-      {/* Modern Top Minimal Navbar Accent */}
-      <div className="w-full h-1 bg-lime-400" />
+      {/* Element C: Fluid Velocity Ghost Trailing Ring */}
+      <motion.div
+        className="fixed top-0 left-0 w-12 h-12 border border-emerald-500/30 bg-emerald-500/[0.02] rounded-full pointer-events-none z-50 mix-blend-screen hidden lg:block"
+        style={{ x: trailX, y: trailY, translateX: "-50%", translateY: "-50%" }}
+      />
 
-      {/* Hero Section styled like Matchbox Minimalist Brutalism */}
-      <section className="max-w-7xl mx-auto px-6 pt-20 pb-16 text-left border-b border-neutral-900">
+      {/* Stadium Lightning FX overlay */}
+      <div className="absolute top-0 inset-x-0 h-[640px] bg-gradient-to-b from-lime-500/10 via-transparent to-transparent pointer-events-none" />
+      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute top-[20%] right-[-10%] w-[40%] h-[60%] bg-lime-500/5 rounded-full blur-[120px] pointer-events-none" />
+
+      {/* Header Banner Section */}
+      <header className="max-w-7xl mx-auto px-4 pt-16 pb-8 relative z-10 text-center">
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="text-xs font-mono uppercase tracking-widest text-lime-400 mb-4"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs font-semibold uppercase tracking-widest text-lime-400 mb-6"
         >
-          // Mysore's Next-Gen Arena
+          <span className="w-2 h-2 rounded-full bg-lime-400 animate-pulse" />
+          Elite Sports Venue
         </motion.div>
 
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
-          <div>
-            <motion.h1
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4 }}
-              className="text-6xl md:text-8xl font-black tracking-tighter uppercase leading-none text-white"
-            >
-              SMES TURF
-            </motion.h1>
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.2 }}
-              className="text-lg md:text-xl font-medium tracking-normal text-neutral-400 mt-4 max-w-xl"
-            >
-              Premium multisport arena built for high-performance Football & Cricket action.
-            </motion.p>
-          </div>
+        <motion.h1
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="text-5xl md:text-8xl font-black tracking-tight uppercase italic bg-gradient-to-r from-white via-slate-200 to-slate-500 bg-clip-text text-transparent"
+        >
+          SMES TURF
+        </motion.h1>
 
-          {/* Action Hub row matches Matchbox layout action buttons */}
-          <div className="flex flex-wrap gap-3">
-            <a
-              href="https://wa.me/918453095258"
-              className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-xs font-mono uppercase tracking-wider px-6 py-4 rounded-none transition-all"
-            >
-              WhatsApp Booking
-            </a>
-            <a
-              href="https://maps.google.com/?q=12.329329,76.612008"
-              className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-xs font-mono uppercase tracking-wider px-6 py-4 rounded-none transition-all"
-            >
-              Find Center
-            </a>
-            <a
-              href="tel:+918453095258"
-              className="bg-lime-400 hover:bg-lime-300 text-black text-xs font-mono uppercase tracking-wider px-6 py-4 rounded-none transition-all font-bold"
-            >
-              Call Desk
-            </a>
-          </div>
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2 }}
+          className="text-lg md:text-xl font-bold tracking-widest uppercase text-lime-400/90 mt-2 italic"
+        >
+          Premium Football & Cricket Arena
+        </motion.p>
+
+        {/* Dynamic Offering Badge */}
+        <div className="mt-8 inline-block transform -skew-x-12 bg-gradient-to-r from-lime-400 to-emerald-500 text-slate-950 px-8 py-3 font-black uppercase tracking-wider text-sm shadow-[0_0_30px_rgba(163,230,53,0.25)] rounded-sm">
+          <div className="transform skew-x-12">🎉 Launch Offer: ₹1250 / Hour</div>
         </div>
 
-        {/* Feature Banner Alert strip */}
-        <div className="mt-12 inline-flex items-center gap-4 bg-neutral-900 border border-neutral-800 px-6 py-3 rounded-none">
-          <span className="flex h-2 w-2 relative">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500"></span>
-          </span>
-          <p className="text-xs font-mono uppercase tracking-wide text-neutral-300">
-            ⚡ Live Promo Offer: <span className="text-lime-400 font-bold">₹1250 / Hr Only</span>
-          </p>
+        {/* Quick Quicklinks Row */}
+        <div className="flex flex-wrap items-center justify-center gap-3 mt-12 max-w-xl mx-auto">
+          <a
+            href="https://wa.me/918453095258"
+            className="flex-1 min-w-[140px] bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl transition-all duration-200 text-sm tracking-wide shadow-lg shadow-emerald-950/50 lg:cursor-none"
+          >
+            WhatsApp Us
+          </a>
+          <a
+            href="https://maps.google.com/?q=12.329329,76.612008"
+            className="flex-1 min-w-[140px] bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 font-bold py-3 px-4 rounded-xl transition-all duration-200 text-sm tracking-wide lg:cursor-none"
+          >
+            Get Directions
+          </a>
+          <a
+            href="tel:+918453095258"
+            className="flex-1 min-w-[140px] bg-lime-400 hover:bg-lime-300 text-slate-950 font-black py-3 px-4 rounded-xl transition-all duration-200 text-sm tracking-wide shadow-lg shadow-lime-400/10 lg:cursor-none"
+          >
+            📞 Call Desk
+          </a>
         </div>
-      </section>
+      </header>
 
-      {/* Grid Features Block */}
-      <section className="max-w-7xl mx-auto px-6 py-20 border-b border-neutral-900">
-        <span className="text-xs font-mono uppercase tracking-widest text-neutral-500 block mb-2">01 — Disciplines</span>
-        <h2 className="text-3xl font-black uppercase tracking-tight text-white mb-12">Sports Arena Layout</h2>
-
-        <div className="grid md:grid-cols-2 gap-8">
-          <div className="border border-neutral-900 bg-neutral-900/20 p-8 flex flex-col justify-between group hover:border-neutral-700 transition-all min-h-[220px]">
-            <div>
-              <span className="text-xs font-mono text-neutral-600 block mb-4">01 // TRACK FIELD</span>
-              <h3 className="text-2xl font-bold uppercase tracking-tight text-white group-hover:text-lime-400 transition-colors">Football Arena</h3>
-              <p className="text-neutral-400 text-sm mt-2 max-w-sm">From fast-paced 5-A-side tactical clashes to open-field training drills.</p>
-            </div>
-          </div>
-
-          <div className="border border-neutral-900 bg-neutral-900/20 p-8 flex flex-col justify-between group hover:border-neutral-700 transition-all min-h-[220px]">
-            <div>
-              <span className="text-xs font-mono text-neutral-600 block mb-4">02 // NET BOX</span>
-              <h3 className="text-2xl font-bold uppercase tracking-tight text-white group-hover:text-lime-400 transition-colors">Box Cricket</h3>
-              <p className="text-neutral-400 text-sm mt-2 max-w-sm">High-bounce, entirely enclosed system built for maximum velocity cricket action.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Industrial Matchbox-style Layout Booking Portal Grid */}
-      <section className="max-w-7xl mx-auto px-6 py-20">
-        <div className="grid lg:grid-cols-12 gap-12 items-start">
+      {/* Main Form Dashboard Section */}
+      <section className="max-w-7xl mx-auto px-4 py-8 relative z-10">
+        <div className="grid lg:grid-cols-12 gap-8 items-start">
           
-          {/* Form Side */}
-          <div className="lg:col-span-7 space-y-8">
+          {/* Left / Center: Interactive Grid Booking Architecture */}
+          <div className="lg:col-span-7 bg-slate-900/60 backdrop-blur-xl p-6 md:p-8 rounded-3xl border border-white/10 shadow-2xl space-y-8">
+            
             <div>
-              <span className="text-xs font-mono uppercase tracking-widest text-neutral-500 block mb-2">02 — Reservation</span>
-              <h2 className="text-3xl font-black uppercase tracking-tight text-white">Select and Secure Pitch</h2>
+              <h2 className="text-2xl font-black uppercase tracking-wide text-white">
+                Configure <span className="text-lime-400">Your Session</span>
+              </h2>
+              <p className="text-slate-400 text-xs mt-1">Fill details and tap on your layout preference to check space accessibility.</p>
             </div>
 
-            <div className="space-y-6">
-              {/* Inputs */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-mono uppercase text-neutral-400">Full Name</label>
+            <div className="space-y-5">
+              {/* Profile Context Rows */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase text-slate-400 tracking-wider">Full Name</label>
                   <input
                     type="text"
-                    placeholder="Enter athlete name"
+                    placeholder="Athletes Name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full p-4 bg-neutral-900/50 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all font-medium text-sm md:cursor-none"
+                    className="w-full p-4 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 focus:ring-1 focus:ring-lime-400 outline-none transition-all placeholder:text-slate-700 font-medium text-sm min-h-[52px] lg:cursor-none"
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-mono uppercase text-neutral-400">Phone Number</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase text-slate-400 tracking-wider">Phone Number</label>
                   <input
                     type="tel"
-                    placeholder="Active phone contact"
+                    placeholder="WhatsApp Active Number"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="w-full p-4 bg-neutral-900/50 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all font-medium text-sm md:cursor-none"
+                    className="w-full p-4 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 focus:ring-1 focus:ring-lime-400 outline-none transition-all placeholder:text-slate-700 font-medium text-sm min-h-[52px] lg:cursor-none"
                   />
                 </div>
               </div>
 
-              {/* Native Dropdowns Styled to look Premium/Brutalist */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-mono uppercase text-neutral-400">Sport</label>
+              {/* Functional Component Rule #3: Tactical Option Selectors */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase text-slate-400 tracking-wider">Select Sport</label>
                   <div className="relative">
                     <select
                       value={sport}
                       onChange={(e) => setSport(e.target.value)}
-                      className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-sm md:cursor-none"
+                      className="w-full p-4 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 outline-none appearance-none font-semibold text-sm min-h-[52px] lg:cursor-none"
                     >
-                      <option value="Football">Football</option>
-                      <option value="Cricket">Cricket</option>
+                      <option value="Football">⚽ Football Arena</option>
+                      <option value="Cricket">🏏 Cricket Net</option>
                     </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-mono uppercase text-neutral-400">Pitch Scale</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase text-slate-400 tracking-wider">Court Configuration</label>
                   <div className="relative">
                     <select
                       value={bookingType}
                       onChange={(e) => setBookingType(e.target.value)}
-                      className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-sm md:cursor-none"
+                      className="w-full p-4 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 outline-none appearance-none font-semibold text-sm min-h-[52px] lg:cursor-none"
                     >
-                      <option value="Half Court">Half Court</option>
-                      <option value="Full Court">Full Court</option>
+                      <option value="Half Court">🌓 Half Court Size</option>
+                      <option value="Full Court">🌕 Full Stadium Court</option>
                     </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
                   </div>
                 </div>
               </div>
 
-              {/* Date Input */}
-              <div className="space-y-2">
-                <label className="text-xs font-mono uppercase text-neutral-400">Calendar Date</label>
+              {/* Dynamic Calendar Trigger */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase text-slate-400 tracking-wider">Choose Date</label>
                 <input
                   type="date"
                   min={new Date().toISOString().split("T")[0]}
@@ -500,19 +490,20 @@ export default function Home() {
                     setBookingDate(e.target.value);
                     loadBookedSlots(e.target.value);
                   }}
-                  className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none font-medium text-sm md:cursor-none"
+                  className="w-full p-4 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 outline-none font-semibold text-sm min-h-[52px] lg:cursor-none"
                   style={{ colorScheme: "dark" }}
                 />
               </div>
 
-              {/* Start Time Select dropdown wrapper */}
+              {/* High Energy Tactical Time Slot Layout */}
               <div className="space-y-2">
-                <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Slot</label>
+                <label className="text-xs font-bold uppercase text-slate-400 tracking-wider block">Select Available Time Slot</label>
+                
                 <div className="relative">
                   <select
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
-                    className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-sm md:cursor-none"
+                    className="w-full p-4 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 outline-none appearance-none font-bold text-sm min-h-[52px] lg:cursor-none"
                   >
                     {allSlots
                       .filter((slot) => {
@@ -530,112 +521,153 @@ export default function Home() {
                       })
                       .map((slot) => (
                         <option key={slot} value={slot}>
-                          {slot}
+                          ⏱️ {slot}
                         </option>
                       ))}
                   </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
                 </div>
               </div>
 
-              {/* Match Duration Select */}
-              <div className="space-y-2">
-                <label className="text-xs font-mono uppercase text-neutral-400">Session Length</label>
+              {/* Duration Settings Option Block */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase text-slate-400 tracking-wider">Match Duration Capacity</label>
                 <div className="relative">
                   <select
                     value={duration}
                     onChange={(e) => setDuration(e.target.value)}
-                    className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-sm md:cursor-none"
+                    className="w-full p-4 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 outline-none appearance-none font-bold text-sm min-h-[52px] lg:cursor-none"
                   >
-                    <option value="60">60 Minutes (- ₹{bookingType === "Half Court" ? 750 : 1250})</option>
-                    <option value="90">90 Minutes (- ₹{bookingType === "Half Court" ? 1100 : 1850})</option>
-                    <option value="120">120 Minutes (- ₹{bookingType === "Half Court" ? 1500 : 2500})</option>
+                    <option value="60">60 Minutes Playtime — (₹{bookingType === "Half Court" ? 750 : 1250})</option>
+                    <option value="90">90 Minutes Playtime — (₹{bookingType === "Half Court" ? 1100 : 1850})</option>
+                    <option value="120">120 Minutes Playtime — (₹{bookingType === "Half Court" ? 1500 : 2500})</option>
                   </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
                 </div>
               </div>
 
             </div>
           </div>
 
-          {/* Right Column Checkout Component Panel */}
-          <div className="lg:col-span-5 bg-neutral-900/50 border border-neutral-900 p-6 md:p-8 rounded-none space-y-6">
-            <div className="border-b border-neutral-800 pb-4">
-              <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Live Breakdown Summary</span>
-              <h3 className="text-lg font-bold uppercase text-white mt-1">Pitch Bill Receipt</h3>
+          {/* Right Column: Premium Interactive Glass Checkout Ticket */}
+          <div className="lg:col-span-5 space-y-6">
+            <div className="bg-gradient-to-b from-slate-900 to-neutral-950 rounded-3xl p-6 border border-white/10 relative overflow-hidden shadow-2xl">
+              {/* Ticket Top Jagged Edge Visual FX */}
+              <div className="absolute top-0 inset-x-0 h-1 bg-[radial-gradient(circle,transparent_4px,rgba(15,23,42,1)_4px)] bg-[length:12px_8px] pointer-events-none" />
+              
+              <div className="text-center pb-6 border-b border-white/10">
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Order Manifest Receipt</span>
+                <h3 className="text-xl font-black uppercase tracking-wider text-white mt-1">SMES Match Ticket</h3>
+              </div>
+
+              {/* Dynamic Readout Properties */}
+              <div className="py-6 space-y-4 text-sm font-semibold">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Sport Chosen</span>
+                  <span className="text-white uppercase font-bold text-right">{sport || "Not Selected"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Setup Layout</span>
+                  <span className="text-white font-bold text-right">{bookingType}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Scheduled Date</span>
+                  <span className="text-lime-400 font-bold text-right">{bookingDate || "Select above..."}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Kickoff Time</span>
+                  <span className="text-white font-bold text-right">{startTime}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Duration Range</span>
+                  <span className="text-white font-bold text-right">{duration} Mins</span>
+                </div>
+
+                <div className="h-px bg-dashed bg-white/10 my-4" />
+
+                {/* Pricing Framework Display */}
+                <div className="p-4 rounded-xl bg-slate-950 border border-white/5 space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-slate-400 font-bold uppercase tracking-wider">Advance Lockdown Deposit</span>
+                    <span className="text-amber-400 font-black text-sm">₹200</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 leading-snug">A platform gateway fee of ₹5 applies to process reservations instantaneously through automated payment protection channels.</p>
+                  <div className="h-px bg-white/5 my-1" />
+                  <div className="flex justify-between items-center pt-1">
+                    <span className="text-xs text-white font-bold uppercase tracking-wider">Gross Total Pitch Fee</span>
+                    <span className="text-xl font-black text-white">₹{totalAmount}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Razorpay Call CTA Trigger */}
+              <button
+                type="button"
+                onClick={openRazorpay}
+                className="w-full bg-gradient-to-r from-lime-400 to-lime-300 hover:from-lime-300 hover:to-lime-200 text-slate-950 font-black text-base uppercase tracking-wider py-4 rounded-xl transition-all shadow-xl shadow-lime-400/10 min-h-[56px] lg:cursor-none"
+              >
+                🔒 Pay Advance & Lock Slot
+              </button>
             </div>
 
-            <div className="space-y-3 text-xs font-mono">
-              <div className="flex justify-between">
-                <span className="text-neutral-500">SPORT:</span>
-                <span className="text-white uppercase font-bold">{sport}</span>
+            {/* Micro Sports Capabilities Grid */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-slate-900/40 border border-white/5 p-4 rounded-2xl text-center">
+                <span className="text-xl block mb-1">⚡</span>
+                <h4 className="text-xs font-black uppercase text-white tracking-wider">Instant Confirmation</h4>
+                <p className="text-[10px] text-slate-500 mt-0.5">Automated booking sync</p>
               </div>
-              <div className="flex justify-between">
-                <span className="text-neutral-500">ARENA SCALE:</span>
-                <span className="text-white font-bold">{bookingType}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-neutral-500">TARGET DATE:</span>
-                <span className="text-lime-400 font-bold">{bookingDate || "Unselected"}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-neutral-500">KICKOFF TIME:</span>
-                <span className="text-white font-bold">{startTime}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-neutral-500">DURATION TIMEFRAME:</span>
-                <span className="text-white font-bold">{duration} Minutes</span>
+              <div className="bg-slate-900/40 border border-white/5 p-4 rounded-2xl text-center">
+                <span className="text-xl block mb-1">🛡️</span>
+                <h4 className="text-xs font-black uppercase text-white tracking-wider">Secure Escrow</h4>
+                <p className="text-[10px] text-slate-500 mt-0.5">Razorpay encrypted node</p>
               </div>
             </div>
 
-            <div className="bg-black p-4 border border-neutral-800 space-y-2">
-              <div className="flex justify-between items-center text-xs font-mono">
-                <span className="text-neutral-400">LOCKDOWN RESERVATION FEE:</span>
-                <span className="text-white font-bold">₹200</span>
-              </div>
-              <p className="text-[10px] text-neutral-600 leading-normal font-mono">A dynamic advance fee keeps the slot reserved uniquely for your group squad.</p>
-              <div className="h-px bg-neutral-800 my-2" />
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-mono text-white font-bold">GROSS FIELD VALUE:</span>
-                <span className="text-xl font-black text-lime-400">₹{totalAmount}</span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={openRazorpay}
-              className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-4 rounded-none transition-all font-black md:cursor-none"
-            >
-              Confirm Match Slot
-            </button>
           </div>
-
         </div>
       </section>
 
-      {/* Facilities Strip Layout */}
-      <section className="max-w-7xl mx-auto px-6 py-16 border-t border-neutral-900">
-        <span className="text-xs font-mono uppercase tracking-widest text-neutral-500 block mb-8 text-center">03 — Setup Infrastructure</span>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 max-w-4xl mx-auto text-center">
-          {["💡 Floodlights", "🚗 Secure Parking", "🧼 Washrooms", "🚰 Pure Water", "⏳ Open 24 Hours"].map((facility, index) => (
-            <div key={index} className="border border-neutral-900 p-4 font-mono text-xs text-neutral-400 uppercase tracking-wider bg-neutral-900/10">
-              {facility}
+      {/* Corporate Arena Facilities Layout Section */}
+      <section className="max-w-7xl mx-auto px-4 py-16 text-center">
+        <h3 className="text-xs font-black uppercase tracking-widest text-lime-400 mb-2">Infrastructure Specifications</h3>
+        <h2 className="text-3xl font-black uppercase tracking-tight text-white mb-10">Premium Stadium Perks</h2>
+        
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 max-w-4xl mx-auto">
+          {[
+            { label: "Floodlights", icon: "💡" },
+            { label: "Safe Parking", icon: "🚗" },
+            { label: "Washrooms", icon: "🧼" },
+            { label: "Mineral Water", icon: "🚰" },
+            { label: "Open 24 Hours", icon: "⏳" }
+          ].map((facility, idx) => (
+            <div 
+              key={idx} 
+              className={`bg-slate-900/60 border border-white/5 rounded-2xl p-5 transition-all hover:border-lime-400/20 shadow-lg ${
+                idx === 4 ? "col-span-2 md:col-span-1" : ""
+              }`}
+            >
+              <span className="text-2xl block mb-2">{facility.icon}</span>
+              <span className="text-xs font-black uppercase tracking-wider text-slate-200">{facility.label}</span>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Footer System */}
-      <footer className="w-full bg-black border-t border-neutral-900 py-16 px-6 text-left">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start gap-8">
-          <div className="space-y-2">
-            <p className="text-xs font-mono text-neutral-400 uppercase tracking-widest">SMES Sports Ground Hub</p>
-            <p className="text-xs text-neutral-600 font-mono">© 2026 Built for competitive team sports action and weekend fun.</p>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-y-2 gap-x-8 font-mono text-xs text-neutral-400 uppercase">
-            <div><span className="text-lime-400">P:</span> +91 8453095258</div>
-            <div><span className="text-lime-400">E:</span> sports@smesturf.com</div>
-            <div><span className="text-lime-400">L:</span> Mysuru, Karnataka</div>
+      {/* HQ Corporate Contact Footer Block */}
+      <footer className="w-full bg-gradient-to-t from-black to-slate-950 border-t border-white/5 py-16 px-4 mt-12 text-center relative z-10">
+        <div className="max-w-4xl mx-auto space-y-6">
+          <p className="text-sm font-black uppercase tracking-widest text-slate-500">SMES Arena Corporation Ltd.</p>
+          <div className="flex flex-wrap items-center justify-center gap-y-4 gap-x-8 text-slate-400 text-xs font-bold uppercase tracking-wider">
+            <div className="flex items-center gap-2 hover:text-white transition-colors">
+              <span className="text-lime-400 text-sm">📞</span> 8453095258
+            </div>
+            <div className="flex items-center gap-2 hover:text-white transition-colors">
+              <span className="text-lime-400 text-sm">✉️</span> sports@smesturf.com
+            </div>
+            <div className="flex items-center gap-2 hover:text-white transition-colors">
+              <span className="text-lime-400 text-sm">📍</span> Mysuru, Karnataka
+            </div>
           </div>
         </div>
       </footer>
