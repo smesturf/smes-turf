@@ -38,6 +38,14 @@ const adminTimeSlots = Array.from({ length: 48 }, (_, i) => {
 });
 const [slotTime, setSlotTime] = useState("");
 const [slotReason, setSlotReason] = useState("MAINTENANCE");
+const [offlineAmount, setOfflineAmount] = useState("");
+const [offlinePaymentMethod, setOfflinePaymentMethod] =
+  useState("Cash");
+const [offlineCashAmount, setOfflineCashAmount] =
+  useState("");
+
+const [offlineUpiAmount, setOfflineUpiAmount] =
+  useState("");  
 const [slotCourt, setSlotCourt] = useState("Full Court");
 const [availableCourts, setAvailableCourts] = useState([
   "Full Court",
@@ -441,29 +449,132 @@ if (date === todayDate) {
     alert("Please select date and time");
     return;
   }
-  const { data: existing } = await supabase
-  .from("blocked_slots")
-  .select("*")
-  .eq("booking_date", slotDate)
-  .eq("start_time", slotTime)
-  .eq("court_number", slotCourt);
 
-if (existing && existing.length > 0) {
-  alert("⚠️ This court is already blocked at that time");
-  return;
-}
+  // OFFLINE BOOKING
+  if (slotReason === "OFFLINE BOOKING") {
+    let totalAmount = 0;
+    let cashReceived = 0;
+    let upiReceived = 0;
+
+    if (offlinePaymentMethod === "Cash") {
+      totalAmount = Number(offlineAmount);
+      cashReceived = totalAmount;
+    }
+
+    if (offlinePaymentMethod === "UPI") {
+      totalAmount = Number(offlineAmount);
+      upiReceived = totalAmount;
+    }
+
+    if (offlinePaymentMethod === "Cash + UPI") {
+      cashReceived = Number(
+        offlineCashAmount || 0
+      );
+
+      upiReceived = Number(
+        offlineUpiAmount || 0
+      );
+
+      totalAmount =
+        cashReceived + upiReceived;
+    }
+
+    if (totalAmount <= 0) {
+      alert("Enter amount received");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("bookings")
+      .insert([
+        {
+          customer_name: "Offline Booking",
+          phone: "-",
+          sport: "Football",
+          booking_date: slotDate,
+          start_time: slotTime,
+          duration_minutes: Number(
+            slotDuration
+          ),
+
+          booking_type:
+            slotCourt === "Full Court"
+              ? "Full Court"
+              : "Half Court",
+
+          court_number: slotCourt,
+
+          total_amount: totalAmount,
+          advance_amount: totalAmount,
+          balance_amount: 0,
+
+          payment_status: "paid",
+
+          payment_method:
+            offlinePaymentMethod,
+
+          cash_received: cashReceived,
+
+          upi_received: upiReceived,
+
+          payment_completed: true,
+        },
+      ]);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    alert("✅ Offline Booking Saved");
+
+    await loadBookings();
+
+    setSlotDate("");
+    setSlotTime("");
+    setSlotDuration(60);
+    setSlotReason("MAINTENANCE");
+    setSlotCourt("Full Court");
+
+    setOfflineAmount("");
+    setOfflineCashAmount("");
+    setOfflineUpiAmount("");
+
+    setShowManageSlots(false);
+
+    return;
+  }
+
+  // MAINTENANCE / TOURNAMENT
+
+  const { data: existing } =
+    await supabase
+      .from("blocked_slots")
+      .select("*")
+      .eq("booking_date", slotDate)
+      .eq("start_time", slotTime)
+      .eq("court_number", slotCourt);
+
+  if (existing && existing.length > 0) {
+    alert(
+      "⚠️ This court is already blocked at that time"
+    );
+    return;
+  }
 
   const { error } = await supabase
-  .from("blocked_slots")
-  .insert([
-    {
-  booking_date: slotDate,
-  start_time: slotTime,
-  duration_minutes: Number(slotDuration),
-  reason: slotReason,
-  court_number: slotCourt,
-}
-  ]);
+    .from("blocked_slots")
+    .insert([
+      {
+        booking_date: slotDate,
+        start_time: slotTime,
+        duration_minutes: Number(
+          slotDuration
+        ),
+        reason: slotReason,
+        court_number: slotCourt,
+      },
+    ]);
 
   if (error) {
     alert(error.message);
@@ -472,36 +583,19 @@ if (existing && existing.length > 0) {
 
   alert("✅ Slot saved");
 
-await loadBookings();
-if (slotDate) {
-  loadAvailableAdminSlots(slotDate);
-}
-setSlotDate("");
-setSlotTime("");
-setSlotDuration(60);
-setSlotReason("MAINTENANCE");
-setSlotCourt("Full Court");
+  await loadBookings();
 
-setShowManageSlots(false);
-};
-const deleteBlockedSlot = async (id: number) => {
-  const confirmed = confirm(
-    "Delete this blocked slot?"
-  );
-
-  if (!confirmed) return;
-
-  const { error } = await supabase
-    .from("blocked_slots")
-    .delete()
-    .eq("id", id);
-
-  if (error) {
-    alert(error.message);
-    return;
+  if (slotDate) {
+    loadAvailableAdminSlots(slotDate);
   }
 
-  loadBookings();
+  setSlotDate("");
+  setSlotTime("");
+  setSlotDuration(60);
+  setSlotReason("MAINTENANCE");
+  setSlotCourt("Full Court");
+
+  setShowManageSlots(false);
 };
 
 const deleteBooking = async (id: number) => {
@@ -1083,14 +1177,73 @@ const resetPayment = async (booking: any) => {
   )}
 </select>
             <select
-              value={slotReason}
-              onChange={(e) => setSlotReason(e.target.value)}
-              className="w-full border p-3 rounded mb-4 text-black"
-            >
-              <option value="MAINTENANCE">Maintenance</option>
-              <option value="TOURNAMENT">Tournament</option>
-              <option value="OFFLINE BOOKING">Offline Booking</option>
-            </select>
+  value={slotReason}
+  onChange={(e) => setSlotReason(e.target.value)}
+  className="w-full border p-3 rounded mb-3 text-black"
+>
+  <option value="MAINTENANCE">Maintenance</option>
+  <option value="TOURNAMENT">Tournament</option>
+  <option value="OFFLINE BOOKING">Offline Booking</option>
+</select>
+
+{slotReason === "OFFLINE BOOKING" && (
+  <>
+    {offlinePaymentMethod !== "Cash + UPI" && (
+      <input
+        type="number"
+        placeholder="Amount Received"
+        value={offlineAmount}
+        onChange={(e) =>
+          setOfflineAmount(e.target.value)
+        }
+        className="w-full border p-3 rounded mb-3 text-black"
+      />
+    )}
+
+    <select
+      value={offlinePaymentMethod}
+      onChange={(e) =>
+        setOfflinePaymentMethod(e.target.value)
+      }
+      className="w-full border p-3 rounded mb-3 text-black"
+    >
+      <option value="Cash">Cash</option>
+      <option value="UPI">UPI</option>
+      <option value="Cash + UPI">
+        Cash + UPI
+      </option>
+    </select>
+
+    {offlinePaymentMethod ===
+      "Cash + UPI" && (
+      <>
+        <input
+          type="number"
+          placeholder="Cash Received"
+          value={offlineCashAmount}
+          onChange={(e) =>
+            setOfflineCashAmount(
+              e.target.value
+            )
+          }
+          className="w-full border p-3 rounded mb-3 text-black"
+        />
+
+        <input
+          type="number"
+          placeholder="UPI Received"
+          value={offlineUpiAmount}
+          onChange={(e) =>
+            setOfflineUpiAmount(
+              e.target.value
+            )
+          }
+          className="w-full border p-3 rounded mb-3 text-black"
+        />
+      </>
+    )}
+  </>
+)}
 
             <div className="flex gap-3">
               <button
@@ -1273,14 +1426,16 @@ if (bookingDate === today) {
       </button>
     )}
 
-    {booking.balance_amount === 0 && (
-      <button
-        onClick={() => resetPayment(booking)}
-        className="bg-yellow-500 text-white px-3 py-1 rounded"
-      >
-        🔄 Reset
-      </button>
-    )}
+    {booking.payment_completed &&
+ booking.customer_name !==
+   "Offline Booking" && (
+  <button
+    onClick={() => resetPayment(booking)}
+    className="bg-yellow-500 text-white px-3 py-1 rounded"
+  >
+    🔄 Reset
+  </button>
+)}
 
     <button
       onClick={() => deleteBooking(booking.id)}
