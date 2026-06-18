@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -87,34 +88,82 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="bg-white p-8 rounded-xl shadow-lg w-96">
-        <h1 className="text-3xl font-bold mb-6 text-center">
-          Admin Login
-        </h1>
+    <main className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-100 font-sans tracking-tight antialiased p-4 relative overflow-hidden">
+      {/* Background Stadium Glow Elements */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[radial-gradient(circle,rgba(163,230,53,0.08),transparent_70%)] pointer-events-none" />
+      <div className="absolute top-[-10%] right-[-10%] w-[300px] h-[300px] bg-emerald-500/5 rounded-full blur-[100px] pointer-events-none" />
 
-        <input
-          type="text"
-          placeholder="Username"
-          className="w-full p-3 border rounded mb-4 text-black"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-        />
+      <div className="w-full max-w-sm relative z-10 space-y-6">
+        {/* Branding/Header Component */}
+        <div className="text-center space-y-1">
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-[10px] font-mono uppercase tracking-widest text-lime-400 mb-2"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />
+            Secure Node Gateway
+          </motion.div>
+          
+          <motion.h1
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.1 }}
+            className="text-3xl font-black uppercase italic text-white tracking-tight"
+          >
+            SMES CONTROL
+          </motion.h1>
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Admin Tower Authentication</p>
+        </div>
 
-        <input
-          type="password"
-          placeholder="Password"
-          className="w-full p-3 border rounded mb-4 text-black"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-
-        <button
-          onClick={handleLogin}
-          className="w-full bg-green-600 text-white py-3 rounded"
+        {/* Login Form Wrapper Panel */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, duration: 0.4 }}
+          className="bg-slate-900/60 backdrop-blur-xl p-5 sm:p-6 rounded-2xl border border-white/10 shadow-2xl space-y-4"
         >
-          Login
-        </button>
+          {/* Username Input Field */}
+          <div className="space-y-1.5">
+            <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400">System Operator ID</label>
+            <input
+              type="text"
+              placeholder="Username"
+              className="w-full p-3.5 sm:p-4 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 focus:ring-1 focus:ring-lime-400 outline-none transition-all placeholder:text-slate-700 font-medium text-base sm:text-sm min-h-[48px] sm:min-h-[52px]"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+            />
+          </div>
+
+          {/* Password Input Field */}
+          <div className="space-y-1.5">
+            <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400">Access Keycode</label>
+            <input
+              type="password"
+              placeholder="Password"
+              className="w-full p-3.5 sm:p-4 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 focus:ring-1 focus:ring-lime-400 outline-none transition-all placeholder:text-slate-700 font-medium text-base sm:text-sm min-h-[48px] sm:min-h-[52px]"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+
+          {/* Core Sign-In Trigger Action */}
+          <div className="pt-2">
+            <button
+              onClick={handleLogin}
+              className="w-full bg-gradient-to-r from-lime-400 to-lime-300 hover:from-lime-300 hover:to-lime-200 text-slate-950 font-mono text-xs font-black uppercase tracking-widest py-3.5 sm:py-4 rounded-xl transition-all shadow-xl shadow-lime-400/10 min-h-[48px] sm:min-h-[52px] flex items-center justify-center"
+            >
+              Initialize Command
+            </button>
+          </div>
+        </motion.div>
+
+        {/* Footer Security Notice System */}
+        <div className="text-center">
+          <p className="text-[10px] font-mono uppercase tracking-wide text-slate-600">
+            Protected Session Protocol — 12 Hour Automatic Clear
+          </p>
+        </div>
       </div>
     </main>
   );
