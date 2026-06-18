@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "SMES Turf",
-  description: "Sports Turf Booking",
+  description: "Sports Sports Academy Turf",
 };
 
 export default function RootLayout({
