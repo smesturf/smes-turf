@@ -263,6 +263,7 @@ setMonthlyBalance(
 const { data: blockedData } = await supabase
   .from("blocked_slots")
   .select("*")
+  .gte("booking_date", today)
   .order("booking_date", { ascending: true })
   .order("start_time", { ascending: true });
 
