@@ -936,6 +936,7 @@ const savePayment = async () => {
   loadBookings();
 };
 
+
   if (!selectedBooking) return;
 
   const balance =
@@ -1016,6 +1017,27 @@ const resetPayment = async (booking: any) => {
   }
 
   alert("✅ Payment Reset");
+
+  loadBookings();
+};
+const deleteBlockedSlot = async (id: number) => {
+  const confirmed = confirm(
+    "Delete this blocked slot?"
+  );
+
+  if (!confirmed) return;
+
+  const { error } = await supabase
+    .from("blocked_slots")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  alert("✅ Blocked slot deleted");
 
   loadBookings();
 };
