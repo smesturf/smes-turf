@@ -14,19 +14,6 @@ export default function Home() {
   const [bookingType, setBookingType] = useState("Full Court");
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
 
-  // NEW: Dedicated state tracker exclusively for the premium custom cursor pointer
-  const [mousePos, setMousePos] = useState({ x: -100, y: -100 });
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePos({ x: e.clientX, y: e.clientY });
-    };
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-    };
-  }, []);
-
   useEffect(() => {
     if (bookingDate) {
       loadBookedSlots(bookingDate);
@@ -312,32 +299,21 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative md:cursor-none">
-      {/* PREMIUM DUAL-RING INTERACTIVE RADAR MOUSE
-        Hidden on mobile/touch interfaces automatically to protect native gesture taps.
-      */}
-      <motion.div
-        className="fixed top-0 left-0 w-8 h-8 rounded-full border border-lime-400 pointer-events-none z-50 mix-blend-screen hidden md:block"
-        animate={{ x: mousePos.x - 16, y: mousePos.y - 16 }}
-        transition={{ type: "spring", stiffness: 220, damping: 24, mass: 0.5 }}
-      />
-      <motion.div
-        className="fixed top-0 left-0 w-2 h-2 rounded-full bg-lime-400 pointer-events-none z-50 hidden md:block"
-        animate={{ x: mousePos.x - 4, y: mousePos.y - 4 }}
-        transition={{ type: "spring", stiffness: 400, damping: 28, mass: 0.2 }}
-      />
+    <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative">
+      {/* Stadium Lightning FX overlay */}
+      <div className="absolute top-0 inset-x-0 h-[400px] sm:h-[640px] bg-gradient-to-b from-lime-500/10 via-transparent to-transparent pointer-events-none" />
+      <div className="absolute top-[-5%] left-[-10%] w-[60%] h-[40%] bg-emerald-500/5 rounded-full blur-[80px] sm:blur-[120px] pointer-events-none" />
+      <div className="absolute top-[15%] right-[-10%] w-[50%] h-[50%] bg-lime-500/5 rounded-full blur-[80px] sm:blur-[120px] pointer-events-none" />
 
-      {/* Modern Top Minimal Navbar Accent */}
-      <div className="w-full h-1 bg-lime-400" />
-
-      {/* Hero Section styled like Matchbox Minimalist Brutalism */}
-      <section className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:pt-20 sm:pb-16 text-left border-b border-neutral-900">
+      {/* Header Banner Section */}
+      <header className="max-w-7xl mx-auto px-4 pt-12 pb-6 sm:pt-16 sm:pb-8 relative z-10 text-center">
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="text-[11px] font-mono uppercase tracking-widest text-lime-400 mb-3 sm:mb-4"
+          initial={{ opacity: 0, y: -15 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="inline-flex items-center gap-1.5 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-slate-900 border border-slate-800 text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-lime-400 mb-4 sm:mb-6"
         >
-          // Mysore's Next-Gen Arena
+          <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />
+          Elite Sports Venue
         </motion.div>
 
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 sm:gap-8">
@@ -360,7 +336,6 @@ export default function Home() {
             </motion.p>
           </div>
 
-          {/* Action Hub row styled beautifully for standard mobile screen widths */}
           <div className="grid grid-cols-1 xs:grid-cols-3 gap-2 w-full lg:flex lg:w-auto lg:gap-3">
             <a
               href="https://wa.me/918453095258"
@@ -383,7 +358,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Feature Banner Alert strip */}
         <div className="mt-8 sm:mt-12 inline-flex items-center gap-3 sm:gap-4 bg-neutral-900 border border-neutral-800 px-4 py-3 rounded-none w-full sm:w-auto">
           <span className="flex h-2 w-2 relative flex-shrink-0">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75"></span>
@@ -393,7 +367,7 @@ export default function Home() {
             ⚡ Live Promo Offer: <span className="text-lime-400 font-bold">₹1250 / Hr Only</span>
           </p>
         </div>
-      </section>
+      </header>
 
       {/* Grid Features Block */}
       <section className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-20 border-b border-neutral-900">
@@ -405,7 +379,7 @@ export default function Home() {
             <div>
               <span className="text-[11px] font-mono text-neutral-600 block mb-3 sm:mb-4">01 // TRACK FIELD</span>
               <h3 className="text-xl sm:text-2xl font-bold uppercase tracking-tight text-white group-hover:text-lime-400 transition-colors">Football Arena</h3>
-              <p className="text-neutral-400 text-xs sm:text-sm mt-2 max-w-sm">From fast-paced 5-A-side tactical clashes to open-field training drills.</p>
+              <p className="text-neutral-400 text-xs sm:text-sm mt-2 max-w-sm">From fast-paced 7-A-side tactical clashes to open-field training drills.</p>
             </div>
           </div>
 
@@ -431,7 +405,6 @@ export default function Home() {
             </div>
 
             <div className="space-y-4 sm:space-y-6">
-              {/* Inputs Optimized with text-base on mobile to avoid automatic device viewport auto-zooming */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400">Full Name</label>
@@ -440,7 +413,7 @@ export default function Home() {
                     placeholder="Enter athlete name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full p-4 bg-neutral-900/50 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all font-medium text-base md:text-sm md:cursor-none"
+                    className="w-full p-4 bg-neutral-900/50 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all font-medium text-base md:text-sm"
                   />
                 </div>
                 <div className="space-y-2">
@@ -450,12 +423,11 @@ export default function Home() {
                     placeholder="Active phone contact"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="w-full p-4 bg-neutral-900/50 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all font-medium text-base md:text-sm md:cursor-none"
+                    className="w-full p-4 bg-neutral-900/50 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all font-medium text-base md:text-sm"
                   />
                 </div>
               </div>
 
-              {/* Responsive Dropdowns */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400">Sport</label>
@@ -463,7 +435,7 @@ export default function Home() {
                     <select
                       value={sport}
                       onChange={(e) => setSport(e.target.value)}
-                      className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm md:cursor-none"
+                      className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm"
                     >
                       <option value="Football">Football</option>
                       <option value="Cricket">Cricket</option>
@@ -478,7 +450,7 @@ export default function Home() {
                     <select
                       value={bookingType}
                       onChange={(e) => setBookingType(e.target.value)}
-                      className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm md:cursor-none"
+                      className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm"
                     >
                       <option value="Half Court">Half Court</option>
                       <option value="Full Court">Full Court</option>
@@ -488,7 +460,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Date Input */}
               <div className="space-y-2">
                 <label className="text-xs font-mono uppercase text-neutral-400">Calendar Date</label>
                 <input
@@ -499,19 +470,18 @@ export default function Home() {
                     setBookingDate(e.target.value);
                     loadBookedSlots(e.target.value);
                   }}
-                  className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none font-medium text-base md:text-sm md:cursor-none"
+                  className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none font-medium text-base md:text-sm"
                   style={{ colorScheme: "dark" }}
                 />
               </div>
 
-              {/* Start Time Select */}
               <div className="space-y-2">
                 <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Slot</label>
                 <div className="relative">
                   <select
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
-                    className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm md:cursor-none"
+                    className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm"
                   >
                     {allSlots
                       .filter((slot) => {
@@ -537,14 +507,13 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Match Duration Select */}
               <div className="space-y-2">
                 <label className="text-xs font-mono uppercase text-neutral-400">Session Length</label>
                 <div className="relative">
                   <select
                     value={duration}
                     onChange={(e) => setDuration(e.target.value)}
-                    className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm md:cursor-none"
+                    className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm"
                   >
                     <option value="60">60 Minutes (- ₹{bookingType === "Half Court" ? 750 : 1250})</option>
                     <option value="90">90 Minutes (- ₹{bookingType === "Half Court" ? 1100 : 1850})</option>
@@ -553,7 +522,6 @@ export default function Home() {
                   <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
                 </div>
               </div>
-
             </div>
           </div>
 
@@ -603,7 +571,7 @@ export default function Home() {
             <button
               type="button"
               onClick={openRazorpay}
-              className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-4 rounded-none transition-all font-black md:cursor-none"
+              className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-4 rounded-none transition-all font-black"
             >
               Confirm Match Slot
             </button>
