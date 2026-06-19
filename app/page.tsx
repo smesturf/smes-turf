@@ -288,7 +288,6 @@ export default function Home() {
     setDuration("60");
   };
 
-  // Click handler function for instant smooth target element navigation placement
   const scrollToBooking = () => {
     const targetElement = document.getElementById("booking-engine-section");
     if (targetElement) {
@@ -299,7 +298,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden">
       
-      {/* FIXED: Contained decorative blur backgrounds inside an explicitly bounded viewport container to eliminate horizontal scroll canvas leak anomalies completely */}
+      {/* Contained background FX layout masking */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
         <div className="absolute top-0 inset-x-0 h-[400px] sm:h-[640px] bg-gradient-to-b from-lime-500/10 via-transparent to-transparent" />
         <div className="absolute top-[-5%] left-[-10%] w-[60%] h-[40%] bg-emerald-500/5 rounded-full blur-[80px] sm:blur-[120px]" />
@@ -318,7 +317,7 @@ export default function Home() {
         </motion.div>
 
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 sm:gap-8">
-          <div>
+          <div className="text-center lg:text-left">
             <motion.h1
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -331,14 +330,14 @@ export default function Home() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
-              className="text-base sm:text-lg md:text-xl font-medium tracking-normal text-neutral-400 mt-3 sm:mt-4 max-w-xl"
+              className="text-base sm:text-lg md:text-xl font-medium tracking-normal text-neutral-400 mt-3 sm:mt-4 max-w-xl mx-auto lg:mx-0"
             >
               Premium multisport arena built for high-performance Football & Cricket action.
             </motion.p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 w-full lg:flex lg:w-auto lg:gap-3">
-            {/* UPGRADED: Added high-intensity instant landing anchor button matching Matchbox spec style layout models */}
+          {/* FIXED: Applied center constraint rules (max-w-md mx-auto) for mobile vertical alignment as specified in 1000123160.jpg */}
+          <div className="grid grid-cols-1 gap-2 w-full max-w-md mx-auto lg:max-w-none lg:mx-0 lg:flex lg:w-auto lg:gap-3">
             <button
               onClick={scrollToBooking}
               type="button"
