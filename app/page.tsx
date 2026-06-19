@@ -13,6 +13,9 @@ export default function Home() {
   const [duration, setDuration] = useState("60");
   const [bookingType, setBookingType] = useState("Full Court");
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
+  
+  // Tactical interactive segment filter for 24/7 grid layout optimization
+  const [timeTab, setTimeTab] = useState<"ALL" | "DAY" | "NIGHT">("ALL");
 
   useEffect(() => {
     if (bookingDate) {
@@ -34,27 +37,48 @@ export default function Home() {
       : 2500;
 
   const advanceAmount = 205;
+
   const allSlots = [
-    "05:00 AM", "05:30 AM",
-    "06:00 AM", "06:30 AM",
-    "07:00 AM", "07:30 AM",
-    "08:00 AM", "08:30 AM",
-    "09:00 AM", "09:30 AM",
-    "10:00 AM", "10:30 AM",
-    "11:00 AM", "11:30 AM",
-    "12:00 PM", "12:30 PM",
-    "01:00 PM", "01:30 PM",
-    "02:00 PM", "02:30 PM",
-    "03:00 PM", "03:30 PM",
-    "04:00 PM", "04:30 PM",
-    "05:00 PM", "05:30 PM",
-    "06:00 PM", "06:30 PM",
-    "07:00 PM", "07:30 PM",
-    "08:00 PM", "08:30 PM",
-    "09:00 PM", "09:30 PM",
-    "10:00 PM", "10:30 PM",
-    "11:00 PM", "11:30 PM"
+    "12:00 AM", "12:30 AM", "01:00 AM", "01:30 AM", "02:00 AM", "02:30 AM",
+    "03:00 AM", "03:30 AM", "04:00 AM", "04:30 AM", "05:00 AM", "05:30 AM",
+    "06:00 AM", "06:30 AM", "07:00 AM", "07:30 AM", "08:00 AM", "08:30 AM",
+    "09:00 AM", "09:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM",
+    "12:00 PM", "12:30 PM", "01:00 PM", "01:30 PM", "02:00 PM", "02:30 PM",
+    "03:00 PM", "03:30 PM", "04:00 PM", "04:30 PM", "05:00 PM", "05:30 PM",
+    "06:00 PM", "06:30 PM", "07:00 PM", "07:30 PM", "08:00 PM", "08:30 PM",
+    "09:00 PM", "09:30 PM", "10:00 PM", "10:30 PM", "11:00 PM", "11:30 PM"
   ];
+
+  const convert12To24 = (time12: string) => {
+    const [timePart, ampm] = time12.split(" ");
+    let [hours, minutes] = timePart.split(":").map(Number);
+    if (ampm === "PM" && hours !== 12) hours += 12;
+    if (ampm === "AM" && hours === 12) hours = 0;
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`;
+  };
+
+  const parseTimeToMinutes = (timeString: string) => {
+    if (!timeString) return 0;
+    if (timeString.includes("AM") || timeString.includes("PM")) {
+      const [timePart, ampm] = timeString.split(" ");
+      let [hours, minutes] = timePart.split(":").map(Number);
+      if (ampm === "PM" && hours !== 12) hours += 12;
+      if (ampm === "AM" && hours === 12) hours = 0;
+      return hours * 60 + minutes;
+    } else {
+      const [hours, minutes] = timeString.split(":").map(Number);
+      return hours * 60 + minutes;
+    }
+  };
+
+  const convertMinutesTo12H = (totalMinutes: number) => {
+    const mins = totalMinutes % (24 * 60);
+    const hour24 = Math.floor(mins / 60);
+    const minute = mins % 60;
+    const ampm = hour24 >= 12 ? "PM" : "AM";
+    const hour12 = hour24 % 12 || 12;
+    return `${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${ampm}`;
+  };
 
   const loadBookedSlots = async (date: string) => {
     const { data, error } = await supabase
@@ -77,18 +101,12 @@ export default function Home() {
       const slotCounts: Record<string, number> = {};
 
       data.forEach((booking: any) => {
-        const time = booking.start_time.substring(0, 5);
-        const [h, m] = time.split(":");
-        let minutes = Number(h) * 60 + Number(m);
+        let minutes = parseTimeToMinutes(booking.start_time);
         const slotsToBlock = booking.duration_minutes / 30;
 
         for (let i = 0; i < slotsToBlock; i++) {
           const current = minutes + i * 30;
-          const hour24 = Math.floor(current / 60);
-          const minute = current % 60;
-          const ampm = hour24 >= 12 ? "PM" : "AM";
-          const hour12 = hour24 % 12 || 12;
-          const slotLabel = `${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${ampm}`;
+          const slotLabel = convertMinutesTo12H(current);
 
           if (booking.booking_type === "Full Court") {
             slotCounts[slotLabel] = 999;
@@ -100,30 +118,21 @@ export default function Home() {
 
       Object.entries(slotCounts).forEach(([slot, count]) => {
         if (bookingType === "Full Court") {
-          if (count >= 1) {
-            blocked.push(slot);
-          }
+          if (count >= 1) blocked.push(slot);
         } else {
-          if (count >= 2 || count === 999) {
-            blocked.push(slot);
-          }
+          if (count >= 2 || count === 999) blocked.push(slot);
         }
       });
 
       if (blockedData) {
         blockedData.forEach((slot: any) => {
-          const time = slot.start_time.substring(0, 5);
-          const [h, m] = time.split(":");
-          let minutes = Number(h) * 60 + Number(m);
+          let minutes = parseTimeToMinutes(slot.start_time);
           const slotsToBlock = (slot.duration_minutes || 60) / 30;
 
           for (let i = 0; i < slotsToBlock; i++) {
             const current = minutes + i * 30;
-            const hour24 = Math.floor(current / 60);
-            const minute = current % 60;
-            const ampm = hour24 >= 12 ? "PM" : "AM";
-            const hour12 = hour24 % 12 || 12;
-            blocked.push(`${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${ampm}`);
+            const slotLabel = convertMinutesTo12H(current);
+            blocked.push(slotLabel);
           }
         });
       }
@@ -138,18 +147,19 @@ export default function Home() {
         alert("Please fill all fields");
         return;
       }
-      const availabilityCheck = await handleBooking("CHECK_ONLY");
-      if (!availabilityCheck) {
+      
+      if (phone.length !== 10) {
+        alert("❌ Please enter a valid 10-digit phone number.");
         return;
       }
+
+      const availabilityCheck = await handleBooking("CHECK_ONLY");
+      if (!availabilityCheck) return;
+
       const response = await fetch("/api/create-order", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          amount: advanceAmount,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: advanceAmount }),
       });
 
       const order = await response.json();
@@ -184,6 +194,11 @@ export default function Home() {
       return;
     }
 
+    if (phone.length !== 10) {
+      alert("❌ Please enter a valid 10-digit phone number.");
+      return;
+    }
+
     const { data: existingBookings, error: checkError } = await supabase
       .from("bookings")
       .select("*")
@@ -195,35 +210,13 @@ export default function Home() {
     }
 
     const selectedDuration = Number(duration);
-    const convertToMinutes = (time: string) => {
-      const [timePart, ampm] = time.split(" ");
-      let [hours, minutes] = timePart.split(":").map(Number);
-      if (ampm === "PM" && hours !== 12) hours += 12;
-      if (ampm === "AM" && hours === 12) hours = 0;
-      return hours * 60 + minutes;
-    };
-
-    const selectedStart = convertToMinutes(startTime);
+    const selectedStart = parseTimeToMinutes(startTime);
     const selectedEnd = selectedStart + selectedDuration;
-
-    const conflict = existingBookings?.some((booking) => {
-      const [hours, minutes] = booking.start_time
-        .substring(0, 5)
-        .split(":")
-        .map(Number);
-      const bookingStart = hours * 60 + minutes;
-      const bookingEnd = bookingStart + booking.duration_minutes;
-      return selectedStart < bookingEnd && selectedEnd > bookingStart;
-    });
 
     let courtNumber = "";
     const overlappingBookings =
       existingBookings?.filter((booking) => {
-        const [hours, minutes] = booking.start_time
-          .substring(0, 5)
-          .split(":")
-          .map(Number);
-        const bookingStart = hours * 60 + minutes;
+        const bookingStart = parseTimeToMinutes(booking.start_time);
         const bookingEnd = bookingStart + booking.duration_minutes;
         return selectedStart < bookingEnd && selectedEnd > bookingStart;
       }) || [];
@@ -255,11 +248,8 @@ export default function Home() {
       courtNumber = "Both Courts";
     }
 
-    if (paymentData === "CHECK_ONLY") {
-      return true;
-    }
+    if (paymentData === "CHECK_ONLY") return true;
 
-    console.log("Assigned court:", courtNumber);
     const { error } = await supabase.from("bookings").insert([
       {
         customer_name: name,
@@ -268,7 +258,7 @@ export default function Home() {
         court_number: courtNumber,
         sport: sport.toLowerCase(),
         booking_date: bookingDate,
-        start_time: startTime,
+        start_time: convert12To24(startTime),
         duration_minutes: Number(duration),
         total_amount: totalAmount,
         advance_amount: 200,
@@ -280,7 +270,6 @@ export default function Home() {
     ]);
 
     if (error) {
-      console.error(error);
       alert(error.message);
       return;
     }
@@ -299,318 +288,353 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative">
-      {/* Stadium Lightning FX overlay */}
-      <div className="absolute top-0 inset-x-0 h-[400px] sm:h-[640px] bg-gradient-to-b from-lime-500/10 via-transparent to-transparent pointer-events-none" />
-      <div className="absolute top-[-5%] left-[-10%] w-[60%] h-[40%] bg-emerald-500/5 rounded-full blur-[80px] sm:blur-[120px] pointer-events-none" />
-      <div className="absolute top-[15%] right-[-10%] w-[50%] h-[50%] bg-lime-500/5 rounded-full blur-[80px] sm:blur-[120px] pointer-events-none" />
+    <main className="min-h-screen bg-[#07090e] text-neutral-100 font-sans tracking-tight antialiased relative selection:bg-lime-400 selection:text-black">
+      {/* Editorial Arena Lighting Accents */}
+      <div className="absolute top-0 inset-x-0 h-[700px] bg-[radial-gradient(ellipse_at_top,rgba(163,230,53,0.08),transparent_60%)] pointer-events-none" />
+      <div className="absolute top-[20%] left-[-10%] w-[50%] h-[40%] bg-emerald-500/5 rounded-full blur-[140px] pointer-events-none" />
 
-      {/* Header Banner Section */}
-      <header className="max-w-7xl mx-auto px-4 pt-12 pb-6 sm:pt-16 sm:pb-8 relative z-10 text-center">
-        <motion.div
-          initial={{ opacity: 0, y: -15 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="inline-flex items-center gap-1.5 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-slate-900 border border-slate-800 text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-lime-400 mb-4 sm:mb-6"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />
-          Elite Sports Venue
-        </motion.div>
-
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 sm:gap-8">
-          <div>
-            <motion.h1
-              initial={{ opacity: 0, y: 20 }}
+      {/* Core Layout Grid System */}
+      <div className="max-w-7xl mx-auto px-4 lg:px-8">
+        
+        {/* Navigation / Brand Block */}
+        <header className="py-8 border-b border-neutral-900 flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10">
+          <div className="text-center sm:text-left">
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4 }}
-              className="text-4xl sm:text-6xl md:text-8xl font-black tracking-tighter uppercase leading-none text-white"
+              className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-neutral-900 border border-neutral-800 text-[10px] font-mono uppercase tracking-widest text-lime-400 mb-2"
             >
-              SMES TURF
-            </motion.h1>
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.2 }}
-              className="text-base sm:text-lg md:text-xl font-medium tracking-normal text-neutral-400 mt-3 sm:mt-4 max-w-xl"
-            >
-              Premium multisport arena built for high-performance Football & Cricket action.
-            </motion.p>
+              <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />
+              Mysuru Operational Ground Hub
+            </motion.div>
+            <h1 className="text-3xl font-black uppercase tracking-tighter text-white sm:text-4xl">SMES TURF</h1>
           </div>
 
-          <div className="grid grid-cols-1 xs:grid-cols-3 gap-2 w-full lg:flex lg:w-auto lg:gap-3">
-            <a
-              href="https://wa.me/918453095258"
-              className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-all text-center"
-            >
-              WhatsApp
-            </a>
-            <a
-              href="https://maps.google.com/?q=12.329329,76.612008"
-              className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-all text-center"
-            >
-              Find Arena
-            </a>
-            <a
-              href="tel:+918453095258"
-              className="bg-lime-400 hover:bg-lime-300 text-black text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-all font-bold text-center"
-            >
-              Call Desk
-            </a>
+          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider">
+            <span className="text-neutral-500">Status:</span>
+            <span className="px-2.5 py-1 bg-lime-500/10 border border-lime-500/20 text-lime-400 font-bold">24/7 Continuous Operational</span>
           </div>
-        </div>
+        </header>
 
-        <div className="mt-8 sm:mt-12 inline-flex items-center gap-3 sm:gap-4 bg-neutral-900 border border-neutral-800 px-4 py-3 rounded-none w-full sm:w-auto">
-          <span className="flex h-2 w-2 relative flex-shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500"></span>
-          </span>
-          <p className="text-[11px] sm:text-xs font-mono uppercase tracking-wide text-neutral-300">
-            ⚡ Live Promo Offer: <span className="text-lime-400 font-bold">₹1250 / Hr Only</span>
-          </p>
-        </div>
-      </header>
-
-      {/* Grid Features Block */}
-      <section className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-20 border-b border-neutral-900">
-        <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-2">01 — Disciplines</span>
-        <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white mb-8 sm:mb-12">Sports Arena Layout</h2>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-8">
-          <div className="border border-neutral-900 bg-neutral-900/20 p-6 sm:p-8 flex flex-col justify-between group hover:border-neutral-700 transition-all min-h-[180px] sm:min-h-[220px]">
+        {/* Hero Pitch Display Feature */}
+        <section className="py-12 border-b border-neutral-900 relative z-10">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-end">
             <div>
-              <span className="text-[11px] font-mono text-neutral-600 block mb-3 sm:mb-4">01 // TRACK FIELD</span>
-              <h3 className="text-xl sm:text-2xl font-bold uppercase tracking-tight text-white group-hover:text-lime-400 transition-colors">Football Arena</h3>
-              <p className="text-neutral-400 text-xs sm:text-sm mt-2 max-w-sm">From fast-paced 7-A-side tactical clashes to open-field training drills.</p>
+              <p className="text-sm font-medium text-neutral-400 max-w-lg leading-relaxed">
+                Experience Mysuru's premium modular multisport arena. Engineered for peak performance, high-traction team clashes, and seamless weekend action.
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <a href="https://wa.me/918453095258" className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-xs font-mono uppercase tracking-wider p-4 transition-all text-center font-bold">WhatsApp</a>
+              <a href="https://maps.google.com/?q=12.329329,76.612008" className="bg-neutral-900 border border-neutral-800 text-white text-xs font-mono uppercase tracking-wider p-4 transition-all text-center font-bold">Directions</a>
+              <a href="tel:+918453095258" className="bg-lime-400 hover:bg-lime-300 text-black text-xs font-mono uppercase tracking-wider p-4 transition-all font-black text-center shadow-lg shadow-lime-400/5">Call Desk</a>
             </div>
           </div>
+        </section>
 
-          <div className="border border-neutral-900 bg-neutral-900/20 p-6 sm:p-8 flex flex-col justify-between group hover:border-neutral-700 transition-all min-h-[180px] sm:min-h-[220px]">
-            <div>
-              <span className="text-[11px] font-mono text-neutral-600 block mb-3 sm:mb-4">02 // NET BOX</span>
-              <h3 className="text-xl sm:text-2xl font-bold uppercase tracking-tight text-white group-hover:text-lime-400 transition-colors">Box Cricket</h3>
-              <p className="text-neutral-400 text-xs sm:text-sm mt-2 max-w-sm">High-bounce, entirely enclosed system built for maximum velocity cricket action.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Industrial Matchbox-style Layout Booking Portal Grid */}
-      <section className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-20">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
+        {/* Dynamic Split Booking UI Grid Framework */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 py-12 relative z-10">
           
-          {/* Form Side */}
-          <div className="lg:col-span-7 space-y-6 sm:space-y-8">
-            <div>
-              <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-2">02 — Reservation</span>
-              <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">Select and Secure Pitch</h2>
-            </div>
+          {/* Main Controls Panel (Left Column) */}
+          <div className="lg:col-span-7 space-y-12">
+            
+            {/* Context Line Block 1 */}
+            <motion.div 
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-60px" }}
+              transition={{ duration: 0.5 }}
+              className="space-y-6"
+            >
+              <div className="border-l-2 border-lime-400 pl-4">
+                <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">01 // Identity Matrix</span>
+                <h2 className="text-lg font-black uppercase text-white tracking-wide mt-0.5">Roster Profile Details</h2>
+              </div>
 
-            <div className="space-y-4 sm:space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-mono uppercase text-neutral-400">Full Name</label>
+                  <label className="text-[11px] font-mono uppercase text-neutral-400">Athlete / Group Name</label>
                   <input
                     type="text"
-                    placeholder="Enter athlete name"
+                    placeholder="Enter booking captain name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full p-4 bg-neutral-900/50 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all font-medium text-base md:text-sm"
+                    className="w-full p-4 bg-neutral-900/40 text-white border border-neutral-800/80 focus:border-lime-400 outline-none transition-all font-medium text-base md:text-sm rounded-none"
                   />
                 </div>
+                
                 <div className="space-y-2">
-                  <label className="text-xs font-mono uppercase text-neutral-400">Phone Number</label>
+                  <div className="flex justify-between items-center">
+                    <label className="text-[11px] font-mono uppercase text-neutral-400">Mobile Node</label>
+                    <span className="text-[10px] font-mono text-neutral-600 font-bold">{phone.length}/10 DIGITS</span>
+                  </div>
                   <input
                     type="tel"
-                    placeholder="Active phone contact"
+                    placeholder="10-digit phone contact"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full p-4 bg-neutral-900/50 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all font-medium text-base md:text-sm"
+                    onChange={(e) => {
+                      const sanitized = e.target.value.replace(/\D/g, "");
+                      if (sanitized.length <= 10) setPhone(sanitized);
+                    }}
+                    className={`w-full p-4 bg-neutral-900/40 text-white border outline-none transition-all font-medium text-base md:text-sm font-mono rounded-none ${
+                      phone.length > 0 && phone.length < 10 ? "border-amber-500/40 focus:border-amber-500" : "border-neutral-800/80 focus:border-lime-400"
+                    }`}
                   />
                 </div>
               </div>
+            </motion.div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+            {/* Context Line Block 2 */}
+            <motion.div 
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-60px" }}
+              transition={{ duration: 0.5 }}
+              className="space-y-6"
+            >
+              <div className="border-l-2 border-lime-400 pl-4">
+                <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">02 // Arena Layout</span>
+                <h2 className="text-lg font-black uppercase text-white tracking-wide mt-0.5">Discipline and Scope Selection</h2>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-mono uppercase text-neutral-400">Sport</label>
+                  <label className="text-[11px] font-mono uppercase text-neutral-400">Target Discipline</label>
                   <div className="relative">
                     <select
                       value={sport}
                       onChange={(e) => setSport(e.target.value)}
-                      className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm"
+                      className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none appearance-none font-medium text-base md:text-sm rounded-none"
                     >
-                      <option value="Football">Football</option>
-                      <option value="Cricket">Cricket</option>
+                      <option value="Football">Football (7-A-Side Pitch Configuration)</option>
+                      <option value="Cricket">Cricket (Velocity Box Grid)</option>
                     </select>
                     <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-mono uppercase text-neutral-400">Pitch Scale</label>
+                  <label className="text-[11px] font-mono uppercase text-neutral-400">Field Architecture</label>
                   <div className="relative">
                     <select
                       value={bookingType}
                       onChange={(e) => setBookingType(e.target.value)}
-                      className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm"
+                      className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none appearance-none font-medium text-base md:text-sm rounded-none"
                     >
-                      <option value="Half Court">Half Court</option>
-                      <option value="Full Court">Full Court</option>
+                      <option value="Full Court">Full Court (Complete Match Environment)</option>
+                      <option value="Half Court">Half Court (Training Matrix Loop)</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Context Line Block 3 */}
+            <motion.div 
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-60px" }}
+              transition={{ duration: 0.5 }}
+              className="space-y-6"
+            >
+              <div className="border-l-2 border-lime-400 pl-4">
+                <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">03 // Match Timing Node</span>
+                <h2 className="text-lg font-black uppercase text-white tracking-wide mt-0.5">Chronological Matrix Placement</h2>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-mono uppercase text-neutral-400">Target Calendar Date</label>
+                  <input
+                    type="date"
+                    min={new Date().toISOString().split("T")[0]}
+                    value={bookingDate}
+                    onChange={(e) => {
+                      setBookingDate(e.target.value);
+                      loadBookedSlots(e.target.value);
+                    }}
+                    className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none font-medium text-base md:text-sm rounded-none"
+                    style={{ colorScheme: "dark" }}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-mono uppercase text-neutral-400">Session Engagement Window</label>
+                  <div className="relative">
+                    <select
+                      value={duration}
+                      onChange={(e) => setDuration(e.target.value)}
+                      className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none appearance-none font-medium text-base md:text-sm rounded-none"
+                    >
+                      <option value="60">60 Minutes engagement timeframe</option>
+                      <option value="90">90 Minutes engagement timeframe</option>
+                      <option value="120">120 Minutes engagement timeframe</option>
                     </select>
                     <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-mono uppercase text-neutral-400">Calendar Date</label>
-                <input
-                  type="date"
-                  min={new Date().toISOString().split("T")[0]}
-                  value={bookingDate}
-                  onChange={(e) => {
-                    setBookingDate(e.target.value);
-                    loadBookedSlots(e.target.value);
-                  }}
-                  className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none font-medium text-base md:text-sm"
-                  style={{ colorScheme: "dark" }}
-                />
-              </div>
+              {/* Advanced Segment Filtered 24/7 Time Grid */}
+              <div className="space-y-3 pt-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-900 pb-3">
+                  <span className="text-[11px] font-mono uppercase text-neutral-400 tracking-wider">Select Available Kickoff Slot</span>
+                  
+                  {/* Segment Controller Tabs */}
+                  <div className="flex items-center gap-1 bg-neutral-950 p-1 border border-neutral-900 font-mono text-[10px]">
+                    {(["ALL", "DAY", "NIGHT"] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setTimeTab(tab)}
+                        className={`px-3 py-1 font-bold transition-all uppercase ${
+                          timeTab === tab ? "bg-neutral-800 text-lime-400" : "text-neutral-500 hover:text-neutral-300"
+                        }`}
+                      >
+                        {tab === "ALL" ? "All Hours" : tab === "DAY" ? "Sunlight" : "Floodlight"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Slot</label>
-                <div className="relative">
-                  <select
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm"
-                  >
-                    {allSlots
-                      .filter((slot) => {
-                        if (bookedSlots.includes(slot)) return false;
-                        const today = new Date().toISOString().split("T")[0];
-                        if (bookingDate !== today) return true;
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 max-h-80 overflow-y-auto p-2 bg-neutral-950/60 border border-neutral-900/60 rounded-none scrollbar-thin scrollbar-thumb-neutral-800">
+                  {allSlots
+                    .filter((slot) => {
+                      if (timeTab === "ALL") return true;
+                      const minutes = parseTimeToMinutes(slot);
+                      const isDayRange = minutes >= 360 && minutes < 1080; // 6:00 AM to 6:00 PM
+                      return timeTab === "DAY" ? isDayRange : !isDayRange;
+                    })
+                    .map((slot) => {
+                      const isBooked = bookedSlots.includes(slot);
+                      const todayDate = new Date().toISOString().split("T")[0];
+                      let isPast = false;
+                      
+                      if (bookingDate === todayDate) {
                         const now = new Date();
                         const currentMinutes = now.getHours() * 60 + now.getMinutes();
-                        const [time, ampm] = slot.split(" ");
-                        let [hours, minutes] = time.split(":").map(Number);
-                        if (ampm === "PM" && hours !== 12) hours += 12;
-                        if (ampm === "AM" && hours === 12) hours = 0;
-                        const slotMinutes = hours * 60 + minutes;
-                        return slotMinutes > currentMinutes;
-                      })
-                      .map((slot) => (
-                        <option key={slot} value={slot}>
+                        if (parseTimeToMinutes(slot) <= currentMinutes) isPast = true;
+                      }
+
+                      const isUnavailable = isBooked || isPast;
+                      const isSelected = startTime === slot;
+
+                      return (
+                        <button
+                          key={slot}
+                          type="button"
+                          disabled={isUnavailable}
+                          onClick={() => setStartTime(slot)}
+                          className={`p-3 text-center font-mono text-[11px] transition-all border ${
+                            isUnavailable
+                              ? "bg-neutral-900/10 border-neutral-900/40 text-neutral-700 line-through cursor-not-allowed"
+                              : isSelected
+                              ? "bg-lime-400 text-slate-950 border-lime-400 font-black shadow-[0_0_20px_rgba(163,230,53,0.15)]"
+                              : "bg-neutral-900/60 text-neutral-300 border-neutral-800/80 hover:border-neutral-600"
+                          }`}
+                        >
                           {slot}
-                        </option>
-                      ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+
+          {/* Sticky Checkout Panel Framework (Right Column) */}
+          <div className="lg:col-span-5 lg:sticky lg:top-8">
+            <div className="bg-neutral-900/30 border border-neutral-900 p-6 space-y-6 backdrop-blur-md relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-lime-500/5 to-transparent pointer-events-none" />
+              
+              <div className="border-b border-neutral-800 pb-4">
+                <span className="text-[9px] font-mono text-neutral-500 uppercase tracking-widest">Real-time Summary Manifest</span>
+                <h3 className="text-base font-black uppercase text-white mt-0.5">Match Clearance Ticket</h3>
+              </div>
+
+              <div className="space-y-3.5 text-xs font-mono">
+                <div className="flex justify-between items-center gap-4">
+                  <span className="text-neutral-500 uppercase tracking-wider">Discipline:</span>
+                  <span className="text-white font-bold tracking-wide">{sport}</span>
+                </div>
+                <div className="flex justify-between items-center gap-4">
+                  <span className="text-neutral-500 uppercase tracking-wider">Field Scale:</span>
+                  <span className="text-white font-bold tracking-wide">{bookingType}</span>
+                </div>
+                <div className="flex justify-between items-center gap-4">
+                  <span className="text-neutral-500 uppercase tracking-wider">Target Date:</span>
+                  <span className="text-lime-400 font-black tracking-wide">{bookingDate ? new Date(bookingDate).toLocaleDateString("en-GB") : "UNSELECTED"}</span>
+                </div>
+                <div className="flex justify-between items-center gap-4">
+                  <span className="text-neutral-500 uppercase tracking-wider">Kickoff Clock:</span>
+                  <span className="text-white font-bold tracking-wide">{startTime}</span>
+                </div>
+                <div className="flex justify-between items-center gap-4">
+                  <span className="text-neutral-500 uppercase tracking-wider">Window Length:</span>
+                  <span className="text-white font-bold tracking-wide">{duration} Minutes</span>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-mono uppercase text-neutral-400">Session Length</label>
-                <div className="relative">
-                  <select
-                    value={duration}
-                    onChange={(e) => setDuration(e.target.value)}
-                    className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm"
-                  >
-                    <option value="60">60 Minutes (- ₹{bookingType === "Half Court" ? 750 : 1250})</option>
-                    <option value="90">90 Minutes (- ₹{bookingType === "Half Court" ? 1100 : 1850})</option>
-                    <option value="120">120 Minutes (- ₹{bookingType === "Half Court" ? 1500 : 2500})</option>
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
+              <div className="bg-neutral-950 p-4 border border-neutral-900 space-y-2.5">
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <span className="text-neutral-400">Lockdown Advance Token:</span>
+                  <span className="text-white font-bold">₹200</span>
+                </div>
+                <p className="text-[10px] text-neutral-600 leading-normal font-mono">
+                  A processing allocation deposit confirms your exclusive structural field lockout.
+                </p>
+                <div className="h-px bg-neutral-900 my-1" />
+                <div className="flex justify-between items-end">
+                  <span className="text-xs font-mono text-neutral-300 tracking-wider">Gross Match Cost:</span>
+                  <span className="text-2xl font-black text-lime-400 leading-none">₹{totalAmount}</span>
                 </div>
               </div>
+
+              <button
+                type="button"
+                onClick={openRazorpay}
+                className="w-full bg-lime-400 hover:bg-lime-300 text-slate-950 font-mono text-xs uppercase tracking-widest py-4.5 font-black transition-all shadow-xl shadow-lime-400/5 tracking-widest block text-center min-h-[54px]"
+              >
+                Execute Reservation Token
+              </button>
             </div>
-          </div>
-
-          {/* Right Column Checkout Component Panel */}
-          <div className="lg:col-span-5 bg-neutral-900/50 border border-neutral-900 p-4 sm:p-6 md:p-8 rounded-none space-y-6">
-            <div className="border-b border-neutral-800 pb-4">
-              <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Live Breakdown Summary</span>
-              <h3 className="text-lg font-bold uppercase text-white mt-1">Pitch Bill Receipt</h3>
-            </div>
-
-            <div className="space-y-3 text-xs font-mono">
-              <div className="flex justify-between gap-4">
-                <span className="text-neutral-500 flex-shrink-0">SPORT:</span>
-                <span className="text-white uppercase font-bold text-right break-all">{sport}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-neutral-500 flex-shrink-0">ARENA SCALE:</span>
-                <span className="text-white font-bold text-right break-all">{bookingType}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-neutral-500 flex-shrink-0">TARGET DATE:</span>
-                <span className="text-lime-400 font-bold text-right break-all">{bookingDate || "Unselected"}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-neutral-500 flex-shrink-0">KICKOFF TIME:</span>
-                <span className="text-white font-bold text-right break-all">{startTime}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-neutral-500 flex-shrink-0">DURATION TIMEFRAME:</span>
-                <span className="text-white font-bold text-right break-all">{duration} Minutes</span>
-              </div>
-            </div>
-
-            <div className="bg-black p-4 border border-neutral-800 space-y-2">
-              <div className="flex justify-between items-center text-xs font-mono gap-2">
-                <span className="text-neutral-400">LOCKDOWN RESERVATION FEE:</span>
-                <span className="text-white font-bold whitespace-nowrap">₹200</span>
-              </div>
-              <p className="text-[10px] text-neutral-600 leading-normal font-mono">A dynamic advance fee keeps the slot reserved uniquely for your group squad.</p>
-              <div className="h-px bg-neutral-800 my-2" />
-              <div className="flex justify-between items-center gap-2">
-                <span className="text-xs font-mono text-white font-bold">GROSS FIELD VALUE:</span>
-                <span className="text-xl font-black text-lime-400 whitespace-nowrap">₹{totalAmount}</span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={openRazorpay}
-              className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-4 rounded-none transition-all font-black"
-            >
-              Confirm Match Slot
-            </button>
-          </div>
-
-        </div>
-      </section>
-
-      {/* Facilities Strip Layout */}
-      <section className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-16 border-t border-neutral-900">
-        <span className="text-xs font-mono uppercase tracking-widest text-neutral-500 block mb-6 sm:mb-8 text-center">03 — Setup Infrastructure</span>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4 max-w-4xl mx-auto text-center">
-          {["💡 Floodlights", "🚗 Secure Parking", "🧼 Washrooms", "🚰 Pure Water", "⏳ Open 24 Hours"].map((facility, index) => (
-            <div 
-              key={index} 
-              className={`border border-neutral-900 p-3 sm:p-4 font-mono text-xs text-neutral-400 uppercase tracking-wider bg-neutral-900/10 ${
-                index === 4 ? "col-span-2 sm:col-span-1" : ""
-              }`}
-            >
-              {facility}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Footer System */}
-      <footer className="w-full bg-black border-t border-neutral-900 py-12 px-4 sm:py-16 sm:px-6 text-left">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start gap-6 sm:gap-8">
-          <div className="space-y-2">
-            <p className="text-xs font-mono text-neutral-400 uppercase tracking-widest">SMES Sports Ground Hub</p>
-            <p className="text-xs text-neutral-600 font-mono">© 2026 Built for competitive team sports action and weekend fun.</p>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-y-2 gap-x-6 md:gap-x-8 font-mono text-xs text-neutral-400 uppercase">
-            <div><span className="text-lime-400">P:</span> +91 8453095258</div>
-            <div><span className="text-lime-400">E:</span> sports@smesturf.com</div>
-            <div><span className="text-lime-400">L:</span> Mysuru, Karnataka</div>
           </div>
         </div>
-      </footer>
+
+        {/* Technical Strip Footer Block */}
+        <motion.section 
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          className="border-t border-neutral-900 py-12 text-center space-y-6"
+        >
+          <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">03 // Perimeter Logistics Infrastructure</span>
+          <div className="flex flex-wrap items-center justify-center gap-2 max-w-4xl mx-auto">
+            {["High-Velocity Floodlights", "Secure Vehicle Paddock", "Dedicated Dressing Rooms", "Pure Water Filtration Nodes", "Continuous 24-Hour Infrastructure"].map((item, index) => (
+              <span key={index} className="px-4 py-2 border border-neutral-900 bg-neutral-900/10 font-mono text-[11px] uppercase tracking-wider text-neutral-400">
+                {item}
+              </span>
+            ))}
+          </div>
+        </motion.section>
+
+        {/* Footer Area */}
+        <footer className="w-full bg-[#030508] border-t border-neutral-900/60 py-12 text-left relative z-10">
+          <div className="flex flex-col md:flex-row justify-between items-start gap-8 font-mono text-xs text-neutral-500">
+            <div className="space-y-1">
+              <p className="text-neutral-400 uppercase font-bold tracking-wider">SMES GROUND HUB OPERATIONS</p>
+              <p>© 2026 Engineered architecture built for competitive league gameplay.</p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-y-2 gap-x-8 uppercase">
+              <div><span className="text-lime-400 font-bold">P:</span> +91 8453095258</div>
+              <div><span className="text-lime-400 font-bold">E:</span> operations@smesturf.com</div>
+              <div><span className="text-lime-400 font-bold">L:</span> Mysuru, KA</div>
+            </div>
+          </div>
+        </footer>
+
+      </div>
     </main>
   );
 }

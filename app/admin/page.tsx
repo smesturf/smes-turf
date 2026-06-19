@@ -21,6 +21,9 @@ export default function AdminPage() {
   const [todayUpiCollection, setTodayUpiCollection] = useState(0);
   const [todayTotalCollection, setTodayTotalCollection] = useState(0);
   const [showManageSlots, setShowManageSlots] = useState(false);
+  
+  // Tactical sheet panel toggle to structure display densities on phone devices
+  const [activeTabPanel, setActiveTabPanel] = useState<"LIVE" | "BLOCKED">("LIVE");
 
   const [slotDate, setSlotDate] = useState("");
   const adminTimeSlots = Array.from({ length: 48 }, (_, i) => {
@@ -41,7 +44,6 @@ export default function AdminPage() {
   const [offlineAmount, setOfflineAmount] = useState("");
   const [offlinePaymentMethod, setOfflinePaymentMethod] = useState("Cash");
   const [offlineCashAmount, setOfflineCashAmount] = useState("");
-
   const [offlineUpiAmount, setOfflineUpiAmount] = useState("");  
   const [slotCourt, setSlotCourt] = useState("Full Court");
   const [availableCourts, setAvailableCourts] = useState([
@@ -49,29 +51,42 @@ export default function AdminPage() {
     "Court 1",
     "Court 2",
   ]);
+
+  const convert12To24 = (time12: string) => {
+    if (!time12) return "";
+    const [timePart, ampm] = time12.split(" ");
+    let [hours, minutes] = timePart.split(":").map(Number);
+    if (ampm === "PM" && hours !== 12) hours += 12;
+    if (ampm === "AM" && hours === 12) hours = 0;
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`;
+  };
+
+  const parseTimeToMinutes = (timeString: string) => {
+    if (!timeString) return 0;
+    if (timeString.includes("AM") || timeString.includes("PM")) {
+      const [timePart, ampm] = timeString.split(" ");
+      let [hours, minutes] = timePart.split(":").map(Number);
+      if (ampm === "PM" && hours !== 12) hours += 12;
+      if (ampm === "AM" && hours === 12) hours = 0;
+      return hours * 60 + minutes;
+    } else {
+      const [hours, minutes] = timeString.split(":").map(Number);
+      return hours * 60 + minutes;
+    }
+  };
+
   const loadAvailableCourts = async (date: string, time: string) => {
     const { data } = await supabase
       .from("blocked_slots")
       .select("*")
       .eq("booking_date", date);
 
-    let courts = [
-      "Full Court",
-      "Court 1",
-      "Court 2",
-    ];
-
-    const selected = new Date(`2000-01-01 ${time}`);
-
-    const selectedMinutes = selected.getHours() * 60 + selected.getMinutes();
+    let courts = ["Full Court", "Court 1", "Court 2"];
+    const selectedMinutes = parseTimeToMinutes(time);
 
     data?.forEach((b: any) => {
-      const start = new Date(`2000-01-01T${b.start_time}`);
-
-      const startMinutes = start.getHours() * 60 + start.getMinutes();
-
+      const startMinutes = parseTimeToMinutes(b.start_time);
       const endMinutes = startMinutes + (b.duration_minutes || 60);
-
       const overlaps = selectedMinutes >= startMinutes && selectedMinutes < endMinutes;
 
       if (!overlaps) return;
@@ -79,11 +94,9 @@ export default function AdminPage() {
       if (b.court_number === "Court 1") {
         courts = courts.filter((c) => c !== "Court 1" && c !== "Full Court");
       }
-
       if (b.court_number === "Court 2") {
         courts = courts.filter((c) => c !== "Court 2" && c !== "Full Court");
       }
-
       if (b.court_number === "Full Court") {
         courts = [];
       }
@@ -91,16 +104,16 @@ export default function AdminPage() {
 
     setAvailableCourts(courts);
   };
+
   const [availableAdminSlots, setAvailableAdminSlots] = useState<string[]>([]);
   const [slotDuration, setSlotDuration] = useState(60);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
 
   const [paymentType, setPaymentType] = useState("Full Cash");
-
   const [cashAmount, setCashAmount] = useState("");
-
   const [upiAmount, setUpiAmount] = useState("");
+
   const formatDate = (date: Date) => {
     return date.toLocaleDateString("en-CA", {
       timeZone: "Asia/Kolkata",
@@ -108,11 +121,11 @@ export default function AdminPage() {
   };
 
   const today = formatDate(new Date());
-
   const tomorrowDate = new Date();
   tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-
   const tomorrow = formatDate(tomorrowDate);
+
+  const userRole = typeof window !== "undefined" ? localStorage.getItem("adminRole") : "admin";
 
   useEffect(() => {
     const loggedIn = localStorage.getItem("adminLoggedIn");
@@ -126,32 +139,12 @@ export default function AdminPage() {
 
     const bookingsChannel = supabase
       .channel("bookings-realtime")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "bookings",
-        },
-        () => {
-          loadBookings();
-        }
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, () => { loadBookings(); })
       .subscribe();
 
     const blockedChannel = supabase
       .channel("blocked-slots-realtime")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "blocked_slots",
-        },
-        () => {
-          loadBookings();
-        }
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "blocked_slots" }, () => { loadBookings(); })
       .subscribe();
 
     return () => {
@@ -162,16 +155,13 @@ export default function AdminPage() {
 
   useEffect(() => {
     let timeout: NodeJS.Timeout;
-
     const resetTimer = () => {
       clearTimeout(timeout);
-
       timeout = setTimeout(() => {
         localStorage.removeItem("adminLoggedIn");
         localStorage.removeItem("adminLoginTime");
-
+        localStorage.removeItem("adminRole");
         alert("Logged out due to inactivity");
-
         router.push("/admin/login");
       }, 15 * 60 * 1000);
     };
@@ -179,12 +169,10 @@ export default function AdminPage() {
     window.addEventListener("mousemove", resetTimer);
     window.addEventListener("keypress", resetTimer);
     window.addEventListener("click", resetTimer);
-
     resetTimer();
 
     return () => {
       clearTimeout(timeout);
-
       window.removeEventListener("mousemove", resetTimer);
       window.removeEventListener("keypress", resetTimer);
       window.removeEventListener("click", resetTimer);
@@ -208,29 +196,16 @@ export default function AdminPage() {
     const currentMonth = new Date().getMonth() + 1;
     const currentYear = new Date().getFullYear();
 
-    const thisMonthBookings =
-      data?.filter((booking) => {
-        const d = new Date(booking.booking_date);
-
-        return (
-          d.getMonth() + 1 === currentMonth &&
-          d.getFullYear() === currentYear
-        );
-      }) || [];
+    const thisMonthBookings = data?.filter((booking) => {
+      const d = new Date(booking.booking_date);
+      return d.getMonth() + 1 === currentMonth && d.getFullYear() === currentYear;
+    }) || [];
 
     setMonthlyBookings(thisMonthBookings.length);
+    setMonthlyRevenue(thisMonthBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0));
+    setMonthlyAdvance(thisMonthBookings.reduce((sum, b) => sum + (b.advance_amount || 0), 0));
+    setMonthlyBalance(thisMonthBookings.reduce((sum, b) => sum + (b.balance_amount || 0), 0));   
 
-    setMonthlyRevenue(
-      thisMonthBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0)
-    );
-
-    setMonthlyAdvance(
-      thisMonthBookings.reduce((sum, b) => sum + (b.advance_amount || 0), 0)
-    );
-
-    setMonthlyBalance(
-      thisMonthBookings.reduce((sum, b) => sum + (b.balance_amount || 0), 0)
-    );   
     const { data: blockedData } = await supabase
       .from("blocked_slots")
       .select("*")
@@ -239,29 +214,18 @@ export default function AdminPage() {
       .order("start_time", { ascending: true });
 
     setBlockedSlots(blockedData || []);
-    const todaysBookings =
-      data?.filter((booking) => booking.booking_date?.split("T")[0] === today) || [];
-
-    const tomorrowsBookings =
-      data?.filter((booking) => booking.booking_date?.split("T")[0] === tomorrow) || [];
+    const todaysBookings = data?.filter((booking) => booking.booking_date?.split("T")[0] === today) || [];
+    const tomorrowsBookings = data?.filter((booking) => booking.booking_date?.split("T")[0] === tomorrow) || [];
 
     setTodaySlots(todaysBookings.length);
     setTomorrowSlots(tomorrowsBookings.length);
-    const cashCollectedToday = todaysBookings.reduce(
-      (sum, booking) => sum + Number(booking.cash_received || 0),
-      0
-    );
-
-    const upiCollectedToday = todaysBookings.reduce(
-      (sum, booking) => sum + Number(booking.upi_received || 0),
-      0
-    );
+    
+    const cashCollectedToday = todaysBookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
+    const upiCollectedToday = todaysBookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
 
     setTodayCashCollection(cashCollectedToday);
     setTodayUpiCollection(upiCollectedToday);
-    setTodayTotalCollection(
-      Number(cashCollectedToday) + Number(upiCollectedToday)
-    );
+    setTodayTotalCollection(Number(cashCollectedToday) + Number(upiCollectedToday));
   };
 
   const loadAvailableAdminSlots = async (date: string) => {
@@ -278,21 +242,13 @@ export default function AdminPage() {
     const availableTimes: string[] = [];
 
     adminTimeSlots.forEach((slot) => {
-      const selected = new Date(`2000-01-01 ${slot}`);
-
-      const selectedMinutes = selected.getHours() * 60 + selected.getMinutes();
-
+      const selectedMinutes = parseTimeToMinutes(slot);
       let court1Available = true;
       let court2Available = true;
 
-      // CHECK BOOKINGS
       bookings?.forEach((b: any) => {
-        const start = new Date(`2000-01-01T${b.start_time}`);
-
-        const startMinutes = start.getHours() * 60 + start.getMinutes();
-
+        const startMinutes = parseTimeToMinutes(b.start_time);
         const endMinutes = startMinutes + (b.duration_minutes || 60);
-
         const overlaps = selectedMinutes >= startMinutes && selectedMinutes < endMinutes;
 
         if (!overlaps) return;
@@ -301,24 +257,13 @@ export default function AdminPage() {
           court1Available = false;
           court2Available = false;
         }
-
-        if (b.court_number === "Court 1") {
-          court1Available = false;
-        }
-
-        if (b.court_number === "Court 2") {
-          court2Available = false;
-        }
+        if (b.court_number === "Court 1") court1Available = false;
+        if (b.court_number === "Court 2") court2Available = false;
       });
 
-      // CHECK BLOCKED SLOTS
       blocked?.forEach((b: any) => {
-        const start = new Date(`2000-01-01T${b.start_time}`);
-
-        const startMinutes = start.getHours() * 60 + start.getMinutes();
-
+        const startMinutes = parseTimeToMinutes(b.start_time);
         const endMinutes = startMinutes + (b.duration_minutes || 60);
-
         const overlaps = selectedMinutes >= startMinutes && selectedMinutes < endMinutes;
 
         if (!overlaps) return;
@@ -327,14 +272,8 @@ export default function AdminPage() {
           court1Available = false;
           court2Available = false;
         }
-
-        if (b.court_number === "Court 1") {
-          court1Available = false;
-        }
-
-        if (b.court_number === "Court 2") {
-          court2Available = false;
-        }
+        if (b.court_number === "Court 1") court1Available = false;
+        if (b.court_number === "Court 2") court2Available = false;
       });
 
       if (court1Available || court2Available) {
@@ -342,21 +281,14 @@ export default function AdminPage() {
       }
     });
 
-    const todayDate = new Date().toLocaleDateString("en-CA", {
-      timeZone: "Asia/Kolkata",
-    });
+    const todayDate = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
     if (date === todayDate) {
       const now = new Date();
-
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
       const futureSlots = availableTimes.filter((slot) => {
-        const parsed = new Date(`2000-01-01 ${slot}`);
-
-        const slotMinutes = parsed.getHours() * 60 + parsed.getMinutes();
-
-        return slotMinutes > currentMinutes;
+        return parseTimeToMinutes(slot) > currentMinutes;
       });
 
       setAvailableAdminSlots(futureSlots);
@@ -371,7 +303,8 @@ export default function AdminPage() {
       return;
     }
 
-    // OFFLINE BOOKING
+    const backend24HTime = convert12To24(slotTime);
+
     if (slotReason === "OFFLINE BOOKING") {
       let totalAmount = 0;
       let cashReceived = 0;
@@ -381,12 +314,10 @@ export default function AdminPage() {
         totalAmount = Number(offlineAmount);
         cashReceived = totalAmount;
       }
-
       if (offlinePaymentMethod === "UPI") {
         totalAmount = Number(offlineAmount);
         upiReceived = totalAmount;
       }
-
       if (offlinePaymentMethod === "Cash + UPI") {
         cashReceived = Number(offlineCashAmount || 0);
         upiReceived = Number(offlineUpiAmount || 0);
@@ -406,7 +337,7 @@ export default function AdminPage() {
             phone: "-",
             sport: "Football",
             booking_date: slotDate,
-            start_time: slotTime,
+            start_time: backend24HTime,
             duration_minutes: Number(slotDuration),
             booking_type: slotCourt === "Full Court" ? "Full Court" : "Half Court",
             court_number: slotCourt,
@@ -427,7 +358,6 @@ export default function AdminPage() {
       }
 
       alert("✅ Offline Booking Saved");
-
       await loadBookings();
 
       setSlotDate("");
@@ -442,12 +372,11 @@ export default function AdminPage() {
       return;
     }
 
-    // MAINTENANCE / TOURNAMENT
     const { data: existing } = await supabase
         .from("blocked_slots")
         .select("*")
         .eq("booking_date", slotDate)
-        .eq("start_time", slotTime)
+        .eq("start_time", backend24HTime)
         .eq("court_number", slotCourt);
 
     if (existing && existing.length > 0) {
@@ -460,7 +389,7 @@ export default function AdminPage() {
       .insert([
         {
           booking_date: slotDate,
-          start_time: slotTime,
+          start_time: backend24HTime,
           duration_minutes: Number(slotDuration),
           reason: slotReason,
           court_number: slotCourt,
@@ -473,7 +402,6 @@ export default function AdminPage() {
     }
 
     alert("✅ Slot saved");
-
     await loadBookings();
 
     if (slotDate) {
@@ -492,16 +420,11 @@ export default function AdminPage() {
     const confirmed = confirm("Cancel this booking?");
     if (!confirmed) return;
 
-    const { error } = await supabase
-      .from("bookings")
-      .delete()
-      .eq("id", id);
-
+    const { error } = await supabase.from("bookings").delete().eq("id", id);
     if (error) {
       alert(error.message);
       return;
     }
-
     loadBookings();
   };
 
@@ -533,89 +456,16 @@ export default function AdminPage() {
       Payment_Status: booking.payment_completed ? "Paid" : "Pending",
     }));
 
-    const totalRevenue = bookings.reduce((sum, booking) => sum + (booking.total_amount || 0), 0);
-    const totalAdvance = bookings.reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
-    const totalBalance = bookings.reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
-    const totalCashCollected = bookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
-    const totalUpiCollected = bookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
-    const totalCollection = totalCashCollected + totalUpiCollected;
-
     const workbook = XLSX.utils.book_new();
-    const today = new Date().toISOString().split("T")[0];
-
-    const worksheet = XLSX.utils.aoa_to_sheet([
-      ["SMES TURF BOOKING REPORT"],
-      [`Export Date: ${new Date().toLocaleString("en-IN")}`],
-      [],
-      ["Total Bookings", bookings.length],
-      ["Total Revenue (₹)", totalRevenue],
-      ["Total Advance Collected (₹)", totalAdvance],
-      ["Total Pending Balance (₹)", totalBalance],
-      ["Total Cash Collected (₹)", totalCashCollected],
-      ["Total UPI Collected (₹)", totalUpiCollected],
-      ["Total Collection (₹)", totalCollection],
-      [],
-      [],
-    ]);
-
-    XLSX.utils.sheet_add_json(worksheet, exportData, { origin: "A13" });
-
-    worksheet["!cols"] = [
-      { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 15 },
-      { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 15 },
-      { wch: 18 }, { wch: 15 }, { wch: 15 }, { wch: 15 },
-    ];
-
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Bookings");
-
-    // TODAY SUMMARY
-    const todayBookings = bookings.filter((booking) => booking.booking_date?.split("T")[0] === today);
-    const todayRevenue = todaysAdvance + todaysBalance;
-    const todayAdvance = todaysAdvance;
-    const todayBalance = todaysBalance;
-    const todayCash = todayBookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
-    const todayUpi = todayBookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
-    const todayCollection = todayCash + todayUpi;
-
-    const todaySheet = XLSX.utils.aoa_to_sheet([
-      ["TODAY'S COLLECTION"],
-      [],
-      ["Total Bookings", todayBookings.length],
-      ["Total Revenue (₹)", todayRevenue],
-      ["Advance Collected (₹)", todayAdvance],
-      ["Pending Balance (₹)", todayBalance],
-      ["Cash Collected (₹)", todayCash],
-      ["UPI Collected (₹)", todayUpi],
-      ["Total Collection (₹)", todayCollection],
-    ]);
-
-    XLSX.utils.book_append_sheet(workbook, todaySheet, "Today");
-
-    // MONTHLY SUMMARY
-    const monthlyCash = bookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
-    const monthlyUpi = bookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
-    const monthlyCollection = monthlyCash + monthlyUpi;
-
-    const monthlySheet = XLSX.utils.aoa_to_sheet([
-      ["MONTHLY COLLECTION"],
-      [],
-      ["Total Bookings", monthlyBookings],
-      ["Total Revenue (₹)", monthlyRevenue],
-      ["Advance Collected (₹)", monthlyAdvance],
-      ["Pending Balance (₹)", monthlyBalance],
-      ["Cash Collected (₹)", monthlyCash],
-      ["UPI Collected (₹)", monthlyUpi],
-      ["Total Collection (₹)", monthlyCollection],
-    ]);
-
-    XLSX.utils.book_append_sheet(workbook, monthlySheet, "Monthly");
-
-    XLSX.writeFile(workbook, `SMES_Bookings_${new Date().toISOString().split("T")[0]}.xlsx`);
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Roster System Records");
+    XLSX.writeFile(workbook, `SMES_Production_Report_${today}.xlsx`);
   };
 
   const handleLogout = () => {
     localStorage.removeItem("adminLoggedIn");
     localStorage.removeItem("adminLoginTime");
+    localStorage.removeItem("adminRole");
     router.push("/admin/login");
   };
 
@@ -626,14 +476,8 @@ export default function AdminPage() {
     let cash = 0;
     let upi = 0;
 
-    if (paymentType === "Full Cash") {
-      cash = balance;
-    }
-
-    if (paymentType === "Full UPI") {
-      upi = balance;
-    }
-
+    if (paymentType === "Full Cash") cash = balance;
+    if (paymentType === "Full UPI") upi = balance;
     if (paymentType === "Cash + UPI") {
       cash = Number(cashAmount);
       upi = Number(upiAmount);
@@ -661,7 +505,6 @@ export default function AdminPage() {
     }
 
     alert("✅ Payment Saved");
-
     setShowPaymentModal(false);
     setCashAmount("");
     setUpiAmount("");
@@ -698,11 +541,7 @@ export default function AdminPage() {
     const confirmed = confirm("Delete this blocked slot?");
     if (!confirmed) return;
 
-    const { error } = await supabase
-      .from("blocked_slots")
-      .delete()
-      .eq("id", id);
-
+    const { error } = await supabase.from("blocked_slots").delete().eq("id", id);
     if (error) {
       alert(error.message);
       return;
@@ -713,558 +552,310 @@ export default function AdminPage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased selection:bg-lime-400 selection:text-slate-950 p-4 sm:p-6 md:p-8 relative overflow-x-hidden">
-      
-      {/* Visual Top Glow FX */}
-      <div className="absolute top-0 inset-x-0 h-48 bg-gradient-to-b from-lime-500/10 via-transparent to-transparent pointer-events-none" />
+    <main className="min-h-screen bg-[#080a10] text-slate-100 font-sans antialiased p-4 sm:p-6 lg:p-8 relative selection:bg-purple-500 selection:text-white">
+      <div className="absolute top-0 inset-x-0 h-40 bg-gradient-to-b from-purple-500/5 via-transparent to-transparent pointer-events-none" />
 
       {/* Corporate Dashboard Header Block */}
-      <div className="relative flex flex-col sm:flex-row items-center justify-between gap-4 pb-6 mb-8 border-b border-white/10 z-10">
-        <div className="text-center sm:text-left">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-lime-400">// Control Center Tower</span>
-          <h1 className="text-2xl sm:text-4xl font-black tracking-tight uppercase italic text-white mt-1">
-            SMES Admin Panel
+      <header className="relative flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 mb-8 border-b border-slate-800 z-10">
+        <div className="text-left">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-purple-400 font-bold">// SECURE OPERATIONS HUB</span>
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight uppercase italic text-white mt-0.5">
+            SMES COMMAND TOWER {userRole === "sub_manager" && <span className="text-xs font-mono font-normal tracking-normal text-slate-500 not-italic ml-2 bg-slate-900 px-2 py-1 border border-slate-800">SUB-MANAGER SECURITY ACCESS</span>}
           </h1>
         </div>
 
-        <button
-          onClick={handleLogout}
-          className="w-full sm:w-auto bg-neutral-900 hover:bg-red-950 border border-neutral-800 hover:border-red-900 text-slate-300 hover:text-white px-5 py-3 rounded-xl font-mono text-xs uppercase tracking-wider transition-all min-h-[48px] flex items-center justify-center gap-2"
-        >
-          🚪 End Session
+        <button onClick={handleLogout} className="w-full md:w-auto bg-neutral-900 hover:bg-red-950 border border-neutral-800 hover:border-red-900/60 text-slate-300 hover:text-white px-5 py-3 rounded-xl font-mono text-xs uppercase tracking-wider transition-all min-h-[48px] flex items-center justify-center gap-2">
+          Term Session Access
         </button>
-      </div>
+      </header>
 
-      {/* Financial Analytics Grid - Optimized into pairs for mobile viewports */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3 sm:gap-4 mb-8 relative z-10">
-        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
-          <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Gross Orders</h3>
-          <p className="text-2xl font-black text-white mt-2">{bookings.length}</p>
-        </div>
+      {/* Fluid Real-time Analytics Cards Grid Framework */}
+      <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3 sm:gap-4 mb-8 relative z-10">
+        {[
+          { label: "Gross Orders", val: bookings.length, cls: "text-white" },
+          { label: "Today Slots", val: todaySlots, cls: "text-lime-400" },
+          { label: "Tomorrow Slots", val: tomorrowSlots, cls: "text-slate-400" }
+        ].map((card, i) => (
+          <div key={i} className="bg-slate-900/40 border border-slate-800 p-4 rounded-xl flex flex-col justify-between min-h-[105px]">
+            <h3 className="text-[9px] font-mono uppercase tracking-wider text-slate-500 font-bold">{card.label}</h3>
+            <p className={`text-2xl font-black mt-2 ${card.cls}`}>{card.val}</p>
+          </div>
+        ))}
 
-        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
-          <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Today Slots</h3>
-          <p className="text-2xl font-black text-lime-400 mt-2">{todaySlots}</p>
-        </div>
-
-        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
-          <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Tomorrow Slots</h3>
-          <p className="text-2xl font-black text-slate-300 mt-2">{tomorrowSlots}</p>
-        </div>
-
-        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
-          <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Today Advance</h3>
-          <p className="text-2xl font-black text-emerald-400 mt-2">₹{todaysAdvance}</p>
-        </div>
-
-        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
-          <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Today Balance</h3>
-          <p className="text-2xl font-black text-red-400 mt-2">₹{todaysBalance}</p>
-        </div>
-
-        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
-          <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Cash Vault</h3>
-          <p className="text-2xl font-black text-amber-400 mt-2">₹{todayCashCollection}</p>
-        </div>
-
-        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
-          <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">UPI Nodes</h3>
-          <p className="text-2xl font-black text-cyan-400 mt-2">₹{todayUpiCollection}</p>
-        </div>
-
-        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px] col-span-2 sm:col-span-1">
-          <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Total Collected</h3>
-          <p className="text-2xl font-black text-purple-400 mt-2">₹{todayTotalCollection}</p>
-        </div>
-      </div>
+        {userRole !== "sub_manager" && [
+          { label: "Today Advance", val: `₹${todaysAdvance}`, cls: "text-emerald-400" },
+          { label: "Today Balance", val: `₹${todaysBalance}`, cls: "text-red-400" },
+          { label: "Cash Vault", val: `₹${todayCashCollection}`, cls: "text-amber-400" },
+          { label: "UPI Nodes", val: `₹${todayUpiCollection}`, cls: "text-cyan-400" },
+          { label: "Total Collected", val: `₹${todayTotalCollection}`, cls: "text-purple-400" }
+        ].map((card, i) => (
+          <div key={i} className="bg-slate-900/40 border border-slate-800 p-4 rounded-xl flex flex-col justify-between min-h-[105px]">
+            <h3 className="text-[9px] font-mono uppercase tracking-wider text-slate-500 font-bold">{card.label}</h3>
+            <p className={`text-2xl font-black mt-2 ${card.cls}`}>{card.val}</p>
+          </div>
+        ))}
+      </section>
 
       {/* Control Action Toolbar Bar */}
-      <div className="flex flex-col md:flex-row items-stretch justify-between gap-4 mb-6 relative z-10">
-        <div className="w-full md:w-96 relative">
-          <input
-            type="text"
-            placeholder="🔍 Filter by name, phone or date..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full p-4 pl-10 rounded-xl bg-slate-900 text-white border border-white/5 focus:border-lime-400 outline-none placeholder:text-slate-600 text-base md:text-sm min-h-[52px]"
-          />
-          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-600 text-sm pointer-events-none"></span>
-        </div>
+      <section className="flex flex-col lg:flex-row items-stretch justify-between gap-4 mb-8 relative z-10">
+        <input
+          type="text"
+          placeholder="🔍 Scan global schedules (Name, phone, or ISO timeline data)..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full lg:w-96 p-4 rounded-xl bg-slate-900/60 text-white border border-slate-800 focus:border-purple-500 outline-none placeholder:text-slate-600 text-base md:text-sm min-h-[52px]"
+        />
 
-        {/* Tactical Action Buttons Row */}
-        <div className="grid grid-cols-2 gap-3 md:flex md:items-center">
-          <button
-            className="bg-purple-600 hover:bg-purple-500 text-white font-mono text-xs uppercase tracking-wider px-5 py-4 rounded-xl transition-all font-bold min-h-[52px]"
-            onClick={() => setShowManageSlots(true)}
-          >
+        {/* Unified Layout Display Segment Toggles (Excellent UX optimization on Mobile viewports) */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex bg-slate-950 p-1 border border-slate-800 rounded-xl font-mono text-xs">
+            <button onClick={() => setActiveTabPanel("LIVE")} className={`px-4 py-2 rounded-lg font-bold transition-all ${activeTabPanel === "LIVE" ? "bg-slate-800 text-purple-400" : "text-slate-500 hover:text-slate-300"}`}>
+              Active Rosters
+            </button>
+            <button onClick={() => setActiveTabPanel("BLOCKED")} className={`px-4 py-2 rounded-lg font-bold transition-all ${activeTabPanel === "BLOCKED" ? "bg-slate-800 text-purple-400" : "text-slate-500 hover:text-slate-300"}`}>
+              Ground Locks
+            </button>
+          </div>
+
+          <button className="bg-purple-600 hover:bg-purple-500 text-white font-mono text-xs uppercase tracking-wider px-5 py-3 rounded-xl transition-all font-bold min-h-[44px]" onClick={() => setShowManageSlots(true)}>
             ⚙️ Manage Slots
           </button>
-
-          <button
-            onClick={exportToExcel}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs uppercase tracking-wider px-5 py-4 rounded-xl transition-all font-bold min-h-[52px]"
-          >
-            📊 Export Excel
-          </button>
+          {userRole !== "sub_manager" && (
+            <button onClick={exportToExcel} className="bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs uppercase tracking-wider px-5 py-3 rounded-xl transition-all font-bold min-h-[44px]">
+              📊 Export Sheet
+            </button>
+          )}
         </div>
+      </section>
+
+      {/* PANEL CANVAS SWITCHER SHEET */}
+      <div className="relative z-10">
+        {activeTabPanel === "LIVE" ? (
+          <div className="bg-slate-900/20 border border-slate-800 rounded-xl overflow-hidden shadow-2xl backdrop-blur-md">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-800 bg-slate-900/80 text-[10px] font-mono uppercase tracking-widest text-slate-500 font-bold">
+                    <th className="p-4">Captain / Client</th>
+                    <th className="p-4">Contact</th>
+                    <th className="p-4">Match Date</th>
+                    <th className="p-4">Clock Window</th>
+                    <th className="p-4">Scope</th>
+                    <th className="p-4">Scale</th>
+                    <th className="p-4">Court Mapping</th>
+                    <th className="p-4">Total</th>
+                    <th className="p-4">Token</th>
+                    <th className="p-4">Due State</th>
+                    <th className="p-4 text-center">Execution Operations</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-900/60 text-xs font-mono font-medium">
+                  {bookings
+                    .filter((b) => {
+                      const s = searchTerm.toLowerCase();
+                      return b.customer_name?.toLowerCase().includes(s) || b.phone?.toLowerCase().includes(s) || b.booking_date?.toLowerCase().includes(s);
+                    })
+                    .map((booking) => {
+                      const isToday = booking.booking_date?.split("T")[0] === today;
+                      return (
+                        <tr key={booking.id} className={`hover:bg-white/[0.01] transition-colors text-slate-400 ${isToday ? "bg-purple-500/[0.02]" : ""}`}>
+                          <td className="p-4 font-sans text-sm font-bold text-white">{booking.customer_name}</td>
+                          <td className="p-4 text-slate-500">{booking.phone}</td>
+                          <td className="p-4 text-slate-300">{new Date(booking.booking_date).toLocaleDateString("en-GB")}</td>
+                          <td className="p-4 text-white font-bold">{new Date(`2000-01-01T${booking.start_time}`).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }).toUpperCase()}</td>
+                          <td className="p-4 text-slate-400">{booking.duration_minutes}m</td>
+                          <td className="p-4 uppercase text-slate-500">{booking.sport}</td>
+                          <td className="p-4">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${booking.booking_type === "Half Court" ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400" : "bg-purple-500/10 border border-purple-500/20 text-purple-400"}`}>
+                              {booking.booking_type || "Full Court"}
+                            </span>
+                          </td>
+                          <td className="p-4 text-slate-500">{booking.court_number || "-"}</td>
+                          <td className="p-4 text-slate-300 font-sans font-bold">₹{booking.total_amount}</td>
+                          <td className="p-4 text-emerald-400 font-sans">₹{booking.advance_amount || 0}</td>
+                          <td className="p-4 font-sans">
+                            {booking.balance_amount > 0 ? <span className="text-red-400 font-bold">₹{booking.balance_amount}</span> : <span className="text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider rounded">SETTLED</span>}
+                          </td>
+                          <td className="p-4 text-center">
+                            <div className="flex items-center justify-center gap-1.5 font-sans">
+                              {booking.balance_amount > 0 && <button onClick={() => { setSelectedBooking(booking); setShowPaymentModal(true); }} className="bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded-lg transition-all">Collect</button>}
+                              {booking.payment_completed && booking.customer_name !== "Offline Booking" && userRole !== "sub_manager" && <button onClick={() => resetPayment(booking)} className="bg-slate-800 hover:bg-slate-700 text-amber-400 text-[11px] px-2.5 py-1.5 rounded-lg font-mono uppercase tracking-wider">Reset</button>}
+                              {userRole !== "sub_manager" && <button onClick={() => deleteBooking(booking.id)} className="bg-slate-800 hover:bg-red-950 text-red-400 hover:text-white text-[11px] px-2.5 py-1.5 rounded-lg font-mono uppercase tracking-wider">Drop</button>}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-slate-900/20 border border-slate-800 rounded-xl overflow-hidden shadow-2xl backdrop-blur-md">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-800 bg-slate-900/80 text-[10px] font-mono uppercase tracking-widest text-slate-500 font-bold">
+                    <th className="p-4">Target Calendar Date</th>
+                    <th className="p-4">Time Block Window</th>
+                    <th className="p-4">Duration Range</th>
+                    <th className="p-4">Court Exclusion Mapping</th>
+                    <th className="p-4">Lock Rationale</th>
+                    {userRole !== "sub_manager" && <th className="p-4 text-center">Operational Releases</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-900/60 text-xs font-mono font-medium text-slate-400">
+                  {blockedSlots.map((slot) => (
+                    <tr key={slot.id} className="hover:bg-white/[0.01] transition-colors">
+                      <td className="p-4 text-slate-300">{new Date(slot.booking_date).toLocaleDateString("en-GB")}</td>
+                      <td className="p-4 text-white font-bold">{new Date(`2000-01-01T${slot.start_time}`).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }).toUpperCase()}</td>
+                      <td className="p-4">{slot.duration_minutes}m</td>
+                      <td className="p-4 text-cyan-400 font-bold">{slot.court_number}</td>
+                      <td className="p-4 font-sans text-slate-500">{slot.reason}</td>
+                      {userRole !== "sub_manager" && (
+                        <td className="p-4 text-center">
+                          <button onClick={() => deleteBlockedSlot(slot.id)} className="bg-slate-800 hover:bg-red-950 border border-slate-700 text-red-400 hover:text-white text-[11px] font-mono uppercase tracking-wider px-3 py-1.5 rounded-lg transition-all">Release</button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Operational Modal Overlay: Slot Configuration Panel */}
+      {/* Advanced System Management Control Overlay Sheet Modal */}
       {showManageSlots && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]">
-          <div className="bg-slate-900 border border-white/10 p-5 sm:p-6 rounded-2xl w-full max-w-md shadow-2xl space-y-4">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl w-full max-w-md shadow-2xl space-y-4">
             <div>
-              <h2 className="text-xl font-black uppercase tracking-wide text-white">
-                Slot Management
-              </h2>
-              <p className="text-slate-400 text-xs mt-0.5">Toggle field lock schedules or insert localized manual offline metrics.</p>
+              <h2 className="text-lg font-black uppercase tracking-wide text-white">Turf Ground Management</h2>
+              <p className="text-slate-500 text-xs">Register ground maintenance logs, system blocks, or walk-in offline bookings.</p>
             </div>
 
-            <div className="space-y-3.5">
+            <div className="space-y-3.5 text-xs">
               <div>
                 <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Target Date</label>
-                <input
-                  type="date"
-                  min={new Date().toISOString().split("T")[0]}
-                  value={slotDate}
-                  onChange={(e) => {
-                    setSlotDate(e.target.value);
-                    loadAvailableAdminSlots(e.target.value);
-                  }}
-                  className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 outline-none text-base md:text-sm font-medium"
-                  style={{ colorScheme: "dark" }}
-                />
+                <input type="date" min={new Date().toISOString().split("T")[0]} value={slotDate} onChange={(e) => { setSlotDate(e.target.value); loadAvailableAdminSlots(e.target.value); }} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-slate-800 outline-none font-medium text-base md:text-sm" style={{ colorScheme: "dark" }} />
               </div>
 
               <div>
-                <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Launch Time</label>
+                <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Launch clock</label>
                 <div className="relative">
-                  <select
-                    value={slotTime}
-                    onChange={(e) => {
-                      setSlotTime(e.target.value);
-                      if (slotDate) {
-                        loadAvailableCourts(slotDate, e.target.value);
-                      }
-                    }}
-                    className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 outline-none appearance-none text-base md:text-sm font-medium"
-                  >
-                    <option value="">Select Time</option>
-                    {availableAdminSlots.map((slot) => (
-                      <option key={slot} value={slot}>
-                        {slot}
-                      </option>
-                    ))}
+                  <select value={slotTime} onChange={(e) => { setSlotTime(e.target.value); if (slotDate) { loadAvailableCourts(slotDate, e.target.value); } }} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-slate-800 outline-none appearance-none text-base md:text-sm font-medium">
+                    <option value="">Select Target Clock Window</option>
+                    {availableAdminSlots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
                   </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">▼</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Window Length</label>
+                  <div className="relative">
+                    <select value={slotDuration} onChange={(e) => setSlotDuration(Number(e.target.value))} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-slate-800 outline-none appearance-none text-base md:text-sm font-medium">
+                      <option value={60}>60 Min Grid</option>
+                      <option value={90}>90 Min Grid</option>
+                      <option value={120}>120 Min Grid</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">▼</div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Target Court</label>
+                  <div className="relative">
+                    <select value={slotCourt} onChange={(e) => setSlotCourt(e.target.value)} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-slate-800 outline-none appearance-none text-base md:text-sm font-medium">
+                      {availableCourts.length === 0 ? <option value="">None Available</option> : availableCourts.map((court) => <option key={court} value={court}>{court}</option>)}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">▼</div>
+                  </div>
                 </div>
               </div>
 
               <div>
-                <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Duration Segment</label>
+                <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Lock Profile Strategy</label>
                 <div className="relative">
-                  <select
-                    value={slotDuration}
-                    onChange={(e) => setSlotDuration(Number(e.target.value))}
-                    className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 outline-none appearance-none text-base md:text-sm font-medium"
-                  >
-                    <option value={60}>60 Minutes</option>
-                    <option value={90}>90 Minutes</option>
-                    <option value={120}>120 Minutes</option>
+                  <select value={slotReason} onChange={(e) => setSlotReason(e.target.value)} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-slate-800 outline-none appearance-none text-base md:text-sm font-medium">
+                    <option value="MAINTENANCE">Scheduled Maintenance Work</option>
+                    <option value="TOURNAMENT">Tournament Bracket Reservation</option>
+                    <option value="OFFLINE BOOKING">On-Field Offline Booking Allocation</option>
                   </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Allocated Court</label>
-                <div className="relative">
-                  <select
-                    value={slotCourt}
-                    onChange={(e) => setSlotCourt(e.target.value)}
-                    className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 outline-none appearance-none text-base md:text-sm font-medium"
-                  >
-                    {availableCourts.length === 0 ? (
-                      <option value="">No Courts Available</option>
-                    ) : (
-                      availableCourts.map((court) => (
-                        <option key={court} value={court}>
-                          {court}
-                        </option>
-                      ))
-                    )}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Reason Profile</label>
-                <div className="relative">
-                  <select
-                    value={slotReason}
-                    onChange={(e) => setSlotReason(e.target.value)}
-                    className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 outline-none appearance-none text-base md:text-sm font-medium"
-                  >
-                    <option value="MAINTENANCE">Maintenance</option>
-                    <option value="TOURNAMENT">Tournament</option>
-                    <option value="OFFLINE BOOKING">Offline Booking</option>
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">▼</div>
                 </div>
               </div>
 
               {slotReason === "OFFLINE BOOKING" && (
-                <div className="p-3 bg-slate-950 border border-white/5 rounded-xl space-y-3">
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
                   {offlinePaymentMethod !== "Cash + UPI" && (
-                    <input
-                      type="number"
-                      placeholder="Amount Received (₹)"
-                      value={offlineAmount}
-                      onChange={(e) => setOfflineAmount(e.target.value)}
-                      className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-lime-400 outline-none text-base md:text-sm font-medium"
-                    />
+                    <input type="number" placeholder="Total Amount Captured (₹)" value={offlineAmount} onChange={(e) => setOfflineAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-slate-800 outline-none text-base md:text-sm font-medium" />
                   )}
-
                   <div className="relative">
-                    <select
-                      value={offlinePaymentMethod}
-                      onChange={(e) => setOfflinePaymentMethod(e.target.value)}
-                      className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-lime-400 outline-none appearance-none text-base md:text-sm font-medium"
-                    >
-                      <option value="Cash">Cash</option>
-                      <option value="UPI">UPI</option>
-                      <option value="Cash + UPI">Cash + UPI</option>
+                    <select value={offlinePaymentMethod} onChange={(e) => setOfflinePaymentMethod(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-slate-800 outline-none appearance-none text-base md:text-sm font-medium">
+                      <option value="Cash">Pure Cash Ledger</option>
+                      <option value="UPI">Direct UPI Node</option>
+                      <option value="Cash + UPI">Split Settlement Route (Cash + UPI)</option>
                     </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">▼</div>
                   </div>
-
                   {offlinePaymentMethod === "Cash + UPI" && (
                     <div className="grid grid-cols-2 gap-2">
-                      <input
-                        type="number"
-                        placeholder="Cash Split"
-                        value={offlineCashAmount}
-                        onChange={(e) => setOfflineCashAmount(e.target.value)}
-                        className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-lime-400 outline-none text-base md:text-sm font-medium"
-                      />
-                      <input
-                        type="number"
-                        placeholder="UPI Split"
-                        value={offlineUpiAmount}
-                        onChange={(e) => setOfflineUpiAmount(e.target.value)}
-                        className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-lime-400 outline-none text-base md:text-sm font-medium"
-                      />
+                      <input type="number" placeholder="Cash Fraction" value={offlineCashAmount} onChange={(e) => setOfflineCashAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-slate-800 outline-none text-base md:text-sm font-medium" />
+                      <input type="number" placeholder="UPI Fraction" value={offlineUpiAmount} onChange={(e) => setOfflineUpiAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-slate-800 outline-none text-base md:text-sm font-medium" />
                     </div>
                   )}
                 </div>
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <button
-                onClick={saveBlockedSlot}
-                className="w-full bg-lime-400 hover:bg-lime-300 text-slate-950 font-mono text-xs uppercase tracking-wider py-3 font-black transition-all min-h-[44px]"
-              >
-                Save
-              </button>
-              <button
-                onClick={() => setShowManageSlots(false)}
-                className="w-full bg-neutral-800 hover:bg-neutral-700 text-slate-300 font-mono text-xs uppercase tracking-wider py-3 transition-all min-h-[44px]"
-              >
-                Cancel
-              </button>
+            <div className="grid grid-cols-2 gap-3 pt-2 font-mono text-xs">
+              <button onClick={saveBlockedSlot} className="w-full bg-purple-600 hover:bg-purple-500 text-white uppercase tracking-wider py-3.5 font-bold transition-all rounded-xl">Commit Log</button>
+              <button onClick={() => setShowManageSlots(false)} className="w-full bg-neutral-800 hover:bg-neutral-700 text-slate-300 uppercase tracking-wider py-3.5 transition-all rounded-xl">Cancel</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Filter Readout Status Label */}
-      <p className="mb-3 text-xs font-mono text-slate-400 tracking-wide uppercase px-1">
-        Showing {
-          bookings.filter((booking) => {
-            const search = searchTerm.toLowerCase();
-            return (
-              booking.customer_name?.toLowerCase().includes(search) ||
-              booking.phone?.toLowerCase().includes(search) ||
-              booking.booking_date?.toLowerCase().includes(search)
-            );
-          }).length
-        } booking(s) active
-      </p>
-
-      {/* Main Responsive Dashboard Manifest Table */}
-      <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden shadow-2xl relative z-10 backdrop-blur-xl">
-        <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-white/10">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-white/10 bg-slate-900/80 text-[10px] font-mono uppercase tracking-widest text-slate-400">
-                <th className="p-4 font-bold">Client</th>
-                <th className="p-4 font-bold">Phone</th>
-                <th className="p-4 font-bold">Schedule</th>
-                <th className="p-4 font-bold">Time</th>
-                <th className="p-4 font-bold">Length</th>
-                <th className="p-4 font-bold">Sport</th>
-                <th className="p-4 font-bold">Scale</th>
-                <th className="p-4 font-bold">Court</th>
-                <th className="p-4 font-bold">Total</th>
-                <th className="p-4 font-bold">Advance</th>
-                <th className="p-4 font-bold">Due Balance</th>
-                <th className="p-4 font-bold text-center">Operations</th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-white/5 text-sm font-medium">
-              {bookings
-                .filter((booking) => {
-                  const search = searchTerm.toLowerCase();
-                  return (
-                    booking.customer_name?.toLowerCase().includes(search) ||
-                    booking.phone?.toLowerCase().includes(search) ||
-                    booking.booking_date?.toLowerCase().includes(search)
-                  );
-                })
-                .map((booking) => {
-                  const bookingDate = booking.booking_date?.split("T")[0];
-
-                  let rowColor = "bg-transparent";
-                  if (bookingDate === today) {
-                    rowColor = "bg-lime-500/[0.04]";
-                  } else if (bookingDate === tomorrow) {
-                    rowColor = "bg-amber-500/[0.03]";
-                  }
-
-                  return (
-                    <tr key={booking.id} className={`${rowColor} hover:bg-white/[0.02] transition-colors text-slate-300`}>
-                      <td className="p-4 font-bold text-white whitespace-nowrap">
-                        {booking.customer_name}
-                      </td>
-
-                      <td className="p-4 font-mono text-xs whitespace-nowrap text-slate-400">{booking.phone}</td>
-
-                      <td className="p-4 font-mono text-xs whitespace-nowrap">
-                        <span className="text-slate-200">{new Date(bookingDate).toLocaleDateString("en-GB")}</span>
-                        {bookingDate === today && (
-                          <span className="ml-2 px-2 py-0.5 rounded-full bg-lime-400/10 border border-lime-400/30 text-lime-400 text-[9px] font-black uppercase tracking-wide">
-                            Today
-                          </span>
-                        )}
-                        {bookingDate === tomorrow && (
-                          <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-400 text-[9px] font-black uppercase tracking-wide">
-                            Tomorrow
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="p-4 font-mono text-xs text-white whitespace-nowrap">
-                        {new Date(`2000-01-01T${booking.start_time}`).toLocaleTimeString("en-IN", {
-                          hour: "numeric",
-                          minute: "2-digit",
-                          hour12: true,
-                        })}
-                      </td>
-
-                      <td className="p-4 text-xs whitespace-nowrap">{booking.duration_minutes || 60} mins</td>
-
-                      <td className="p-4 text-xs uppercase tracking-wider font-semibold text-slate-400 whitespace-nowrap">
-                        {booking.sport}
-                      </td>
-
-                      <td className="p-4 whitespace-nowrap">
-                        <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-mono uppercase tracking-wider ${
-                          booking.booking_type === "Half Court"
-                            ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400"
-                            : "bg-purple-500/10 border border-purple-500/20 text-purple-400"
-                        }`}>
-                          {booking.booking_type || "Full Court"}
-                        </span>
-                      </td>
-
-                      <td className="p-4 font-mono text-xs text-slate-400 whitespace-nowrap">{booking.court_number || "-"}</td>
-                      
-                      <td className="p-4 text-slate-200 font-mono whitespace-nowrap">₹{booking.total_amount}</td>
-
-                      <td className="p-4 text-emerald-400 font-mono whitespace-nowrap">₹{booking.advance_amount || 0}</td>
-
-                      <td className="p-4 font-mono whitespace-nowrap">
-                        {booking.balance_amount > 0 ? (
-                          <span className="text-red-400 font-bold">₹{booking.balance_amount}</span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono uppercase tracking-widest">
-                            Paid
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="p-4 whitespace-nowrap text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          {booking.balance_amount > 0 && (
-                            <button
-                              onClick={() => {
-                                setSelectedBooking(booking);
-                                setShowPaymentModal(true);
-                              }}
-                              className="bg-lime-400 hover:bg-lime-300 text-slate-950 text-xs font-mono uppercase font-black px-2.5 py-1.5 transition-all"
-                            >
-                              💰 Collect
-                            </button>
-                          )}
-
-                          {booking.payment_completed && booking.customer_name !== "Offline Booking" && (
-                            <button
-                              onClick={() => resetPayment(booking)}
-                              className="bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-amber-400 text-xs font-mono uppercase px-2.5 py-1.5 transition-all"
-                            >
-                              🔄 Reset
-                            </button>
-                          )}
-
-                          <button
-                            onClick={() => deleteBooking(booking.id)}
-                            className="bg-neutral-800 hover:bg-red-950 border border-neutral-700 hover:border-red-900 text-red-400 hover:text-white text-xs font-mono uppercase px-2.5 py-1.5 transition-all"
-                          >
-                            ❌ Cancel
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Blocked Slots Matrix List */}
-      <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden shadow-2xl mt-8 relative z-10 backdrop-blur-xl">
-        <div className="p-4 bg-slate-900/80 border-b border-white/10 flex items-center justify-between">
-          <h2 className="text-lg font-black uppercase tracking-wide text-white">
-            🚫 Excluded Field Blocks
-          </h2>
-        </div>
-
-        <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-white/10">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-white/10 bg-slate-950/40 text-[10px] font-mono uppercase tracking-widest text-slate-400">
-                <th className="p-4 font-bold">Target Date</th>
-                <th className="p-4 font-bold">Time Block</th>
-                <th className="p-4 font-bold">Duration</th>
-                <th className="p-4 font-bold">Court Section</th>
-                <th className="p-4 font-bold">Block Reason</th>
-                <th className="p-4 font-bold text-center">Operations</th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-white/5 text-sm font-medium text-slate-300">
-              {blockedSlots.map((slot) => (
-                <tr key={slot.id} className="hover:bg-white/[0.01] transition-colors">
-                  <td className="p-4 font-mono text-xs text-slate-200">
-                    {new Date(slot.booking_date).toLocaleDateString("en-GB")}
-                  </td>
-
-                  <td className="p-4 font-mono text-xs text-white">
-                    {new Date(`2000-01-01T${slot.start_time}`).toLocaleTimeString("en-IN", {
-                      hour: "numeric",
-                      minute: "2-digit",
-                      hour12: true,
-                    })}
-                  </td>
-
-                  <td className="p-4 text-xs font-mono">{slot.duration_minutes} mins</td>
-
-                  <td className="p-4 font-mono text-xs font-bold text-cyan-400">
-                    {slot.court_number}
-                  </td>
-
-                  <td className="p-4 font-mono text-xs text-slate-400">
-                    {slot.reason}
-                  </td>
-
-                  <td className="p-4 text-center whitespace-nowrap">
-                    <button
-                      onClick={() => deleteBlockedSlot(slot.id)}
-                      className="bg-neutral-800 hover:bg-red-950 border border-neutral-700 hover:border-red-900 text-red-400 hover:text-white text-xs font-mono uppercase px-3 py-1.5 transition-all"
-                    >
-                      🗑️ Release
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Operational Modal Overlay: Payment Capture Gateway */}
+      {/* Payment Settlement Modal Gateway Panel Overlay */}
       {showPaymentModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]">
-          <div className="bg-slate-900 border border-white/10 p-5 sm:p-6 rounded-2xl w-full max-w-sm shadow-2xl space-y-4">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl w-full max-w-sm shadow-2xl space-y-4">
             <div>
-              <h2 className="text-xl font-black uppercase tracking-wide text-white">
-                💰 Balance Clearing
-              </h2>
-              <p className="text-slate-400 text-xs mt-0.5">Collect the remaining match dues directly below.</p>
+              <h2 className="text-base font-black uppercase tracking-wide text-white">💰 Execute Balance Ledger</h2>
+              <p className="text-slate-500 text-xs mt-0.5">Collect the remaining match outstanding dues directly below.</p>
             </div>
 
-            <div className="p-4 bg-slate-950 border border-white/5 rounded-xl flex justify-between items-center">
-              <span className="text-xs font-mono uppercase tracking-wider text-slate-400">Outstanding Balance</span>
-              <span className="text-lg font-black text-red-400">₹{selectedBooking?.balance_amount || 0}</span>
+            <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl flex justify-between items-center font-mono text-xs">
+              <span className="text-slate-400 uppercase tracking-wider">Unsettled Balance</span>
+              <span className="text-base font-black text-red-400">₹{selectedBooking?.balance_amount || 0}</span>
             </div>
 
-            <div className="space-y-3.5">
+            <div className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Payment Route</label>
+                <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Collection Route</label>
                 <div className="relative">
-                  <select
-                    value={paymentType}
-                    onChange={(e) => setPaymentType(e.target.value)}
-                    className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 outline-none appearance-none text-base md:text-sm font-medium"
-                  >
-                    <option value="Full Cash">Full Cash</option>
-                    <option value="Full UPI">Full UPI</option>
-                    <option value="Cash + UPI">Cash + UPI</option>
+                  <select value={paymentType} onChange={(e) => setPaymentType(e.target.value)} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-slate-800 outline-none appearance-none text-base md:text-sm font-medium">
+                    <option value="Full Cash">Cash Ledger Settlement</option>
+                    <option value="Full UPI">UPI Endpoint Settlement</option>
+                    <option value="Cash + UPI">Split Fraction Ledger (Cash + UPI)</option>
                   </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">▼</div>
                 </div>
               </div>
 
               {paymentType === "Cash + UPI" && (
-                <div className="grid grid-cols-2 gap-2 p-3 bg-slate-950 border border-white/5 rounded-xl">
-                  <input
-                    type="number"
-                    placeholder="Cash Amount"
-                    value={cashAmount}
-                    onChange={(e) => setCashAmount(e.target.value)}
-                    className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-lime-400 outline-none text-base md:text-sm font-medium"
-                  />
-                  <input
-                    type="number"
-                    placeholder="UPI Amount"
-                    value={upiAmount}
-                    onChange={(e) => setUpiAmount(e.target.value)}
-                    className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-lime-400 outline-none text-base md:text-sm font-medium"
-                  />
+                <div className="grid grid-cols-2 gap-2 p-3 bg-slate-950 border border-slate-800 rounded-xl">
+                  <input type="number" placeholder="Cash Vol" value={cashAmount} onChange={(e) => setCashAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-slate-800 outline-none text-base md:text-sm font-medium" />
+                  <input type="number" placeholder="UPI Vol" value={upiAmount} onChange={(e) => setUpiAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-slate-800 outline-none text-base md:text-sm font-medium" />
                 </div>
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <button
-                onClick={savePayment}
-                className="w-full bg-lime-400 hover:bg-lime-300 text-slate-950 font-mono text-xs uppercase tracking-wider py-3 font-black transition-all min-h-[44px]"
-              >
-                Save Payment
-              </button>
-              <button
-                onClick={() => {
-                  setShowPaymentModal(false);
-                  setSelectedBooking(null);
-                }}
-                className="w-full bg-neutral-800 hover:bg-neutral-700 text-slate-300 font-mono text-xs uppercase tracking-wider py-3 transition-all min-h-[44px]"
-              >
-                Cancel
-              </button>
+            <div className="grid grid-cols-2 gap-3 pt-2 font-mono text-xs">
+              <button onClick={savePayment} className="w-full bg-purple-600 hover:bg-purple-500 text-white uppercase tracking-wider py-3.5 font-bold transition-all rounded-xl">Save Settlement</button>
+              <button onClick={() => { setShowPaymentModal(false); setSelectedBooking(null); }} className="w-full bg-neutral-800 hover:bg-neutral-700 text-slate-300 uppercase tracking-wider py-3.5 transition-all rounded-xl">Cancel</button>
             </div>
           </div>
         </div>
