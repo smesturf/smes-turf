@@ -355,7 +355,7 @@ export default function Home() {
         start_time: convert12to24(startTime), 
         duration_minutes: Number(duration),
         total_amount: totalAmount,
-        advance_amount: 200,                  // Logged into DB for balanced book ledger auditing
+        advance_amount: 200,                  
         balance_amount: totalAmount - 200,
         razorpay_order_id: paymentData?.razorpay_order_id,
         razorpay_payment_id: paymentData?.razorpay_payment_id,
@@ -376,20 +376,19 @@ export default function Home() {
 
     const adminText = `🔔 *NEW BOOKING RECEIVED*\n\n🏟️ *SMES Sports Academy*\n\n👤 *Customer:* ${name}\n📞 *Phone:* ${phone}\n\n📅 *Date:* ${bookingDate}\n🕒 *Time:* ${startTime}\n⏱ *Duration:* ${duration} Minutes\n\n🏟 *Court:* ${courtNumber}\n🏏 *Sport:* ${sport}\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200\n💳 *Balance:* ₹${balanceAmount}\n\n💳 *Payment Status:* PAID\n\n*Booking ID:* ${bookingId}`;
 
-    // Find this section near the bottom of your handleBooking function and update:
-try {
-  await fetch("/api/whatsapp", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      customerPhone: `91${phone}`, // Automatically prepends India's country code to your 10-digit state
-      customerMessage: clientText,
-      adminMessage: adminText
-    })
-  });
-} catch (e) {
-  console.log("Notification route connection failed.");
-}
+    try {
+      await fetch("/api/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerPhone: `91${phone}`, 
+          customerMessage: clientText,
+          adminMessage: adminText
+        })
+      });
+    } catch (e) {
+      console.log("Notification route connection failed.");
+    }
 
     alert("✅ Payment Successful & Booking Saved! Confirmations dispatched via WhatsApp.");
 
@@ -593,6 +592,22 @@ try {
               </div>
 
               <div className="space-y-2">
+                <label className="text-xs font-mono uppercase text-neutral-400">Session Length</label>
+                <div className="relative">
+                  <select
+                    value={duration}
+                    onChange={(e) => setDuration(e.target.value)}
+                    className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm"
+                  >
+                    <option value="60">60 Minutes (- ₹{bookingType === "Half Court" ? 750 : 1250})</option>
+                    <option value="90">90 Minutes (- ₹{bookingType === "Half Court" ? 1100 : 1850})</option>
+                    <option value="120">120 Minutes (- ₹{bookingType === "Half Court" ? 1500 : 2500})</option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
                 <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Slot</label>
                 <div className="relative">
                   <select
@@ -602,7 +617,6 @@ try {
                   >
                     {allSlots
                       .filter((slot) => {
-                        // Look-Ahead Validation Loop
                         const segmentsNeeded = Number(duration) / 30;
                         const slotIndex = allSlots.indexOf(slot);
                         for (let i = 0; i < segmentsNeeded; i++) {
@@ -632,21 +646,6 @@ try {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-mono uppercase text-neutral-400">Session Length</label>
-                <div className="relative">
-                  <select
-                    value={duration}
-                    onChange={(e) => setDuration(e.target.value)}
-                    className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm"
-                  >
-                    <option value="60">60 Minutes (- ₹{bookingType === "Half Court" ? 750 : 1250})</option>
-                    <option value="90">90 Minutes (- ₹{bookingType === "Half Court" ? 1100 : 1850})</option>
-                    <option value="120">120 Minutes (- ₹{bookingType === "Half Court" ? 1500 : 2500})</option>
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -710,9 +709,7 @@ try {
           {["💡 Floodlights", "🚗 Secure Parking", "🧼 Washrooms", "🚰 Pure Water", "⏳ Open 24 Hours"].map((facility, index) => (
             <div 
               key={index} 
-              className={`border border-neutral-900 p-3 sm:p-4 font-mono text-xs text-neutral-400 uppercase tracking-wider bg-neutral-900/10 ${
-                index === 4 ? "col-span-2 sm:col-span-1" : ""
-              }`}
+              className="bg-neutral-900/40 border border-neutral-900 p-4 font-mono text-xs text-neutral-400 uppercase tracking-wider"
             >
               {facility}
             </div>
@@ -720,13 +717,14 @@ try {
         </div>
       </section>
 
+      {/* FOOTER RESTORED EXACTLY AS REQUESTED */}
       <footer className="w-full bg-black border-t border-neutral-900 py-12 px-4 sm:py-16 sm:px-6 text-left relative z-10">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start gap-6 sm:gap-8">
           <div className="space-y-2">
             <p className="text-xs font-mono text-neutral-400 uppercase tracking-widest">SMES Sports Academy Ground Hub</p>
-            <p className="text-xs text-neutral-600 font-mono">© 2026 Built for competitive team sports action and weekend fun.</p>
+            <p className="text-[10px] text-neutral-600 font-mono">© 2026 Built for competitive team sports action and weekend fun.</p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-y-2 gap-x-6 md:gap-x-8 font-mono text-xs text-neutral-400 uppercase">
+          <div className="flex flex-col sm:flex-row gap-y-2 gap-x-6 md:gap-x-8 font-mono text-[10px] text-neutral-400 uppercase tracking-widest">
             <div><span className="text-lime-400">P:</span> +91 8453095258</div>
             <div><span className="text-lime-400">E:</span> sports@smesturf.com</div>
             <div><span className="text-lime-400">L:</span> Mysuru, Karnataka</div>

@@ -49,8 +49,14 @@ export default function AdminPage() {
     "Court 1",
     "Court 2",
   ]);
+
   const loadAvailableCourts = async (date: string, time: string) => {
-    const { data } = await supabase
+    const { data: bookings } = await supabase
+      .from("bookings")
+      .select("*")
+      .eq("booking_date", date);
+
+    const { data: blocked } = await supabase
       .from("blocked_slots")
       .select("*")
       .eq("booking_date", date);
@@ -61,36 +67,37 @@ export default function AdminPage() {
       "Court 2",
     ];
 
-    const selected = new Date(`2000-01-01 ${time}`);
+    const convertToMins = (t: string) => {
+      if (!t) return 0;
+      const [timePart, ampm] = t.split(" ");
+      let [h, m] = timePart.split(":").map(Number);
+      if (ampm === "PM" && h !== 12) h += 12;
+      if (ampm === "AM" && h === 12) h = 0;
+      return h * 60 + m;
+    };
 
-    const selectedMinutes = selected.getHours() * 60 + selected.getMinutes();
+    const selectedMinutes = convertToMins(time);
 
-    data?.forEach((b: any) => {
-      const start = new Date(`2000-01-01T${b.start_time}`);
-
-      const startMinutes = start.getHours() * 60 + start.getMinutes();
-
+    [...(bookings || []), ...(blocked || [])].forEach((b: any) => {
+      const startMinutes = convertToMins(b.start_time);
       const endMinutes = startMinutes + (b.duration_minutes || 60);
 
       const overlaps = selectedMinutes >= startMinutes && selectedMinutes < endMinutes;
 
       if (!overlaps) return;
 
-      if (b.court_number === "Court 1") {
-        courts = courts.filter((c) => c !== "Court 1" && c !== "Full Court");
-      }
-
-      if (b.court_number === "Court 2") {
-        courts = courts.filter((c) => c !== "Court 2" && c !== "Full Court");
-      }
-
-      if (b.court_number === "Full Court") {
+      if (b.booking_type === "Full Court" || b.court_number === "Full Court" || b.court_number === "Both Courts") {
         courts = [];
+      } else if (b.court_number === "Court 1") {
+        courts = courts.filter((c) => c !== "Court 1" && c !== "Full Court");
+      } else if (b.court_number === "Court 2") {
+        courts = courts.filter((c) => c !== "Court 2" && c !== "Full Court");
       }
     });
 
     setAvailableCourts(courts);
   };
+
   const [availableAdminSlots, setAvailableAdminSlots] = useState<string[]>([]);
   const [slotDuration, setSlotDuration] = useState(60);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -239,18 +246,11 @@ export default function AdminPage() {
       .order("start_time", { ascending: true });
 
     setBlockedSlots(blockedData || []);
-
     const todaysBookings =
-      data?.filter((booking) => {
-        const normDate = new Date(booking.booking_date).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-        return normDate === today;
-      }) || [];
+      data?.filter((booking) => booking.booking_date?.split("T")[0] === today) || [];
 
     const tomorrowsBookings =
-      data?.filter((booking) => {
-        const normDate = new Date(booking.booking_date).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-        return normDate === tomorrow;
-      }) || [];
+      data?.filter((booking) => booking.booking_date?.split("T")[0] === tomorrow) || [];
 
     setTodaySlots(todaysBookings.length);
     setTomorrowSlots(tomorrowsBookings.length);
@@ -284,62 +284,35 @@ export default function AdminPage() {
 
     const availableTimes: string[] = [];
 
-    adminTimeSlots.forEach((slot) => {
-      const selected = new Date(`2000-01-01 ${slot}`);
+    const convertToMins = (t: string) => {
+      const [timePart, ampm] = t.split(" ");
+      let [h, m] = timePart.split(":").map(Number);
+      if (ampm === "PM" && h !== 12) h += 12;
+      if (ampm === "AM" && h === 12) h = 0;
+      return h * 60 + m;
+    };
 
-      const selectedMinutes = selected.getHours() * 60 + selected.getMinutes();
+    adminTimeSlots.forEach((slot) => {
+      const selectedMinutes = convertToMins(slot);
 
       let court1Available = true;
       let court2Available = true;
 
-      // CHECK BOOKINGS
-      bookings?.forEach((b: any) => {
-        const start = new Date(`2000-01-01T${b.start_time}`);
-
-        const startMinutes = start.getHours() * 60 + start.getMinutes();
-
+      // CHECK BOOKINGS & BLOCKS
+      [...(bookings || []), ...(blocked || [])].forEach((b: any) => {
+        const startMinutes = convertToMins(b.start_time);
         const endMinutes = startMinutes + (b.duration_minutes || 60);
 
         const overlaps = selectedMinutes >= startMinutes && selectedMinutes < endMinutes;
 
         if (!overlaps) return;
 
-        if (b.booking_type === "Full Court" || b.court_number === "Full Court") {
+        if (b.booking_type === "Full Court" || b.court_number === "Full Court" || b.court_number === "Both Courts") {
           court1Available = false;
           court2Available = false;
-        }
-
-        if (b.court_number === "Court 1") {
+        } else if (b.court_number === "Court 1") {
           court1Available = false;
-        }
-
-        if (b.court_number === "Court 2") {
-          court2Available = false;
-        }
-      });
-
-      // CHECK BLOCKED SLOTS
-      blocked?.forEach((b: any) => {
-        const start = new Date(`2000-01-01T${b.start_time}`);
-
-        const startMinutes = start.getHours() * 60 + start.getMinutes();
-
-        const endMinutes = startMinutes + (b.duration_minutes || 60);
-
-        const overlaps = selectedMinutes >= startMinutes && selectedMinutes < endMinutes;
-
-        if (!overlaps) return;
-
-        if (b.court_number === "Full Court") {
-          court1Available = false;
-          court2Available = false;
-        }
-
-        if (b.court_number === "Court 1") {
-          court1Available = false;
-        }
-
-        if (b.court_number === "Court 2") {
+        } else if (b.court_number === "Court 2") {
           court2Available = false;
         }
       });
@@ -355,14 +328,10 @@ export default function AdminPage() {
 
     if (date === todayDate) {
       const now = new Date();
-
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
       const futureSlots = availableTimes.filter((slot) => {
-        const parsed = new Date(`2000-01-01 ${slot}`);
-
-        const slotMinutes = parsed.getHours() * 60 + parsed.getMinutes();
-
+        const slotMinutes = convertToMins(slot);
         return slotMinutes > currentMinutes;
       });
 
@@ -375,6 +344,46 @@ export default function AdminPage() {
   const saveBlockedSlot = async () => {
     if (!slotDate || !slotTime) {
       alert("Please select date and time");
+      return;
+    }
+
+    const { data: existingBookings } = await supabase
+      .from("bookings")
+      .select("*")
+      .eq("booking_date", slotDate);
+
+    const { data: existingBlocks } = await supabase
+      .from("blocked_slots")
+      .select("*")
+      .eq("booking_date", slotDate);
+
+    const convertToMins = (time: string) => {
+      const [timePart, ampm] = time.split(" ");
+      let [hours, minutes] = timePart.split(":").map(Number);
+      if (ampm === "PM" && hours !== 12) hours += 12;
+      if (ampm === "AM" && hours === 12) hours = 0;
+      return hours * 60 + minutes;
+    };
+
+    const selectedStart = convertToMins(slotTime);
+    const selectedEnd = selectedStart + Number(slotDuration);
+
+    const allBusyItems = [...(existingBookings || []), ...(existingBlocks || [])];
+    
+    const isOverlapping = allBusyItems.some((item) => {
+      const itemStart = convertToMins(item.start_time);
+      const itemEnd = itemStart + (item.duration_minutes || 60);
+      
+      const overlaps = selectedStart < itemEnd && selectedEnd > itemStart;
+      if (!overlaps) return false;
+
+      if (slotCourt === "Full Court" || slotCourt === "Both Courts") return true;
+      if (item.booking_type === "Full Court" || item.court_number === "Full Court" || item.court_number === "Both Courts") return true;
+      return item.court_number === slotCourt;
+    });
+
+    if (isOverlapping) {
+      alert("⚠️ This court is already booked or blocked at the selected time.");
       return;
     }
 
@@ -405,7 +414,7 @@ export default function AdminPage() {
         return;
       }
 
-      const { data: insertedData, error } = await supabase
+      const { error } = await supabase
         .from("bookings")
         .insert([
           {
@@ -426,32 +435,11 @@ export default function AdminPage() {
             upi_received: upiReceived,
             payment_completed: true,
           },
-        ]).select();
+        ]);
 
       if (error) {
         alert(error.message);
         return;
-      }
-
-      const bookingId = insertedData?.[0]?.id ? `#${insertedData[0].id.toString().slice(-4)}` : "#----";
-
-      // FIXED: Applied structural templates to offline dashboard blocks
-      const offlineManagementText = `🏟️ *SMES Sports Academy*\n\nThis slot has been reserved by the management.\n\n📅 *Date:* ${slotDate}\n🕒 *Time:* ${slotTime}\n⏱ *Duration:* ${slotDuration} Minutes\n🏟 *Court:* ${slotCourt}\n\n*Reason:* Offline Booking\n\nFor enquiries:\n📞 8453095258`;
-
-      const adminAlertText = `🔔 *NEW BOOKING RECEIVED*\n\n🏟️ *SMES Sports Academy*\n\n👤 *Customer:* Offline Booking\n📞 *Phone:* -\n\n📅 *Date:* ${slotDate}\n🕒 *Time:* ${slotTime}\n⏱ *Duration:* ${slotDuration} Minutes\n\n🏟 *Court:* ${slotCourt}\n🏏 *Sport:* FOOTBALL\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹${totalAmount}\n💳 *Balance:* ₹0\n\n💳 *Payment Status:* PAID\n\n*Booking ID:* ${bookingId}`;
-
-      try {
-        await fetch("/api/whatsapp", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            customerPhone: "8453095258",
-            customerMessage: offlineManagementText,
-            adminMessage: adminAlertText
-          })
-        });
-      } catch (e) {
-        console.log("Notification link split bypass.");
       }
 
       alert("✅ Offline Booking Saved");
@@ -471,18 +459,6 @@ export default function AdminPage() {
     }
 
     // MAINTENANCE / TOURNAMENT
-    const { data: existing } = await supabase
-        .from("blocked_slots")
-        .select("*")
-        .eq("booking_date", slotDate)
-        .eq("start_time", slotTime)
-        .eq("court_number", slotCourt);
-
-    if (existing && existing.length > 0) {
-      alert("⚠️ This court is already blocked at that time");
-      return;
-    }
-
     const { error } = await supabase
       .from("blocked_slots")
       .insert([
@@ -498,23 +474,6 @@ export default function AdminPage() {
     if (error) {
       alert(error.message);
       return;
-    }
-
-    // FIXED: Formatted management blocks to send alerts directly for tracking updates
-    const managementNoticeText = `🏟️ *SMES Sports Academy*\n\nThis slot has been reserved by the management.\n\n📅 *Date:* ${slotDate}\n🕒 *Time:* ${slotTime}\n⏱ *Duration:* ${slotDuration} Minutes\n🏟 *Court:* ${slotCourt}\n\n*Reason:* ${slotReason === "MAINTENANCE" ? "Maintenance" : "Tournament"}\n\nFor enquiries:\n📞 8453095258`;
-
-    try {
-      await fetch("/api/whatsapp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customerPhone: "8453095258",
-          customerMessage: managementNoticeText,
-          adminMessage: managementNoticeText
-        })
-      });
-    } catch (e) {
-      console.log("Notification route connection failed.");
     }
 
     alert("✅ Slot saved");
@@ -551,17 +510,11 @@ export default function AdminPage() {
   };
 
   const todaysAdvance = bookings
-    .filter((booking) => {
-      const normDate = new Date(booking.created_at).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-      return normDate === today;
-    })
+    .filter((booking) => booking.created_at?.split("T")[0] === today)
     .reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
 
   const todaysBalance = bookings
-    .filter((booking) => {
-      const normDate = new Date(booking.booking_date).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-      return normDate === today;
-    })
+    .filter((booking) => booking.booking_date?.split("T")[0] === today)
     .reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
 
   const exportToExcel = () => {
@@ -620,10 +573,7 @@ export default function AdminPage() {
     XLSX.utils.book_append_sheet(workbook, worksheet, "Bookings");
 
     // TODAY SUMMARY
-    const todayBookings = bookings.filter((booking) => {
-      const normDate = new Date(booking.booking_date).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-      return normDate === today;
-    });
+    const todayBookings = bookings.filter((booking) => booking.booking_date?.split("T")[0] === today);
     const todayRevenue = todaysAdvance + todaysBalance;
     const todayAdvance = todaysAdvance;
     const todayBalance = todaysBalance;
@@ -728,7 +678,7 @@ export default function AdminPage() {
 
     const originalBalance = (booking.total_amount || 0) - (booking.advance_amount || 0);
 
-    const { error = null } = await supabase
+    const { error } = await supabase
       .from("bookings")
       .update({
         cash_received: 0,
@@ -1082,10 +1032,9 @@ export default function AdminPage() {
                   const bookingDate = booking.booking_date?.split("T")[0];
 
                   let rowColor = "bg-transparent";
-                  const normDate = new Date(booking.booking_date).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-                  if (normDate === today) {
+                  if (bookingDate === today) {
                     rowColor = "bg-lime-500/[0.04]";
-                  } else if (normDate === tomorrow) {
+                  } else if (bookingDate === tomorrow) {
                     rowColor = "bg-amber-500/[0.03]";
                   }
 
@@ -1099,12 +1048,12 @@ export default function AdminPage() {
 
                       <td className="p-4 font-mono text-xs whitespace-nowrap">
                         <span className="text-slate-200">{new Date(bookingDate).toLocaleDateString("en-GB")}</span>
-                        {normDate === today && (
+                        {bookingDate === today && (
                           <span className="ml-2 px-2 py-0.5 rounded-full bg-lime-400/10 border border-lime-400/30 text-lime-400 text-[9px] font-black uppercase tracking-wide">
                             Today
                           </span>
                         )}
-                        {normDate === tomorrow && (
+                        {bookingDate === tomorrow && (
                           <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-400 text-[9px] font-black uppercase tracking-wide">
                             Tomorrow
                           </span>
@@ -1153,7 +1102,9 @@ export default function AdminPage() {
 
                       <td className="p-4 whitespace-nowrap text-center">
                         <div className="flex items-center justify-center gap-2">
-                          {booking.balance_amount > 0 && (
+                          
+                          {/* THE FIX: Mutually exclusive buttons based strictly on the visible balance */}
+                          {booking.balance_amount > 0 ? (
                             <button
                               onClick={() => {
                                 setSelectedBooking(booking);
@@ -1163,15 +1114,15 @@ export default function AdminPage() {
                             >
                               💰 Collect
                             </button>
-                          )}
-
-                          {booking.payment_completed && booking.customer_name !== "Offline Booking" && (
-                            <button
-                              onClick={() => resetPayment(booking)}
-                              className="bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-amber-400 text-xs font-mono uppercase px-2.5 py-1.5 transition-all"
-                            >
-                              🔄 Reset
-                            </button>
+                          ) : (
+                            booking.customer_name !== "Offline Booking" && (
+                              <button
+                                onClick={() => resetPayment(booking)}
+                                className="bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-amber-400 text-xs font-mono uppercase px-2.5 py-1.5 transition-all"
+                              >
+                                🔄 Reset
+                              </button>
+                            )
                           )}
 
                           <button
