@@ -14,6 +14,17 @@ export default function Home() {
   const [bookingType, setBookingType] = useState("Full Court");
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
 
+  // Automatically inject the Razorpay checkout script on mount safely
+  useEffect(() => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    document.body.appendChild(script);
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
+
   useEffect(() => {
     if (bookingDate) {
       loadBookedSlots(bookingDate);
@@ -33,7 +44,7 @@ export default function Home() {
       ? 1850
       : 2500;
 
-  const advanceAmount = 205;
+  const advanceAmount = 205; // Intentionally set to cover gateway transaction charges
   const allSlots = [
     "05:00 AM", "05:30 AM",
     "06:00 AM", "06:30 AM",
@@ -56,6 +67,50 @@ export default function Home() {
     "11:00 PM", "11:30 PM"
   ];
 
+  // Robust helper to extract true user local date in YYYY-MM-DD
+  const getLocalDateString = () => {
+    const tzOffset = new Date().getTimezoneOffset() * 60000;
+    return new Date(Date.now() - tzOffset).toISOString().split("T")[0];
+  };
+
+  // Helper to convert UI strings "01:30 PM" -> Database format "13:30:00"
+  const convert12to24 = (time12: string) => {
+    const [time, ampm] = time12.split(" ");
+    let [hours, minutes] = time.split(":").map(Number);
+    if (ampm === "PM" && hours !== 12) hours += 12;
+    if (ampm === "AM" && hours === 12) hours = 0;
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`;
+  };
+
+  // State Desynchronization Guard: Auto-updates selection with look-ahead validation rules
+  useEffect(() => {
+    const today = getLocalDateString();
+    const available = allSlots.filter((slot) => {
+      // Look-Ahead Filter: Ensure upcoming continuous slots accommodate the selected timeframe
+      const segmentsNeeded = Number(duration) / 30;
+      const slotIndex = allSlots.indexOf(slot);
+      for (let i = 0; i < segmentsNeeded; i++) {
+        const nextSlot = allSlots[slotIndex + i];
+        if (!nextSlot || bookedSlots.includes(nextSlot)) return false;
+      }
+
+      if (bookingDate !== today) return true;
+
+      const now = new Date();
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      const [time, ampm] = slot.split(" ");
+      let [hours, minutes] = time.split(":").map(Number);
+      if (ampm === "PM" && hours !== 12) hours += 12;
+      if (ampm === "AM" && hours === 12) hours = 0;
+      const slotMinutes = hours * 60 + minutes;
+      return slotMinutes > currentMinutes;
+    });
+
+    if (available.length > 0 && !available.includes(startTime)) {
+      setStartTime(available[0]);
+    }
+  }, [bookingDate, bookedSlots, duration]);
+
   const loadBookedSlots = async (date: string) => {
     const { data, error } = await supabase
       .from("bookings")
@@ -72,11 +127,13 @@ export default function Home() {
       return;
     }
 
-    if (data) {
-      const blocked: string[] = [];
-      const slotCounts: Record<string, number> = {};
+    const blocked: string[] = [];
+    const slotCounts: Record<string, number> = {};
 
+    // 1. Process client field reservations if they exist
+    if (data) {
       data.forEach((booking: any) => {
+        if (!booking.start_time) return;
         const time = booking.start_time.substring(0, 5);
         const [h, m] = time.split(":");
         let minutes = Number(h) * 60 + Number(m);
@@ -84,6 +141,10 @@ export default function Home() {
 
         for (let i = 0; i < slotsToBlock; i++) {
           const current = minutes + i * 30;
+          
+          // Midnight Rollover Protection: Ignore segments spilling over into the next calendar day
+          if (current >= 24 * 60) continue;
+
           const hour24 = Math.floor(current / 60);
           const minute = current % 60;
           const ampm = hour24 >= 12 ? "PM" : "AM";
@@ -109,27 +170,32 @@ export default function Home() {
           }
         }
       });
-
-      if (blockedData) {
-        blockedData.forEach((slot: any) => {
-          const time = slot.start_time.substring(0, 5);
-          const [h, m] = time.split(":");
-          let minutes = Number(h) * 60 + Number(m);
-          const slotsToBlock = (slot.duration_minutes || 60) / 30;
-
-          for (let i = 0; i < slotsToBlock; i++) {
-            const current = minutes + i * 30;
-            const hour24 = Math.floor(current / 60);
-            const minute = current % 60;
-            const ampm = hour24 >= 12 ? "PM" : "AM";
-            const hour12 = hour24 % 12 || 12;
-            blocked.push(`${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${ampm}`);
-          }
-        });
-      }
-
-      setBookedSlots(blocked);
     }
+
+    // 2. Process admin blocks independently (Ensures blocks load even if client reservations are empty)
+    if (blockedData) {
+      blockedData.forEach((slot: any) => {
+        if (!slot.start_time) return;
+        const time = slot.start_time.substring(0, 5);
+        const [h, m] = time.split(":");
+        let minutes = Number(h) * 60 + Number(m);
+        const slotsToBlock = (slot.duration_minutes || 60) / 30;
+
+        for (let i = 0; i < slotsToBlock; i++) {
+          const current = minutes + i * 30;
+          
+          if (current >= 24 * 60) continue;
+
+          const hour24 = Math.floor(current / 60);
+          const minute = current % 60;
+          const ampm = hour24 >= 12 ? "PM" : "AM";
+          const hour12 = hour24 % 12 || 12;
+          blocked.push(`${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${ampm}`);
+        }
+      });
+    }
+
+    setBookedSlots(blocked);
   };
 
   const openRazorpay = async () => {
@@ -170,8 +236,12 @@ export default function Home() {
         },
       };
 
-      const razor = new (window as any).Razorpay(options);
-      razor.open();
+      if ((window as any).Razorpay) {
+        const razor = new (window as any).Razorpay(options);
+        razor.open();
+      } else {
+        alert("Payment gateway script still loading. Please try again in a moment.");
+      }
     } catch (error) {
       console.error(error);
       alert("Failed to open payment gateway");
@@ -189,13 +259,24 @@ export default function Home() {
       .select("*")
       .eq("booking_date", bookingDate);
 
+    const { data: blockedSlotsData, error: blockedError } = await supabase
+      .from("blocked_slots")
+      .select("*")
+      .eq("booking_date", bookingDate);
+
     if (checkError) {
       alert(checkError.message);
       return;
     }
 
+    if (blockedError) {
+      alert(blockedError.message);
+      return;
+    }
+
     const selectedDuration = Number(duration);
     const convertToMinutes = (time: string) => {
+      if (!time) return 0;
       const [timePart, ampm] = time.split(" ");
       let [hours, minutes] = timePart.split(":").map(Number);
       if (ampm === "PM" && hours !== 12) hours += 12;
@@ -209,6 +290,7 @@ export default function Home() {
     let courtNumber = "";
     const overlappingBookings =
       existingBookings?.filter((booking) => {
+        if (!booking.start_time) return false;
         const [hours, minutes] = booking.start_time
           .substring(0, 5)
           .split(":")
@@ -218,8 +300,20 @@ export default function Home() {
         return selectedStart < bookingEnd && selectedEnd > bookingStart;
       }) || [];
 
+    const overlappingBlocked =
+      blockedSlotsData?.filter((slot) => {
+        if (!slot.start_time) return false;
+        const [hours, minutes] = slot.start_time
+          .substring(0, 5)
+          .split(":")
+          .map(Number);
+        const blockStart = hours * 60 + minutes;
+        const blockEnd = blockStart + (slot.duration_minutes || 60);
+        return selectedStart < blockEnd && selectedEnd > blockStart;
+      }) || [];
+
     if (bookingType === "Half Court") {
-      const fullCourtExists = overlappingBookings.some((b) => b.booking_type === "Full Court");
+      const fullCourtExists = overlappingBookings.some((b) => b.booking_type === "Full Court") || overlappingBlocked.length > 0;
       if (fullCourtExists) {
         alert("❌ No Half Court Available.");
         return;
@@ -238,7 +332,7 @@ export default function Home() {
     }
 
     if (bookingType === "Full Court") {
-      if (overlappingBookings.length > 0) {
+      if (overlappingBookings.length > 0 || overlappingBlocked.length > 0) {
         alert("❌ Full Court Not Available.");
         return;
       }
@@ -258,10 +352,10 @@ export default function Home() {
         court_number: courtNumber,
         sport: sport.toLowerCase(),
         booking_date: bookingDate,
-        start_time: startTime,
+        start_time: convert12to24(startTime), 
         duration_minutes: Number(duration),
         total_amount: totalAmount,
-        advance_amount: 200,
+        advance_amount: 200,                  // Logged into DB for balanced book ledger auditing
         balance_amount: totalAmount - 200,
         razorpay_order_id: paymentData?.razorpay_order_id,
         razorpay_payment_id: paymentData?.razorpay_payment_id,
@@ -278,10 +372,8 @@ export default function Home() {
     const balanceAmount = totalAmount - 200;
     const bookingId = insertedData?.[0]?.id ? `#${insertedData[0].id.toString().slice(-4)}` : "#----";
 
-    // 🏟️ Clean layout template matching your client-facing receipt specifications 
     const clientText = `🏟️ *SMES Sports Academy Booking Confirmed*\n\nHello ${name},\n\nYour booking has been successfully confirmed.\n\n📅 *Date:* ${bookingDate}\n🕒 *Time:* ${startTime}\n⏱ *Duration:* ${duration} Minutes\n🏏 *Sport:* ${sport}\n🏟 *Court:* ${bookingType}\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200\n💳 *Balance Due:* ₹${balanceAmount}\n\n📍 *Location:*\nSMES Sports Academy, Mysuru\n\n⚠️ Please arrive 10 minutes before your slot.\n⚠️ Balance payment must be completed before play starts.\n\nThank you for choosing SMES Sports Academy.\n\n📞 *Support:* 8453095258`;
 
-    // 🔔 Clean alert template matching your real-time management dashboard notification requirements
     const adminText = `🔔 *NEW BOOKING RECEIVED*\n\n🏟️ *SMES Sports Academy*\n\n👤 *Customer:* ${name}\n📞 *Phone:* ${phone}\n\n📅 *Date:* ${bookingDate}\n🕒 *Time:* ${startTime}\n⏱ *Duration:* ${duration} Minutes\n\n🏟 *Court:* ${courtNumber}\n🏏 *Sport:* ${sport}\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200\n💳 *Balance:* ₹${balanceAmount}\n\n💳 *Payment Status:* PAID\n\n*Booking ID:* ${bookingId}`;
 
     try {
@@ -317,14 +409,12 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden">
       
-      {/* Contained background FX layout masking */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
         <div className="absolute top-0 inset-x-0 h-[400px] sm:h-[640px] bg-gradient-to-b from-lime-500/10 via-transparent to-transparent" />
         <div className="absolute top-[-5%] left-[-10%] w-[60%] h-[40%] bg-emerald-500/5 rounded-full blur-[80px] sm:blur-[120px]" />
         <div className="absolute top-[15%] right-[-10%] w-[50%] h-[50%] bg-lime-500/5 rounded-full blur-[80px] sm:blur-[120px]" />
       </div>
 
-      {/* Header Banner Section */}
       <header className="max-w-7xl mx-auto px-4 pt-12 pb-6 sm:pt-16 sm:pb-8 relative z-10 text-center">
         <motion.div
           initial={{ opacity: 0, y: -15 }}
@@ -355,7 +445,6 @@ export default function Home() {
             </motion.p>
           </div>
 
-          {/* Buttons cluster positioned into center lines for responsive layouts */}
           <div className="grid grid-cols-1 gap-2 w-full max-w-md mx-auto lg:max-w-none lg:mx-0 lg:flex lg:w-auto lg:gap-3">
             <button
               onClick={scrollToBooking}
@@ -396,7 +485,6 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Grid Features Block */}
       <section className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-20 border-b border-neutral-900 relative z-10">
         <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-2">01 — Disciplines</span>
         <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white mb-8 sm:mb-12">Sports Arena Layout</h2>
@@ -420,11 +508,9 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Industrial Matchbox-style Layout Booking Portal Grid */}
       <section id="booking-engine-section" className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-20 relative z-10 scroll-mt-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
           
-          {/* Form Side */}
           <div className="lg:col-span-7 space-y-6 sm:space-y-8">
             <div>
               <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-2">02 — Reservation</span>
@@ -494,7 +580,7 @@ export default function Home() {
                 <label className="text-xs font-mono uppercase text-neutral-400">Calendar Date</label>
                 <input
                   type="date"
-                  min={new Date().toISOString().split("T")[0]}
+                  min={getLocalDateString()}
                   value={bookingDate}
                   onChange={(e) => {
                     setBookingDate(e.target.value);
@@ -515,9 +601,17 @@ export default function Home() {
                   >
                     {allSlots
                       .filter((slot) => {
-                        if (bookedSlots.includes(slot)) return false;
-                        const today = new Date().toISOString().split("T")[0];
+                        // Look-Ahead Validation Loop
+                        const segmentsNeeded = Number(duration) / 30;
+                        const slotIndex = allSlots.indexOf(slot);
+                        for (let i = 0; i < segmentsNeeded; i++) {
+                          const nextSlot = allSlots[slotIndex + i];
+                          if (!nextSlot || bookedSlots.includes(nextSlot)) return false;
+                        }
+
+                        const today = getLocalDateString();
                         if (bookingDate !== today) return true;
+                        
                         const now = new Date();
                         const currentMinutes = now.getHours() * 60 + now.getMinutes();
                         const [time, ampm] = slot.split(" ");
@@ -555,7 +649,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Right Column Checkout Component Panel */}
           <div className="lg:col-span-5 bg-neutral-900/50 border border-neutral-900 p-4 sm:p-6 md:p-8 rounded-none space-y-6">
             <div className="border-b border-neutral-800 pb-4">
               <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Live Breakdown Summary</span>
@@ -610,7 +703,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Facilities Strip Layout */}
       <section className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-16 border-t border-neutral-900 relative z-10">
         <span className="text-xs font-mono uppercase tracking-widest text-neutral-500 block mb-6 sm:mb-8 text-center">03 — Setup Infrastructure</span>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4 max-w-4xl mx-auto text-center">
@@ -627,7 +719,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Footer System */}
       <footer className="w-full bg-black border-t border-neutral-900 py-12 px-4 sm:py-16 sm:px-6 text-left relative z-10">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start gap-6 sm:gap-8">
           <div className="space-y-2">
