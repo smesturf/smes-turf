@@ -376,19 +376,20 @@ export default function Home() {
 
     const adminText = `🔔 *NEW BOOKING RECEIVED*\n\n🏟️ *SMES Sports Academy*\n\n👤 *Customer:* ${name}\n📞 *Phone:* ${phone}\n\n📅 *Date:* ${bookingDate}\n🕒 *Time:* ${startTime}\n⏱ *Duration:* ${duration} Minutes\n\n🏟 *Court:* ${courtNumber}\n🏏 *Sport:* ${sport}\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200\n💳 *Balance:* ₹${balanceAmount}\n\n💳 *Payment Status:* PAID\n\n*Booking ID:* ${bookingId}`;
 
-    try {
-      await fetch("/api/whatsapp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customerPhone: phone,
-          customerMessage: clientText,
-          adminMessage: adminText
-        })
-      });
-    } catch (e) {
-      console.log("Notification route connection failed.");
-    }
+    // Find this section near the bottom of your handleBooking function and update:
+try {
+  await fetch("/api/whatsapp", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customerPhone: `91${phone}`, // Automatically prepends India's country code to your 10-digit state
+      customerMessage: clientText,
+      adminMessage: adminText
+    })
+  });
+} catch (e) {
+  console.log("Notification route connection failed.");
+}
 
     alert("✅ Payment Successful & Booking Saved! Confirmations dispatched via WhatsApp.");
 
