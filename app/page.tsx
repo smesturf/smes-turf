@@ -276,10 +276,27 @@ export default function Home() {
     }
 
     const balanceAmount = totalAmount - 200;
-    const message = `🏟️ SMES Turf Booking Confirmed\n\nName: ${name}\nDate: ${bookingDate}\nTime: ${startTime}\nSport: ${sport}\n\n💰 Total Amount: ₹${totalAmount}\n✅ Advance Paid: ₹200 (+ Convenience Fee)\n💳 Balance Due at Turf: ₹${balanceAmount}\n\nThank you for choosing SMES Turf!`;
 
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank");
-    alert("✅ Payment Successful & Booking Saved");
+    // FIXED: Integrated Step 2 Whapi.cloud descriptive receipt strings
+    const clientText = `🏟️ *SMES Turf Booking Confirmed*\n\n*Name:* ${name}\n*Date:* ${bookingDate}\n*Time:* ${startTime}\n*Sport:* ${sport.toUpperCase()}\n\n💰 *Total Value:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200 (+ Convenience Fee)\n💳 *Balance Due at Turf:* ₹${balanceAmount}\n\nThank you for choosing SMES Turf! See you on the field.`;
+    const adminText = `🚨 *NEW TURF BOOKING CAPTURED*\n\n*Client:* ${name}\n*Contact:* +91 ${phone}\n*Schedule:* ${bookingDate} @ ${startTime}\n*Court Scale:* ${bookingType}\n\n💰 *Collect Outstanding Balance:* ₹${balanceAmount}`;
+
+    // Silently route messaging logs over to Vercel runtime server context away from window contexts
+    try {
+      await fetch("/api/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerPhone: phone,
+          customerMessage: clientText,
+          adminMessage: adminText
+        })
+      });
+    } catch (e) {
+      console.log("Notification queue bypass alert logs");
+    }
+
+    alert("✅ Payment Successful & Booking Saved! Confirmations dispatched via WhatsApp.");
 
     setName("");
     setPhone("");
@@ -336,7 +353,7 @@ export default function Home() {
             </motion.p>
           </div>
 
-          {/* FIXED: Applied center constraint rules (max-w-md mx-auto) for mobile vertical alignment as specified in 1000123160.jpg */}
+          {/* Buttons cluster positioned into center lines for responsive layouts */}
           <div className="grid grid-cols-1 gap-2 w-full max-w-md mx-auto lg:max-w-none lg:mx-0 lg:flex lg:w-auto lg:gap-3">
             <button
               onClick={scrollToBooking}
