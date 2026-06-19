@@ -250,7 +250,7 @@ export default function Home() {
     }
 
     console.log("Assigned court:", courtNumber);
-    const { error } = await supabase.from("bookings").insert([
+    const { data: insertedData, error } = await supabase.from("bookings").insert([
       {
         customer_name: name,
         phone: phone,
@@ -267,7 +267,7 @@ export default function Home() {
         razorpay_payment_id: paymentData?.razorpay_payment_id,
         payment_status: "paid",
       },
-    ]);
+    ]).select();
 
     if (error) {
       console.error(error);
@@ -276,12 +276,14 @@ export default function Home() {
     }
 
     const balanceAmount = totalAmount - 200;
+    const bookingId = insertedData?.[0]?.id ? `#${insertedData[0].id.toString().slice(-4)}` : "#----";
 
-    // FIXED: Integrated Step 2 Whapi.cloud descriptive receipt strings
-    const clientText = `🏟️ *SMES Turf Booking Confirmed*\n\n*Name:* ${name}\n*Date:* ${bookingDate}\n*Time:* ${startTime}\n*Sport:* ${sport.toUpperCase()}\n\n💰 *Total Value:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200 (+ Convenience Fee)\n💳 *Balance Due at Turf:* ₹${balanceAmount}\n\nThank you for choosing SMES Turf! See you on the field.`;
-    const adminText = `🚨 *NEW TURF BOOKING CAPTURED*\n\n*Client:* ${name}\n*Contact:* +91 ${phone}\n*Schedule:* ${bookingDate} @ ${startTime}\n*Court Scale:* ${bookingType}\n\n💰 *Collect Outstanding Balance:* ₹${balanceAmount}`;
+    // 🏟️ Clean layout template matching your client-facing receipt specifications 
+    const clientText = `🏟️ *SMES Sports Academy Booking Confirmed*\n\nHello ${name},\n\nYour booking has been successfully confirmed.\n\n📅 *Date:* ${bookingDate}\n🕒 *Time:* ${startTime}\n⏱ *Duration:* ${duration} Minutes\n🏏 *Sport:* ${sport}\n🏟 *Court:* ${bookingType}\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200\n💳 *Balance Due:* ₹${balanceAmount}\n\n📍 *Location:*\nSMES Sports Academy, Mysuru\n\n⚠️ Please arrive 10 minutes before your slot.\n⚠️ Balance payment must be completed before play starts.\n\nThank you for choosing SMES Sports Academy.\n\n📞 *Support:* 8453095258`;
 
-    // Silently route messaging logs over to Vercel runtime server context away from window contexts
+    // 🔔 Clean alert template matching your real-time management dashboard notification requirements
+    const adminText = `🔔 *NEW BOOKING RECEIVED*\n\n🏟️ *SMES Sports Academy*\n\n👤 *Customer:* ${name}\n📞 *Phone:* ${phone}\n\n📅 *Date:* ${bookingDate}\n🕒 *Time:* ${startTime}\n⏱ *Duration:* ${duration} Minutes\n\n🏟 *Court:* ${courtNumber}\n🏏 *Sport:* ${sport}\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200\n💳 *Balance:* ₹${balanceAmount}\n\n💳 *Payment Status:* PAID\n\n*Booking ID:* ${bookingId}`;
+
     try {
       await fetch("/api/whatsapp", {
         method: "POST",
@@ -293,7 +295,7 @@ export default function Home() {
         })
       });
     } catch (e) {
-      console.log("Notification queue bypass alert logs");
+      console.log("Notification route connection failed.");
     }
 
     alert("✅ Payment Successful & Booking Saved! Confirmations dispatched via WhatsApp.");
@@ -629,7 +631,7 @@ export default function Home() {
       <footer className="w-full bg-black border-t border-neutral-900 py-12 px-4 sm:py-16 sm:px-6 text-left relative z-10">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start gap-6 sm:gap-8">
           <div className="space-y-2">
-            <p className="text-xs font-mono text-neutral-400 uppercase tracking-widest">SMES Sports Ground Hub</p>
+            <p className="text-xs font-mono text-neutral-400 uppercase tracking-widest">SMES Sports Academy Ground Hub</p>
             <p className="text-xs text-neutral-600 font-mono">© 2026 Built for competitive team sports action and weekend fun.</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-y-2 gap-x-6 md:gap-x-8 font-mono text-xs text-neutral-400 uppercase">

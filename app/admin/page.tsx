@@ -240,7 +240,6 @@ export default function AdminPage() {
 
     setBlockedSlots(blockedData || []);
 
-    // FIXED: Mapped timezone-stable conversions to guarantee correct state rendering
     const todaysBookings =
       data?.filter((booking) => {
         const normDate = new Date(booking.booking_date).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
@@ -406,7 +405,7 @@ export default function AdminPage() {
         return;
       }
 
-      const { error } = await supabase
+      const { data: insertedData, error } = await supabase
         .from("bookings")
         .insert([
           {
@@ -427,11 +426,32 @@ export default function AdminPage() {
             upi_received: upiReceived,
             payment_completed: true,
           },
-        ]);
+        ]).select();
 
       if (error) {
         alert(error.message);
         return;
+      }
+
+      const bookingId = insertedData?.[0]?.id ? `#${insertedData[0].id.toString().slice(-4)}` : "#----";
+
+      // FIXED: Applied structural templates to offline dashboard blocks
+      const offlineManagementText = `🏟️ *SMES Sports Academy*\n\nThis slot has been reserved by the management.\n\n📅 *Date:* ${slotDate}\n🕒 *Time:* ${slotTime}\n⏱ *Duration:* ${slotDuration} Minutes\n🏟 *Court:* ${slotCourt}\n\n*Reason:* Offline Booking\n\nFor enquiries:\n📞 8453095258`;
+
+      const adminAlertText = `🔔 *NEW BOOKING RECEIVED*\n\n🏟️ *SMES Sports Academy*\n\n👤 *Customer:* Offline Booking\n📞 *Phone:* -\n\n📅 *Date:* ${slotDate}\n🕒 *Time:* ${slotTime}\n⏱ *Duration:* ${slotDuration} Minutes\n\n🏟 *Court:* ${slotCourt}\n🏏 *Sport:* FOOTBALL\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹${totalAmount}\n💳 *Balance:* ₹0\n\n💳 *Payment Status:* PAID\n\n*Booking ID:* ${bookingId}`;
+
+      try {
+        await fetch("/api/whatsapp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customerPhone: "8453095258",
+            customerMessage: offlineManagementText,
+            adminMessage: adminAlertText
+          })
+        });
+      } catch (e) {
+        console.log("Notification link split bypass.");
       }
 
       alert("✅ Offline Booking Saved");
@@ -480,6 +500,23 @@ export default function AdminPage() {
       return;
     }
 
+    // FIXED: Formatted management blocks to send alerts directly for tracking updates
+    const managementNoticeText = `🏟️ *SMES Sports Academy*\n\nThis slot has been reserved by the management.\n\n📅 *Date:* ${slotDate}\n🕒 *Time:* ${slotTime}\n⏱ *Duration:* ${slotDuration} Minutes\n🏟 *Court:* ${slotCourt}\n\n*Reason:* ${slotReason === "MAINTENANCE" ? "Maintenance" : "Tournament"}\n\nFor enquiries:\n📞 8453095258`;
+
+    try {
+      await fetch("/api/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerPhone: "8453095258",
+          customerMessage: managementNoticeText,
+          adminMessage: managementNoticeText
+        })
+      });
+    } catch (e) {
+      console.log("Notification route connection failed.");
+    }
+
     alert("✅ Slot saved");
 
     await loadBookings();
@@ -513,7 +550,6 @@ export default function AdminPage() {
     loadBookings();
   };
 
-  // FIXED: Stabilized timeline parsing logic to accurately align dashboard metric readouts
   const todaysAdvance = bookings
     .filter((booking) => {
       const normDate = new Date(booking.created_at).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
@@ -692,7 +728,7 @@ export default function AdminPage() {
 
     const originalBalance = (booking.total_amount || 0) - (booking.advance_amount || 0);
 
-    const { error } = await supabase
+    const { error = null } = await supabase
       .from("bookings")
       .update({
         cash_received: 0,
@@ -1046,7 +1082,6 @@ export default function AdminPage() {
                   const bookingDate = booking.booking_date?.split("T")[0];
 
                   let rowColor = "bg-transparent";
-                  // FIXED: Table row colors normalized to align with timeline formats
                   const normDate = new Date(booking.booking_date).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
                   if (normDate === today) {
                     rowColor = "bg-lime-500/[0.04]";
