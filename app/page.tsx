@@ -72,6 +72,9 @@ export default function Home() {
 
   // Validates if a specific slot can be booked based on time, duration, and blocks
   const isSlotAvailable = (slot: string) => {
+    // If no date is selected yet, block ALL slots
+    if (!bookingDate) return false;
+
     const segmentsNeeded = Number(duration) / 30;
     const slotIndex = allSlots.indexOf(slot);
     
@@ -588,50 +591,80 @@ export default function Home() {
                 />
               </div>
 
-              <div className="space-y-2">
+              {/* SEQUENTIAL LOCK #1: Session Length wrapped with a click interceptor */}
+              <div className="space-y-2 relative">
                 <label className="text-xs font-mono uppercase text-neutral-400">Session Length</label>
                 <div className="relative">
+                  {!bookingDate && (
+                    <div 
+                      className="absolute inset-0 z-20 cursor-pointer"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        alert("⚠️ Please select a Calendar Date first!");
+                      }}
+                    />
+                  )}
                   <select
                     value={duration}
                     onChange={(e) => setDuration(e.target.value)}
-                    className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm"
+                    className={`w-full p-4 bg-neutral-900 text-white border outline-none rounded-none appearance-none font-medium text-base md:text-sm transition-all ${
+                      !bookingDate ? "border-neutral-800/50 opacity-40" : "border-neutral-800 focus:border-lime-400"
+                    }`}
+                    tabIndex={!bookingDate ? -1 : 0}
                   >
                     <option value="60">60 Minutes (- ₹{bookingType === "Half Court" ? 750 : 1250})</option>
                     <option value="90">90 Minutes (- ₹{bookingType === "Half Court" ? 1100 : 1850})</option>
                     <option value="120">120 Minutes (- ₹{bookingType === "Half Court" ? 1500 : 2500})</option>
                   </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
+                  <div className={`pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-xs transition-all ${
+                    !bookingDate ? "text-neutral-700 opacity-40" : "text-neutral-500"
+                  }`}>
+                    ▼
+                  </div>
                 </div>
               </div>
 
-              {/* VISUAL TIME GRID INSTEAD OF DROPDOWN */}
-              <div className="space-y-2">
+              {/* SEQUENTIAL LOCK #2: Time Grid wrapped with a click interceptor */}
+              <div className="space-y-2 relative">
                 <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Slot</label>
-                
-                {/* Scrollable Container for Mobile Optimization */}
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 p-3 sm:p-4 bg-neutral-900/30 border border-neutral-800 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-700">
-                  {allSlots.map((slot) => {
-                    const available = isSlotAvailable(slot);
-                    const selected = startTime === slot;
+                <div className="relative">
+                  {!bookingDate && (
+                    <div 
+                      className="absolute inset-0 z-20 cursor-pointer"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        alert("⚠️ Please select a Calendar Date first!");
+                      }}
+                    />
+                  )}
+                  <div className={`grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 p-3 sm:p-4 bg-neutral-900/30 border border-neutral-800 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-700 transition-all ${
+                    !bookingDate ? "opacity-40" : ""
+                  }`}>
+                    {allSlots.map((slot) => {
+                      const available = isSlotAvailable(slot);
+                      const selected = startTime === slot;
 
-                    return (
-                      <button
-                        key={slot}
-                        type="button"
-                        disabled={!available}
-                        onClick={() => setStartTime(slot)}
-                        className={`py-3 px-1 text-[11px] sm:text-xs font-mono font-bold uppercase transition-all border ${
-                          selected
-                            ? "bg-red-600 border-red-500 text-white shadow-[0_0_10px_rgba(220,38,38,0.4)]"
-                            : available
-                            ? "bg-lime-500/10 border-lime-500/30 text-lime-400 hover:bg-lime-500 hover:text-black cursor-pointer"
-                            : "bg-neutral-950 border-neutral-900 text-neutral-600 opacity-50 cursor-not-allowed"
-                        }`}
-                      >
-                        {slot}
-                      </button>
-                    );
-                  })}
+                      return (
+                        <button
+                          key={slot}
+                          type="button"
+                          disabled={!available}
+                          onClick={() => setStartTime(slot)}
+                          className={`py-3 px-1 text-[11px] sm:text-xs font-mono font-bold uppercase transition-all border ${
+                            selected
+                              ? "bg-red-600 border-red-500 text-white shadow-[0_0_10px_rgba(220,38,38,0.4)]"
+                              : available
+                              ? "bg-lime-500/10 border-lime-500/30 text-lime-400 hover:bg-lime-500 hover:text-black cursor-pointer"
+                              : "bg-neutral-950 border-neutral-900 text-neutral-600 opacity-50 cursor-not-allowed"
+                          }`}
+                        >
+                          {slot}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
