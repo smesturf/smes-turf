@@ -9,7 +9,7 @@ export default function Home() {
   const [phone, setPhone] = useState("");
   const [sport, setSport] = useState("Football");
   const [bookingDate, setBookingDate] = useState("");
-  const [startTime, setStartTime] = useState("06:00 AM");
+  const [startTime, setStartTime] = useState(""); // Starts empty so no slot is auto-selected
   const [duration, setDuration] = useState("60");
   const [bookingType, setBookingType] = useState("Full Court");
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
@@ -45,27 +45,15 @@ export default function Home() {
       : 2500;
 
   const advanceAmount = 205; // Intentionally set to cover gateway transaction charges
-  const allSlots = [
-    "05:00 AM", "05:30 AM",
-    "06:00 AM", "06:30 AM",
-    "07:00 AM", "07:30 AM",
-    "08:00 AM", "08:30 AM",
-    "09:00 AM", "09:30 AM",
-    "10:00 AM", "10:30 AM",
-    "11:00 AM", "11:30 AM",
-    "12:00 PM", "12:30 PM",
-    "01:00 PM", "01:30 PM",
-    "02:00 PM", "02:30 PM",
-    "03:00 PM", "03:30 PM",
-    "04:00 PM", "04:30 PM",
-    "05:00 PM", "05:30 PM",
-    "06:00 PM", "06:30 PM",
-    "07:00 PM", "07:30 PM",
-    "08:00 PM", "08:30 PM",
-    "09:00 PM", "09:30 PM",
-    "10:00 PM", "10:30 PM",
-    "11:00 PM", "11:30 PM"
-  ];
+  
+  // Generates exactly 48 slots for a full 24-hour clock (12:00 AM to 11:30 PM)
+  const allSlots = Array.from({ length: 48 }, (_, i) => {
+    const h = Math.floor(i / 2);
+    const m = i % 2 === 0 ? "00" : "30";
+    const ampm = h >= 12 ? "PM" : "AM";
+    const displayH = h % 12 === 0 ? 12 : h % 12;
+    return `${String(displayH).padStart(2, "0")}:${m} ${ampm}`;
+  });
 
   // Robust helper to extract true user local date in YYYY-MM-DD
   const getLocalDateString = () => {
@@ -82,32 +70,41 @@ export default function Home() {
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`;
   };
 
-  // State Desynchronization Guard: Auto-updates selection with look-ahead validation rules
-  useEffect(() => {
-    const today = getLocalDateString();
-    const available = allSlots.filter((slot) => {
-      // Look-Ahead Filter: Ensure upcoming continuous slots accommodate the selected timeframe
-      const segmentsNeeded = Number(duration) / 30;
-      const slotIndex = allSlots.indexOf(slot);
-      for (let i = 0; i < segmentsNeeded; i++) {
-        const nextSlot = allSlots[slotIndex + i];
-        if (!nextSlot || bookedSlots.includes(nextSlot)) return false;
+  // Validates if a specific slot can be booked based on time, duration, and blocks
+  const isSlotAvailable = (slot: string) => {
+    const segmentsNeeded = Number(duration) / 30;
+    const slotIndex = allSlots.indexOf(slot);
+    
+    // Look-Ahead Filter: Ensure upcoming continuous slots accommodate the selected timeframe
+    for (let i = 0; i < segmentsNeeded; i++) {
+      const targetIndex = slotIndex + i;
+      // Allow late-night bookings to cross over midnight without crashing the array index
+      if (targetIndex < allSlots.length) {
+        const nextSlot = allSlots[targetIndex];
+        if (bookedSlots.includes(nextSlot)) return false;
       }
+    }
 
-      if (bookingDate !== today) return true;
+    const today = getLocalDateString();
+    if (bookingDate && bookingDate < today) return false;
+    if (bookingDate !== today) return true;
 
-      const now = new Date();
-      const currentMinutes = now.getHours() * 60 + now.getMinutes();
-      const [time, ampm] = slot.split(" ");
-      let [hours, minutes] = time.split(":").map(Number);
-      if (ampm === "PM" && hours !== 12) hours += 12;
-      if (ampm === "AM" && hours === 12) hours = 0;
-      const slotMinutes = hours * 60 + minutes;
-      return slotMinutes > currentMinutes;
-    });
+    // Check if slot is in the past for today
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const [time, ampm] = slot.split(" ");
+    let [hours, minutes] = time.split(":").map(Number);
+    if (ampm === "PM" && hours !== 12) hours += 12;
+    if (ampm === "AM" && hours === 12) hours = 0;
+    const slotMinutes = hours * 60 + minutes;
+    
+    return slotMinutes > currentMinutes;
+  };
 
-    if (available.length > 0 && !available.includes(startTime)) {
-      setStartTime(available[0]);
+  // Auto-clears the selected time if the user changes date/duration making it invalid
+  useEffect(() => {
+    if (startTime && !isSlotAvailable(startTime)) {
+      setStartTime("");
     }
   }, [bookingDate, bookedSlots, duration]);
 
@@ -142,7 +139,7 @@ export default function Home() {
         for (let i = 0; i < slotsToBlock; i++) {
           const current = minutes + i * 30;
           
-          // Midnight Rollover Protection: Ignore segments spilling over into the next calendar day
+          // Midnight Rollover Protection
           if (current >= 24 * 60) continue;
 
           const hour24 = Math.floor(current / 60);
@@ -172,7 +169,7 @@ export default function Home() {
       });
     }
 
-    // 2. Process admin blocks independently (Ensures blocks load even if client reservations are empty)
+    // 2. Process admin blocks independently 
     if (blockedData) {
       blockedData.forEach((slot: any) => {
         if (!slot.start_time) return;
@@ -200,8 +197,8 @@ export default function Home() {
 
   const openRazorpay = async () => {
     try {
-      if (!name || !phone || !bookingDate) {
-        alert("Please fill all fields");
+      if (!name || !phone || !bookingDate || !startTime) {
+        alert("Please fill all fields and select a valid time slot.");
         return;
       }
       const availabilityCheck = await handleBooking("CHECK_ONLY");
@@ -249,8 +246,8 @@ export default function Home() {
   };
 
   const handleBooking = async (paymentData?: any) => {
-    if (!name || !phone || !bookingDate) {
-      alert("Please fill all fields");
+    if (!name || !phone || !bookingDate || !startTime) {
+      alert("Please fill all fields and select a valid time slot.");
       return;
     }
 
@@ -395,7 +392,7 @@ export default function Home() {
     setName("");
     setPhone("");
     setBookingDate("");
-    setStartTime("06:00 AM");
+    setStartTime("");
     setDuration("60");
   };
 
@@ -607,42 +604,34 @@ export default function Home() {
                 </div>
               </div>
 
+              {/* VISUAL TIME GRID INSTEAD OF DROPDOWN */}
               <div className="space-y-2">
                 <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Slot</label>
-                <div className="relative">
-                  <select
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm"
-                  >
-                    {allSlots
-                      .filter((slot) => {
-                        const segmentsNeeded = Number(duration) / 30;
-                        const slotIndex = allSlots.indexOf(slot);
-                        for (let i = 0; i < segmentsNeeded; i++) {
-                          const nextSlot = allSlots[slotIndex + i];
-                          if (!nextSlot || bookedSlots.includes(nextSlot)) return false;
-                        }
+                
+                {/* Scrollable Container for Mobile Optimization */}
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 p-3 sm:p-4 bg-neutral-900/30 border border-neutral-800 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-700">
+                  {allSlots.map((slot) => {
+                    const available = isSlotAvailable(slot);
+                    const selected = startTime === slot;
 
-                        const today = getLocalDateString();
-                        if (bookingDate !== today) return true;
-                        
-                        const now = new Date();
-                        const currentMinutes = now.getHours() * 60 + now.getMinutes();
-                        const [time, ampm] = slot.split(" ");
-                        let [hours, minutes] = time.split(":").map(Number);
-                        if (ampm === "PM" && hours !== 12) hours += 12;
-                        if (ampm === "AM" && hours === 12) hours = 0;
-                        const slotMinutes = hours * 60 + minutes;
-                        return slotMinutes > currentMinutes;
-                      })
-                      .map((slot) => (
-                        <option key={slot} value={slot}>
-                          {slot}
-                        </option>
-                      ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
+                    return (
+                      <button
+                        key={slot}
+                        type="button"
+                        disabled={!available}
+                        onClick={() => setStartTime(slot)}
+                        className={`py-3 px-1 text-[11px] sm:text-xs font-mono font-bold uppercase transition-all border ${
+                          selected
+                            ? "bg-red-600 border-red-500 text-white shadow-[0_0_10px_rgba(220,38,38,0.4)]"
+                            : available
+                            ? "bg-lime-500/10 border-lime-500/30 text-lime-400 hover:bg-lime-500 hover:text-black cursor-pointer"
+                            : "bg-neutral-950 border-neutral-900 text-neutral-600 opacity-50 cursor-not-allowed"
+                        }`}
+                      >
+                        {slot}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -670,7 +659,7 @@ export default function Home() {
               </div>
               <div className="flex justify-between gap-4">
                 <span className="text-neutral-500 flex-shrink-0">KICKOFF TIME:</span>
-                <span className="text-white font-bold text-right break-all">{startTime}</span>
+                <span className="text-white font-bold text-right break-all">{startTime || "None"}</span>
               </div>
               <div className="flex justify-between gap-4">
                 <span className="text-neutral-500 flex-shrink-0">DURATION TIMEFRAME:</span>
@@ -694,9 +683,14 @@ export default function Home() {
             <button
               type="button"
               onClick={openRazorpay}
-              className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-4 rounded-none transition-all font-black cursor-pointer"
+              disabled={!startTime}
+              className={`w-full font-mono text-xs uppercase tracking-widest py-4 rounded-none transition-all font-black ${
+                !startTime 
+                  ? "bg-neutral-800 text-neutral-500 cursor-not-allowed" 
+                  : "bg-lime-400 hover:bg-lime-300 text-black cursor-pointer"
+              }`}
             >
-              Confirm Match Slot
+              {!startTime ? "Select Slot" : "Confirm Match Slot"}
             </button>
           </div>
 
@@ -717,7 +711,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* FOOTER RESTORED EXACTLY AS REQUESTED */}
       <footer className="w-full bg-black border-t border-neutral-900 py-12 px-4 sm:py-16 sm:px-6 text-left relative z-10">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start gap-6 sm:gap-8">
           <div className="space-y-2">
