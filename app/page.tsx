@@ -369,7 +369,7 @@ export default function Home() {
   const handleStaffLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (staffRole === "Admin") {
-      if (staffPassword === "SMES@2026") {
+      if (staffPassword === "1234") {
         localStorage.setItem("adminLoggedIn", "true");
         localStorage.setItem("adminLoginTime", Date.now().toString());
         router.push("/admin");
@@ -400,6 +400,19 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden">
       
+      {/* NEW: Top Right Hamburger Menu for Staff Login */}
+      <div className="absolute top-6 right-4 sm:top-8 sm:right-6 z-[100]">
+        <button
+          onClick={() => setShowStaffModal(true)}
+          className="text-neutral-400 hover:text-lime-400 p-2 transition-colors cursor-pointer flex items-center justify-center"
+          title="Staff Login"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      </div>
+
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
         <div className="absolute top-0 inset-x-0 h-[400px] sm:h-[640px] bg-gradient-to-b from-lime-500/10 via-transparent to-transparent" />
         <div className="absolute top-[-5%] left-[-10%] w-[60%] h-[40%] bg-emerald-500/5 rounded-full blur-[80px] sm:blur-[120px]" />
@@ -410,7 +423,7 @@ export default function Home() {
         <motion.div
           initial={{ opacity: 0, y: -15 }}
           animate={{ opacity: 1, y: 0 }}
-          className="inline-flex items-center gap-1.5 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-slate-900 border border-slate-800 text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-lime-400 mb-4 sm:mb-6"
+          className="inline-flex items-center gap-1.5 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-slate-900 border border-slate-800 text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-lime-400 mb-4 sm:mb-6 mt-4"
         >
           <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />
           Elite Sports Venue
@@ -440,9 +453,9 @@ export default function Home() {
             <button
               onClick={scrollToBooking}
               type="button"
-              className="bg-lime-400 hover:bg-lime-300 text-black text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-all font-black text-center shadow-lg shadow-lime-400/5 cursor-pointer flex items-center justify-center gap-1"
+              className="bg-lime-400 hover:bg-lime-300 text-black text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-all font-black text-center shadow-lg shadow-lime-400/5 cursor-pointer flex items-center justify-center gap-2"
             >
-              ⚡ BOOK NOW
+              📅 BOOK NOW
             </button>
             <a
               href="https://wa.me/918453095258"
@@ -733,15 +746,14 @@ export default function Home() {
         </div>
       </footer>
 
-      {/* UPDATED: Prominent Staff Node Button positioned safely above mobile browser bars */}
+      {/* NEW: Floating "Book Now" Button */}
       <button
-        onClick={() => setShowStaffModal(true)}
-        className="fixed bottom-10 right-4 md:bottom-8 md:right-8 z-[9000] bg-neutral-900/95 border border-neutral-700 hover:border-lime-400 text-neutral-300 hover:text-lime-400 px-4 py-3 rounded-full transition-all shadow-[0_0_20px_rgba(0,0,0,0.6)] backdrop-blur-md cursor-pointer flex items-center gap-2 text-[11px] font-mono uppercase tracking-widest"
-        title="Staff Access Portal"
+        onClick={scrollToBooking}
+        className="fixed bottom-6 right-4 md:bottom-8 md:right-8 z-[9000] bg-lime-400 hover:bg-lime-300 text-black px-6 py-3.5 rounded-full transition-all shadow-[0_0_20px_rgba(163,230,53,0.3)] cursor-pointer flex items-center gap-2 text-[12px] font-mono font-black uppercase tracking-widest"
+        title="Book Now"
       >
-        <span>🔑</span>
-        <span className="hidden sm:inline">Staff Node</span>
-        <span className="sm:hidden">Staff Portal</span>
+        <span>⚡</span>
+        <span>Book Now</span>
       </button>
 
       {/* Secure Gateways Authentication Dropdown System */}
