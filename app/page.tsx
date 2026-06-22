@@ -379,7 +379,7 @@ export default function Home() {
         alert("❌ Invalid Admin Password");
       }
     } else {
-      if (staffPassword === "SMES@SUB2026") { 
+      if (staffPassword === "1234") { 
         localStorage.setItem("subadminLoggedIn", "true");
         router.push("/subadmin"); 
         setShowStaffModal(false);
