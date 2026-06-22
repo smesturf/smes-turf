@@ -98,10 +98,9 @@ export default function SubAdminPage() {
   const tomorrow = formatDate(tomorrowDate);
 
   useEffect(() => {
-    // Basic protection (You can set up a real login for subadmin later)
     const loggedIn = localStorage.getItem("subadminLoggedIn");
     if (loggedIn !== "true") {
-      router.push("/subadmin/login"); // Fallback to a login page you can build
+      router.push("/"); // ⚡ ROUTING FIX: Kicks unauthorized users back to home screen gateway
       return;
     }
 
@@ -113,6 +112,35 @@ export default function SubAdminPage() {
     return () => {
       supabase.removeChannel(bookingsChannel);
       supabase.removeChannel(blockedChannel);
+    };
+  }, [router]);
+
+  // ⚡ SECURITY ADDITION: 12-Hour mobile inactivity auto-logout protection block
+  useEffect(() => {
+    let timeout: NodeJS.Timeout;
+
+    const resetTimer = () => {
+      clearTimeout(timeout);
+
+      timeout = setTimeout(() => {
+        localStorage.removeItem("subadminLoggedIn");
+
+        alert("Session expired after 12 hours. Please re-authorize via the Home Page.");
+        router.push("/"); // Kicks timed-out user back to home
+      }, 12 * 60 * 60 * 1000); // Set to 12 Hours
+    };
+
+    window.addEventListener("mousemove", resetTimer);
+    window.addEventListener("keypress", resetTimer);
+    window.addEventListener("click", resetTimer);
+
+    resetTimer();
+
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener("mousemove", resetTimer);
+      window.removeEventListener("keypress", resetTimer);
+      window.removeEventListener("click", resetTimer);
     };
   }, [router]);
 
@@ -217,7 +245,6 @@ export default function SubAdminPage() {
 
     if (isOverlapping) { alert("⚠️ This court is already booked or blocked at the selected time."); return; }
 
-    // STRICTLY OFFLINE BOOKING LOGIC FOR SUB-ADMIN
     let totalAmount = 0;
     let cashReceived = 0;
     let upiReceived = 0;
@@ -265,7 +292,7 @@ export default function SubAdminPage() {
 
   const handleLogout = () => {
     localStorage.removeItem("subadminLoggedIn");
-    router.push("/subadmin/login");
+    router.push("/"); // ⚡ ROUTING FIX: Sends manual logout to app home page
   };
 
   const savePayment = async () => {
@@ -338,7 +365,7 @@ export default function SubAdminPage() {
         </button>
       </div>
 
-      {/* Staff Financial Overview - Removed Gross Revenue blocks to protect owner info */}
+      {/* Staff Financial Overview */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 mb-8 relative z-10">
         <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
           <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Today Slots</h3>
@@ -494,7 +521,6 @@ export default function SubAdminPage() {
                     </td>
                     <td className="p-4 text-center">
                       <div className="flex items-center justify-center gap-2">
-                        {/* NO CANCEL BUTTON FOR SUB-ADMIN */}
                         {booking.balance_amount > 0 ? (
                           <button onClick={() => { setSelectedBooking(booking); setShowPaymentModal(true); }} className="bg-lime-400 hover:bg-lime-300 text-slate-950 text-xs font-mono uppercase font-black px-4 py-2 transition-all rounded">💰 Collect</button>
                         ) : (

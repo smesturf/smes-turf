@@ -180,7 +180,7 @@ export default function AdminPage() {
 
         alert("Session Expired. Please authorize via the Staff Node on the Home Page.");
         router.push("/"); // ⚡ ROUTING FIX: Send timed-out user back to home
-      }, 15 * 60 * 1000);
+      }, 12 * 60 * 60 * 1000);
     };
 
     window.addEventListener("mousemove", resetTimer);
