@@ -1,8 +1,8 @@
 {
-  "name": "SMES Turf Management",
+  "name": "SMES Turf",
   "short_name": "SMES Turf",
-  "description": "Admin and booking dashboard for SMES Turf",
-  "start_url": "/admin",
+  "description": "Premium multisport arena booking app.",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#020617",
   "theme_color": "#a3e635",
