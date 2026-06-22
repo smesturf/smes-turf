@@ -369,7 +369,7 @@ export default function Home() {
   const handleStaffLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (staffRole === "Admin") {
-      if (staffPassword === "1234") {
+      if (staffPassword === "SMES@2026") {
         localStorage.setItem("adminLoggedIn", "true");
         localStorage.setItem("adminLoginTime", Date.now().toString());
         router.push("/admin");
