@@ -50,7 +50,7 @@ export default function AdminPage() {
   const [slotReason, setSlotReason] = useState("OFFLINE BOOKING");
   const [slotTime, setSlotTime] = useState("");
   const [slotDuration, setSlotDuration] = useState(60);
-  const [slotEndTime, setSlotEndTime] = useState(""); // NEW: For Tournaments/Maintenance
+  const [slotEndTime, setSlotEndTime] = useState(""); 
   
   const [offlineAmount, setOfflineAmount] = useState("");
   const [offlinePaymentMethod, setOfflinePaymentMethod] = useState("Cash");
@@ -126,7 +126,7 @@ export default function AdminPage() {
     const loggedIn = localStorage.getItem("adminLoggedIn");
 
     if (loggedIn !== "true") {
-      router.push("/admin/login");
+      router.push("/"); // ⚡ ROUTING FIX: Send unauthorized directly to home app screen
       return;
     }
 
@@ -178,9 +178,8 @@ export default function AdminPage() {
         localStorage.removeItem("adminLoggedIn");
         localStorage.removeItem("adminLoginTime");
 
-        alert("Logged out due to inactivity");
-
-        router.push("/admin/login");
+        alert("Session Expired. Please authorize via the Staff Node on the Home Page.");
+        router.push("/"); // ⚡ ROUTING FIX: Send timed-out user back to home
       }, 15 * 60 * 1000);
     };
 
@@ -336,7 +335,6 @@ export default function AdminPage() {
     const selectedStart = convertToMins(slotTime);
     let selectedEnd = selectedStart + Number(slotDuration);
 
-    // DYNAMIC DURATION CALCULATION FOR TOURNAMENTS & MAINTENANCE
     if (slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE") {
       if (!slotEndTime) {
         alert("Please select an End Time for the block");
@@ -369,7 +367,6 @@ export default function AdminPage() {
       return;
     }
 
-    // OFFLINE BOOKING
     if (slotReason === "OFFLINE BOOKING") {
       let totalAmount = 0;
       let cashReceived = 0;
@@ -441,7 +438,6 @@ export default function AdminPage() {
       return;
     }
 
-    // MAINTENANCE / TOURNAMENT
     const { error } = await supabase
       .from("blocked_slots")
       .insert([
@@ -559,7 +555,6 @@ export default function AdminPage() {
 
     XLSX.utils.book_append_sheet(workbook, worksheet, "Bookings");
 
-    // TODAY SUMMARY
     const todayBookings = bookings.filter((booking) => booking.booking_date?.split("T")[0] === todayStr);
     const todayRevenue = todaysAdvance + todaysBalance;
     const todayAdvance = todaysAdvance;
@@ -585,7 +580,6 @@ export default function AdminPage() {
 
     XLSX.utils.book_append_sheet(workbook, todaySheet, "Today");
 
-    // MONTHLY SUMMARY
     const monthlyCash = bookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
     const monthlyUpi = bookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
     const monthlyCollection = monthlyCash + monthlyUpi;
@@ -607,7 +601,6 @@ export default function AdminPage() {
 
     XLSX.utils.book_append_sheet(workbook, monthlySheet, "Monthly");
 
-    // EVERYDAY SUMMARY SHEET
     const dailyStats: Record<string, any> = {};
     bookings.forEach(b => {
       const d = b.booking_date?.split("T")[0] || "Unknown";
@@ -659,7 +652,7 @@ export default function AdminPage() {
   const handleLogout = () => {
     localStorage.removeItem("adminLoggedIn");
     localStorage.removeItem("adminLoginTime");
-    router.push("/admin/login");
+    router.push("/"); // ⚡ ROUTING FIX: Send manual logout to home page
   };
 
   const savePayment = async () => {
@@ -778,7 +771,7 @@ export default function AdminPage() {
         </button>
       </div>
 
-      {/* Financial Analytics Grid - Optimized into pairs for mobile viewports */}
+      {/* Financial Analytics Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3 sm:gap-4 mb-8 relative z-10">
         <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
           <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Gross Orders</h3>
@@ -865,7 +858,7 @@ export default function AdminPage() {
 
             <div className="space-y-3.5">
               
-              {/* 1. REASON PROFILE (Moved to very top) */}
+              {/* 1. REASON PROFILE */}
               <div>
                 <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Reason Profile</label>
                 <div className="relative">
@@ -906,7 +899,7 @@ export default function AdminPage() {
                     value={slotTime}
                     onChange={(e) => {
                       setSlotTime(e.target.value);
-                      setSlotEndTime(""); // Reset end time when start changes
+                      setSlotEndTime(""); 
                       if (slotDate) {
                         loadAvailableCourts(slotDate, e.target.value);
                       }
@@ -958,7 +951,6 @@ export default function AdminPage() {
                             {slot}
                           </option>
                         ))}
-                      {/* Allow blocking the rest of the day */}
                       <option value="11:59 PM">11:59 PM (End of Day)</option>
                     </select>
                     <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
