@@ -1,0 +1,21 @@
+{
+  "name": "SMES Turf Management",
+  "short_name": "SMES Turf",
+  "description": "Admin and booking dashboard for SMES Turf",
+  "start_url": "/admin",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#a3e635",
+  "icons": [
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
