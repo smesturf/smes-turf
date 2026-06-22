@@ -27,7 +27,9 @@ export default function LoginPage() {
     }
   }, [router]);
 
-  const handleLogin = () => {
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault(); // Prevents the page from refreshing when pressing Enter
+
     const lockUntil = localStorage.getItem("adminLockUntil");
 
     if (
@@ -116,8 +118,9 @@ export default function LoginPage() {
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Admin Tower Authentication</p>
         </div>
 
-        {/* Login Form Wrapper Panel */}
-        <motion.div
+        {/* THE FIX: Wrapped inputs and button in a form element */}
+        <motion.form
+          onSubmit={handleLogin}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, duration: 0.4 }}
@@ -150,13 +153,13 @@ export default function LoginPage() {
           {/* Core Sign-In Trigger Action */}
           <div className="pt-2">
             <button
-              onClick={handleLogin}
+              type="submit"
               className="w-full bg-gradient-to-r from-lime-400 to-lime-300 hover:from-lime-300 hover:to-lime-200 text-slate-950 font-mono text-xs font-black uppercase tracking-widest py-3.5 sm:py-4 rounded-xl transition-all shadow-xl shadow-lime-400/10 min-h-[48px] sm:min-h-[52px] flex items-center justify-center"
             >
               Initialize Command
             </button>
           </div>
-        </motion.div>
+        </motion.form>
 
         {/* Footer Security Notice System */}
         <div className="text-center">
