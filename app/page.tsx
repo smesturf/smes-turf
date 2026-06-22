@@ -1,20 +1,26 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation"; 
 import { supabase } from "./lib/supabase";
 import { motion } from "framer-motion";
 
 export default function Home() {
+  const router = useRouter(); 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [sport, setSport] = useState("Football");
   const [bookingDate, setBookingDate] = useState("");
-  const [startTime, setStartTime] = useState(""); // Starts empty so no slot is auto-selected
+  const [startTime, setStartTime] = useState(""); 
   const [duration, setDuration] = useState("60");
   const [bookingType, setBookingType] = useState("Full Court");
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
 
-  // Automatically inject the Razorpay checkout script on mount safely
+  // App Staff Authentication States
+  const [showStaffModal, setShowStaffModal] = useState(false);
+  const [staffRole, setStaffRole] = useState("Admin");
+  const [staffPassword, setStaffPassword] = useState("");
+
   useEffect(() => {
     const script = document.createElement("script");
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
@@ -44,9 +50,8 @@ export default function Home() {
       ? 1850
       : 2500;
 
-  const advanceAmount = 205; // Intentionally set to cover gateway transaction charges
+  const advanceAmount = 205; 
   
-  // Generates exactly 48 slots for a full 24-hour clock (12:00 AM to 11:30 PM)
   const allSlots = Array.from({ length: 48 }, (_, i) => {
     const h = Math.floor(i / 2);
     const m = i % 2 === 0 ? "00" : "30";
@@ -55,13 +60,12 @@ export default function Home() {
     return `${String(displayH).padStart(2, "0")}:${m} ${ampm}`;
   });
 
-  // Robust helper to extract true user local date in YYYY-MM-DD
   const getLocalDateString = () => {
-    const tzOffset = new Date().getTimezoneOffset() * 60000;
-    return new Date(Date.now() - tzOffset).toISOString().split("T")[0];
+    return new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Kolkata",
+    });
   };
 
-  // Helper to convert UI strings "01:30 PM" -> Database format "13:30:00"
   const convert12to24 = (time12: string) => {
     const [time, ampm] = time12.split(" ");
     let [hours, minutes] = time.split(":").map(Number);
@@ -70,18 +74,14 @@ export default function Home() {
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`;
   };
 
-  // Validates if a specific slot can be booked based on time, duration, and blocks
   const isSlotAvailable = (slot: string) => {
-    // If no date is selected yet, block ALL slots
     if (!bookingDate) return false;
 
     const segmentsNeeded = Number(duration) / 30;
     const slotIndex = allSlots.indexOf(slot);
     
-    // Look-Ahead Filter: Ensure upcoming continuous slots accommodate the selected timeframe
     for (let i = 0; i < segmentsNeeded; i++) {
       const targetIndex = slotIndex + i;
-      // Allow late-night bookings to cross over midnight without crashing the array index
       if (targetIndex < allSlots.length) {
         const nextSlot = allSlots[targetIndex];
         if (bookedSlots.includes(nextSlot)) return false;
@@ -92,9 +92,11 @@ export default function Home() {
     if (bookingDate && bookingDate < today) return false;
     if (bookingDate !== today) return true;
 
-    // Check if slot is in the past for today
     const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const istTimeStr = now.toLocaleTimeString("en-US", { timeZone: "Asia/Kolkata", hour12: false });
+    const [currentHours, currentMins] = istTimeStr.split(":").map(Number);
+    const currentMinutes = currentHours * 60 + currentMins;
+
     const [time, ampm] = slot.split(" ");
     let [hours, minutes] = time.split(":").map(Number);
     if (ampm === "PM" && hours !== 12) hours += 12;
@@ -104,7 +106,6 @@ export default function Home() {
     return slotMinutes > currentMinutes;
   };
 
-  // Auto-clears the selected time if the user changes date/duration making it invalid
   useEffect(() => {
     if (startTime && !isSlotAvailable(startTime)) {
       setStartTime("");
@@ -130,7 +131,6 @@ export default function Home() {
     const blocked: string[] = [];
     const slotCounts: Record<string, number> = {};
 
-    // 1. Process client field reservations if they exist
     if (data) {
       data.forEach((booking: any) => {
         if (!booking.start_time) return;
@@ -141,8 +141,6 @@ export default function Home() {
 
         for (let i = 0; i < slotsToBlock; i++) {
           const current = minutes + i * 30;
-          
-          // Midnight Rollover Protection
           if (current >= 24 * 60) continue;
 
           const hour24 = Math.floor(current / 60);
@@ -161,18 +159,13 @@ export default function Home() {
 
       Object.entries(slotCounts).forEach(([slot, count]) => {
         if (bookingType === "Full Court") {
-          if (count >= 1) {
-            blocked.push(slot);
-          }
+          if (count >= 1) blocked.push(slot);
         } else {
-          if (count >= 2 || count === 999) {
-            blocked.push(slot);
-          }
+          if (count >= 2 || count === 999) blocked.push(slot);
         }
       });
     }
 
-    // 2. Process admin blocks independently 
     if (blockedData) {
       blockedData.forEach((slot: any) => {
         if (!slot.start_time) return;
@@ -183,7 +176,6 @@ export default function Home() {
 
         for (let i = 0; i < slotsToBlock; i++) {
           const current = minutes + i * 30;
-          
           if (current >= 24 * 60) continue;
 
           const hour24 = Math.floor(current / 60);
@@ -210,12 +202,8 @@ export default function Home() {
       }
       const response = await fetch("/api/create-order", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          amount: advanceAmount,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: advanceAmount }),
       });
 
       const order = await response.json();
@@ -230,10 +218,7 @@ export default function Home() {
         handler: async function (response: any) {
           await handleBooking(response);
         },
-        prefill: {
-          name: name,
-          contact: phone,
-        },
+        prefill: { name: name, contact: phone },
       };
 
       if ((window as any).Razorpay) {
@@ -264,15 +249,8 @@ export default function Home() {
       .select("*")
       .eq("booking_date", bookingDate);
 
-    if (checkError) {
-      alert(checkError.message);
-      return;
-    }
-
-    if (blockedError) {
-      alert(blockedError.message);
-      return;
-    }
+    if (checkError) { alert(checkError.message); return; }
+    if (blockedError) { alert(blockedError.message); return; }
 
     const selectedDuration = Number(duration);
     const convertToMinutes = (time: string) => {
@@ -291,10 +269,7 @@ export default function Home() {
     const overlappingBookings =
       existingBookings?.filter((booking) => {
         if (!booking.start_time) return false;
-        const [hours, minutes] = booking.start_time
-          .substring(0, 5)
-          .split(":")
-          .map(Number);
+        const [hours, minutes] = booking.start_time.substring(0, 5).split(":").map(Number);
         const bookingStart = hours * 60 + minutes;
         const bookingEnd = bookingStart + booking.duration_minutes;
         return selectedStart < bookingEnd && selectedEnd > bookingStart;
@@ -303,10 +278,7 @@ export default function Home() {
     const overlappingBlocked =
       blockedSlotsData?.filter((slot) => {
         if (!slot.start_time) return false;
-        const [hours, minutes] = slot.start_time
-          .substring(0, 5)
-          .split(":")
-          .map(Number);
+        const [hours, minutes] = slot.start_time.substring(0, 5).split(":").map(Number);
         const blockStart = hours * 60 + minutes;
         const blockEnd = blockStart + (slot.duration_minutes || 60);
         return selectedStart < blockEnd && selectedEnd > blockStart;
@@ -321,11 +293,9 @@ export default function Home() {
       const court1Taken = overlappingBookings.some((b) => b.court_number === "Court 1");
       const court2Taken = overlappingBookings.some((b) => b.court_number === "Court 2");
 
-      if (!court1Taken) {
-        courtNumber = "Court 1";
-      } else if (!court2Taken) {
-        courtNumber = "Court 2";
-      } else {
+      if (!court1Taken) courtNumber = "Court 1";
+      else if (!court2Taken) courtNumber = "Court 2";
+      else {
         alert("❌ No Half Court Available.");
         return;
       }
@@ -339,11 +309,8 @@ export default function Home() {
       courtNumber = "Both Courts";
     }
 
-    if (paymentData === "CHECK_ONLY") {
-      return true;
-    }
+    if (paymentData === "CHECK_ONLY") return true;
 
-    console.log("Assigned court:", courtNumber);
     const { data: insertedData, error } = await supabase.from("bookings").insert([
       {
         customer_name: name,
@@ -397,6 +364,30 @@ export default function Home() {
     setBookingDate("");
     setStartTime("");
     setDuration("60");
+  };
+
+  const handleStaffLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (staffRole === "Admin") {
+      if (staffPassword === "SMES@2026") {
+        localStorage.setItem("adminLoggedIn", "true");
+        localStorage.setItem("adminLoginTime", Date.now().toString());
+        router.push("/admin");
+        setShowStaffModal(false);
+        setStaffPassword("");
+      } else {
+        alert("❌ Invalid Admin Password");
+      }
+    } else {
+      if (staffPassword === "SMES@SUB2026") { 
+        localStorage.setItem("subadminLoggedIn", "true");
+        router.push("/subadmin"); 
+        setShowStaffModal(false);
+        setStaffPassword("");
+      } else {
+        alert("❌ Invalid Sub-Admin Password");
+      }
+    }
   };
 
   const scrollToBooking = () => {
@@ -591,7 +582,6 @@ export default function Home() {
                 />
               </div>
 
-              {/* SEQUENTIAL LOCK #1: Session Length wrapped with a click interceptor */}
               <div className="space-y-2 relative">
                 <label className="text-xs font-mono uppercase text-neutral-400">Session Length</label>
                 <div className="relative">
@@ -625,7 +615,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* SEQUENTIAL LOCK #2: Time Grid wrapped with a click interceptor */}
               <div className="space-y-2 relative">
                 <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Slot</label>
                 <div className="relative">
@@ -730,33 +719,107 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-16 border-t border-neutral-900 relative z-10">
-        <span className="text-xs font-mono uppercase tracking-widest text-neutral-500 block mb-6 sm:mb-8 text-center">03 — Setup Infrastructure</span>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4 max-w-4xl mx-auto text-center">
-          {["💡 Floodlights", "🚗 Secure Parking", "🧼 Washrooms", "🚰 Pure Water", "⏳ Open 24 Hours"].map((facility, index) => (
-            <div 
-              key={index} 
-              className="bg-neutral-900/40 border border-neutral-900 p-4 font-mono text-xs text-neutral-400 uppercase tracking-wider"
-            >
-              {facility}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <footer className="w-full bg-black border-t border-neutral-900 py-12 px-4 sm:py-16 sm:px-6 text-left relative z-10">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start gap-6 sm:gap-8">
-          <div className="space-y-2">
-            <p className="text-xs font-mono text-neutral-400 uppercase tracking-widest">SMES Sports Academy Ground Hub</p>
-            <p className="text-[10px] text-neutral-600 font-mono">© 2026 Built for competitive team sports action and weekend fun.</p>
+      <footer className="w-full border-t border-neutral-900 pt-8 pb-32 px-4 sm:px-6 relative z-10">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center md:items-start gap-6 text-center md:text-left">
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-mono text-neutral-400 uppercase tracking-widest">SMES Sports Academy Ground Hub</p>
+            <p className="text-[9px] text-neutral-600 font-mono">© 2026 Built for competitive team sports action and weekend fun.</p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-y-2 gap-x-6 md:gap-x-8 font-mono text-[10px] text-neutral-400 uppercase tracking-widest">
-            <div><span className="text-lime-400">P:</span> +91 8453095258</div>
-            <div><span className="text-lime-400">E:</span> sports@smesturf.com</div>
-            <div><span className="text-lime-400">L:</span> Mysuru, Karnataka</div>
+          <div className="flex flex-wrap justify-center md:justify-end gap-x-6 gap-y-2 font-mono text-[9px] sm:text-[10px] text-neutral-400 uppercase tracking-widest">
+            <div><span className="text-lime-500">P:</span> +91 8453095258</div>
+            <div><span className="text-lime-500">E:</span> sports@smesturf.com</div>
+            <div><span className="text-lime-500">L:</span> Mysuru, Karnataka</div>
           </div>
         </div>
       </footer>
+
+      {/* UPDATED: Prominent Staff Node Button positioned safely above mobile browser bars */}
+      <button
+        onClick={() => setShowStaffModal(true)}
+        className="fixed bottom-10 right-4 md:bottom-8 md:right-8 z-[9000] bg-neutral-900/95 border border-neutral-700 hover:border-lime-400 text-neutral-300 hover:text-lime-400 px-4 py-3 rounded-full transition-all shadow-[0_0_20px_rgba(0,0,0,0.6)] backdrop-blur-md cursor-pointer flex items-center gap-2 text-[11px] font-mono uppercase tracking-widest"
+        title="Staff Access Portal"
+      >
+        <span>🔑</span>
+        <span className="hidden sm:inline">Staff Node</span>
+        <span className="sm:hidden">Staff Portal</span>
+      </button>
+
+      {/* Secure Gateways Authentication Dropdown System */}
+      {showStaffModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-[99999]">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl w-full max-w-sm shadow-2xl space-y-4"
+          >
+            <div className="text-center">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-lime-400">// Secure Node Terminal</span>
+              <h3 className="text-lg font-black uppercase text-white mt-1">System Gateway</h3>
+            </div>
+
+            <form onSubmit={handleStaffLogin} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-mono uppercase tracking-wider text-neutral-400">Target Role</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setStaffRole("Admin")}
+                    className={`py-2.5 text-xs font-mono uppercase tracking-wider transition-all border ${
+                      staffRole === "Admin"
+                        ? "bg-lime-400 border-lime-400 text-black font-black"
+                        : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white"
+                    }`}
+                  >
+                    Admin
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStaffRole("Sub-Admin")}
+                    className={`py-2.5 text-xs font-mono uppercase tracking-wider transition-all border ${
+                      staffRole === "Sub-Admin"
+                        ? "bg-lime-400 border-lime-400 text-black font-black"
+                        : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white"
+                    }`}
+                  >
+                    Sub-Admin
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400">Access Keycode</label>
+                <input
+                  type="password"
+                  placeholder="Enter password"
+                  value={staffPassword}
+                  onChange={(e) => setStaffPassword(e.target.value)}
+                  className="w-full p-3.5 rounded-xl bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium"
+                  autoFocus
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  type="submit"
+                  className="w-full bg-gradient-to-r from-lime-400 to-lime-300 text-neutral-950 font-mono text-xs uppercase tracking-wider py-3 font-black transition-all min-h-[44px]"
+                >
+                  Authorize
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowStaffModal(false);
+                    setStaffPassword("");
+                  }}
+                  className="w-full bg-neutral-800 hover:bg-neutral-700 text-slate-300 font-mono text-xs uppercase tracking-wider py-3 transition-all min-h-[44px]"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
     </main>
   );
 }
