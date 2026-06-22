@@ -17,6 +17,9 @@ export const metadata: Metadata = {
   title: "SMES Turf",
   description: "Sports Sports Academy Turf",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/icon.png", // 👈 Explicitly tells the browser exactly what to load
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
