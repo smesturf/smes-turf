@@ -477,6 +477,7 @@ export default function SubAdminPage() {
         Showing {bookings.filter((b) => b.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) || b.phone?.includes(searchTerm)).length} booking(s) active
       </p>
 
+      {/* 🏟️ UPDATED: Active Bookings Table incorporating a dedicated Duration layout column */}
       <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden shadow-2xl relative z-10 backdrop-blur-xl">
         <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-white/10">
           <table className="w-full text-left border-collapse">
@@ -484,6 +485,7 @@ export default function SubAdminPage() {
               <tr className="border-b border-white/10 bg-slate-900/80 text-[10px] font-mono uppercase tracking-widest text-slate-400">
                 <th className="p-4 font-bold">Client</th>
                 <th className="p-4 font-bold">Schedule</th>
+                <th className="p-4 font-bold">Duration</th>
                 <th className="p-4 font-bold">Court</th>
                 <th className="p-4 font-bold">Total</th>
                 <th className="p-4 font-bold">Advance</th>
@@ -491,7 +493,7 @@ export default function SubAdminPage() {
                 <th className="p-4 font-bold text-center">Payment Options</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5 text-sm font-medium">
+            <tbody className="divide-y divide-white/5 text-sm font-medium stale-300">
               {bookings.filter((b) => b.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) || b.phone?.includes(searchTerm)).map((booking) => {
                 const bookingDate = booking.booking_date?.split("T")[0];
                 return (
@@ -503,6 +505,9 @@ export default function SubAdminPage() {
                     <td className="p-4 font-mono text-xs">
                       <div>{new Date(bookingDate).toLocaleDateString("en-GB")}</div>
                       <div className="text-white mt-0.5">{new Date(`2000-01-01T${booking.start_time}`).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true })}</div>
+                    </td>
+                    <td className="p-4 font-mono text-xs text-slate-300">
+                      {booking.duration_minutes || 60} Mins
                     </td>
                     <td className="p-4 font-mono text-xs">
                       <div>{booking.booking_type}</div>
@@ -536,7 +541,7 @@ export default function SubAdminPage() {
         </div>
       </div>
 
-      {/* 🚫 UPDATED: Admin Field Blocks List with explicit Duration & calculated End Time Window */}
+      {/* Admin Field Blocks List */}
       <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden shadow-2xl mt-8 relative z-10 backdrop-blur-xl">
         <div className="p-4 bg-slate-900/80 border-b border-white/10">
           <h2 className="text-lg font-black uppercase tracking-wide text-white">🚫 Admin Field Blocks</h2>
@@ -559,7 +564,6 @@ export default function SubAdminPage() {
                 const bookingDate = slot.booking_date?.split("T")[0];
                 const blockDuration = slot.duration_minutes || 60;
                 
-                // Live math calculation converting start_time + duration into the exact 12-hour end label
                 const [h, m] = slot.start_time.split(":");
                 const totalMinutes = Number(h) * 60 + Number(m) + Number(blockDuration);
                 const endHour = Math.floor(totalMinutes / 60) % 24;
