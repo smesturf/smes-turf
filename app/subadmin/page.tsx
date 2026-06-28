@@ -53,7 +53,7 @@ export default function SubAdminPage() {
     return h * 60 + m;
   };
 
-  // NEW: Helper to calculate and format a clear 12-hour time range (e.g., 4:00 pm to 5:30 pm)
+  // Helper to calculate and format a clear 12-hour time range (e.g., 4:00 pm to 5:30 pm)
   const getTimeRangeLabel = (startTimeStr: string, durationMins: number) => {
     if (!startTimeStr) return "";
     const [h, m] = startTimeStr.split(":");
@@ -481,9 +481,91 @@ export default function SubAdminPage() {
         Showing {bookings.filter((b) => b.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) || b.phone?.includes(searchTerm)).length} booking(s) active
       </p>
 
-      {/* Active Bookings Table with Highlighted Tags, Ranges, and Capsules */}
-      <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden shadow-2xl relative z-10 backdrop-blur-xl">
-        <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-white/10">
+      {/* 🏟️ DUAL-MODE INTERFACE: Responsive Mobile Flex Stack + Desktop Grid Matrix */}
+      <div className="bg-slate-900/40 border border-white/10 rounded-2xl md:overflow-hidden shadow-2xl relative z-10 backdrop-blur-xl">
+        
+        {/* 1. MOBILE SMART STACKING CARDS LAYER (Visible on Small Handhelds Only) */}
+        <div className="block md:hidden p-3 space-y-3">
+          {bookings.filter((b) => b.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) || b.phone?.includes(searchTerm)).map((booking) => {
+            const bookingDate = booking.booking_date?.split("T")[0];
+            const isToday = bookingDate === today;
+            const isTomorrow = bookingDate === tomorrow;
+            const duration = booking.duration_minutes || 60;
+
+            let cardBg = "bg-slate-950/40";
+            if (isToday) cardBg = "bg-lime-500/[0.04] border-lime-500/20";
+            else if (isTomorrow) cardBg = "bg-amber-500/[0.03] border-amber-500/15";
+
+            return (
+              <div key={booking.id} className={`${cardBg} border border-white/5 rounded-xl p-4 space-y-3 text-sm`}>
+                <div className="flex justify-between items-start border-b border-white/5 pb-2">
+                  <div>
+                    <div className="font-bold text-white text-base">{booking.customer_name}</div>
+                    <div className="font-mono text-xs text-slate-400 mt-0.5">{booking.phone}</div>
+                  </div>
+                  <span className="px-2 py-1 bg-slate-900 text-slate-300 font-mono text-xs rounded-md border border-white/5">
+                    {duration} Mins
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-y-2.5 text-xs font-mono pt-1">
+                  <div>
+                    <span className="block text-[10px] text-slate-500 uppercase">Schedule Range</span>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                      <span className="text-slate-300">{new Date(bookingDate).toLocaleDateString("en-GB")}</span>
+                      {isToday && <span className="bg-lime-400/10 text-lime-400 text-[8px] font-bold px-1 py-0.5 rounded uppercase">Today</span>}
+                      {isTomorrow && <span className="bg-amber-400/10 text-amber-400 text-[8px] font-bold px-1 py-0.5 rounded uppercase">Tomorrow</span>}
+                    </div>
+                    <div className="text-white font-bold mt-1 text-xs">{getTimeRangeLabel(booking.start_time, duration)}</div>
+                  </div>
+
+                  <div>
+                    <span className="block text-[10px] text-slate-500 uppercase">Allocated Section</span>
+                    <div className="mt-1">
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+                        booking.booking_type === "Half Court" ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20" : "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+                      }`}>
+                        {booking.booking_type || "Full Court"}
+                      </span>
+                    </div>
+                    <div className="text-slate-400 mt-1 text-[11px]">{booking.court_number}</div>
+                  </div>
+
+                  <div>
+                    <span className="block text-[10px] text-slate-500 uppercase">Total Dues</span>
+                    <div className="text-slate-200 text-sm font-bold mt-0.5">₹{booking.total_amount}</div>
+                  </div>
+
+                  <div>
+                    <span className="block text-[10px] text-slate-500 uppercase">Advance / Balance</span>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                      <span className="text-emerald-400 font-bold">₹{booking.advance_amount || 0}</span>
+                      <span>/</span>
+                      {booking.balance_amount > 0 ? (
+                        <span className="text-red-400 font-bold">₹{booking.balance_amount}</span>
+                      ) : (
+                        <span className="text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1 py-0.2 rounded text-[9px] uppercase font-black tracking-wider">Paid</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-white/5 flex items-center justify-end">
+                  {booking.balance_amount > 0 ? (
+                    <button onClick={() => { setSelectedBooking(booking); setShowPaymentModal(true); }} className="w-full bg-lime-400 hover:bg-lime-300 text-slate-950 text-xs font-mono uppercase font-black py-2.5 transition-all rounded-lg shadow-md flex items-center justify-center gap-1.5">💰 Collect Balance</button>
+                  ) : (
+                    booking.customer_name !== "Offline Booking" && (
+                      <button onClick={() => resetPayment(booking)} className="w-full bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-amber-400 text-xs font-mono uppercase py-2.5 transition-all rounded-lg flex items-center justify-center gap-1.5">🔄 Reset Account</button>
+                    )
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 2. DESKTOP SYSTEM TABLE GRID LAYER (Hidden on Mobile view ports) */}
+        <div className="hidden md:block overflow-x-auto scrollbar-thin scrollbar-thumb-white/10">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-white/10 bg-slate-900/80 text-[10px] font-mono uppercase tracking-widest text-slate-400">
@@ -504,13 +586,9 @@ export default function SubAdminPage() {
                 const isTomorrow = bookingDate === tomorrow;
                 const duration = booking.duration_minutes || 60;
 
-                // Match layout rows tint configuration from admin view
                 let rowColor = "bg-transparent";
-                if (isToday) {
-                  rowColor = "bg-lime-500/[0.04]";
-                } else if (isTomorrow) {
-                  rowColor = "bg-amber-500/[0.03]";
-                }
+                if (isToday) rowColor = "bg-lime-500/[0.04]";
+                else if (isTomorrow) rowColor = "bg-amber-500/[0.03]";
 
                 return (
                   <tr key={booking.id} className={`${rowColor} hover:bg-white/[0.02] transition-colors text-slate-300`}>
@@ -518,45 +596,23 @@ export default function SubAdminPage() {
                       <div className="font-bold text-white">{booking.customer_name}</div>
                       <div className="font-mono text-[10px] text-slate-400 mt-0.5">{booking.phone}</div>
                     </td>
-                    
-                    {/* 🕒 UPDATED: Injected Today/Tomorrow Status Badges & Full Time Range Windows */}
                     <td className="p-4 font-mono text-xs whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <span className="text-slate-200">{new Date(bookingDate).toLocaleDateString("en-GB")}</span>
-                        {isToday && (
-                          <span className="px-2 py-0.5 rounded-full bg-lime-400/10 border border-lime-400/30 text-lime-400 text-[9px] font-black uppercase tracking-wide">
-                            Today
-                          </span>
-                        )}
-                        {isTomorrow && (
-                          <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-400 text-[9px] font-black uppercase tracking-wide">
-                            Tomorrow
-                          </span>
-                        )}
+                        {isToday && <span className="px-2 py-0.5 rounded-full bg-lime-400/10 border border-lime-400/30 text-lime-400 text-[9px] font-black uppercase tracking-wide">Today</span>}
+                        {isTomorrow && <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-400 text-[9px] font-black uppercase tracking-wide">Tomorrow</span>}
                       </div>
-                      <div className="text-white mt-1 font-bold">
-                        {getTimeRangeLabel(booking.start_time, duration)}
-                      </div>
+                      <div className="text-white mt-1 font-bold">{getTimeRangeLabel(booking.start_time, duration)}</div>
                     </td>
-
-                    <td className="p-4 font-mono text-xs text-slate-300">
-                      {duration} Mins
-                    </td>
-
-                    {/* 🏟️ UPDATED: Added styled visual capsule badges for booking section dimensions */}
+                    <td className="p-4 font-mono text-xs text-slate-300">{duration} Mins</td>
                     <td className="p-4 font-mono text-xs">
                       <div className="mb-1">
                         <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-mono uppercase tracking-wider ${
-                          booking.booking_type === "Half Court"
-                            ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400"
-                            : "bg-purple-500/10 border border-purple-500/20 text-purple-400"
-                        }`}>
-                          {booking.booking_type || "Full Court"}
-                        </span>
+                          booking.booking_type === "Half Court" ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400" : "bg-purple-500/10 border border-purple-500/20 text-purple-400"
+                        }`}>{booking.booking_type || "Full Court"}</span>
                       </div>
                       <div className="text-slate-400 mt-0.5">{booking.court_number}</div>
                     </td>
-
                     <td className="p-4 text-slate-200 font-mono">₹{booking.total_amount}</td>
                     <td className="p-4 text-emerald-400 font-mono">₹{booking.advance_amount || 0}</td>
                     <td className="p-4 font-mono">
@@ -585,12 +641,60 @@ export default function SubAdminPage() {
         </div>
       </div>
 
-      {/* Admin Field Blocks List */}
-      <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden shadow-2xl mt-8 relative z-10 backdrop-blur-xl">
+      {/* Admin Field Blocks Card Wrapper View */}
+      <div className="bg-slate-900/40 border border-white/10 rounded-2xl md:overflow-hidden shadow-2xl mt-8 relative z-10 backdrop-blur-xl">
         <div className="p-4 bg-slate-900/80 border-b border-white/10">
           <h2 className="text-lg font-black uppercase tracking-wide text-white">🚫 Admin Field Blocks</h2>
         </div>
-        <div className="overflow-x-auto">
+
+        {/* 1. MOBILE RESPONSIVE BLOCKS LIST (Visible on Small Handhelds Only) */}
+        <div className="block md:hidden p-3 space-y-3">
+          {blockedSlots.map((slot) => {
+            if (!slot.start_time) return null;
+            const bookingDate = slot.booking_date?.split("T")[0];
+            const blockDuration = slot.duration_minutes || 60;
+
+            const [h, m] = slot.start_time.split(":");
+            const totalMinutes = Number(h) * 60 + Number(m) + Number(blockDuration);
+            const endHour = Math.floor(totalMinutes / 60) % 24;
+            const endMinute = totalMinutes % 60;
+            const ampm = endHour >= 12 ? "pm" : "am";
+            const displayHour = endHour % 12 === 0 ? 12 : endHour % 12;
+            const endTimeString = `${displayHour}:${String(endMinute).padStart(2, "0")} ${ampm}`;
+
+            return (
+              <div key={slot.id} className="bg-slate-950/30 border border-white/5 rounded-xl p-4 space-y-2.5 text-xs font-mono">
+                <div className="flex justify-between items-center border-b border-white/5 pb-1.5">
+                  <div>
+                    <span className="block text-[10px] text-slate-500 uppercase">Lock Timeline</span>
+                    <span className="text-slate-200 text-xs font-bold">{new Date(bookingDate).toLocaleDateString("en-GB")}</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded font-black bg-red-500/10 text-red-400 border border-red-500/20 uppercase tracking-widest text-[9px]">
+                    {slot.reason}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-slate-300">
+                  <div>
+                    <span className="block text-[10px] text-slate-500 uppercase">Hours Range</span>
+                    <div className="text-white mt-0.5 font-bold">
+                      {new Date(`2000-01-01T${slot.start_time}`).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true })}
+                    </div>
+                    <div className="text-slate-400 text-[10px] lowercase tracking-wide">till {endTimeString}</div>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] text-slate-500 uppercase">Duration / Court</span>
+                    <div className="mt-0.5 font-bold">{blockDuration} Mins</div>
+                    <div className="text-cyan-400 font-bold text-[11px] mt-0.5">{slot.court_number}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 2. DESKTOP BLOCKS SYSTEM GRID MATRIX (Hidden on Mobile view ports) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-white/10 bg-slate-955/40 text-[10px] font-mono uppercase tracking-widest text-slate-400">
@@ -604,7 +708,6 @@ export default function SubAdminPage() {
             <tbody className="divide-y divide-white/5 text-sm font-medium text-slate-300">
               {blockedSlots.map((slot) => {
                 if (!slot.start_time) return null;
-                
                 const bookingDate = slot.booking_date?.split("T")[0];
                 const blockDuration = slot.duration_minutes || 60;
                 
@@ -618,26 +721,14 @@ export default function SubAdminPage() {
 
                 return (
                   <tr key={slot.id} className="hover:bg-white/[0.01] transition-colors">
+                    <td className="p-4 font-mono text-xs">{new Date(bookingDate).toLocaleDateString("en-GB")}</td>
                     <td className="p-4 font-mono text-xs">
-                      {new Date(bookingDate).toLocaleDateString("en-GB")}
+                      <div className="text-white">{new Date(`2000-01-01T${slot.start_time}`).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true })}</div>
+                      <div className="text-slate-500 text-[10px] mt-0.5 uppercase tracking-wide">till {endTimeString}</div>
                     </td>
-                    <td className="p-4 font-mono text-xs">
-                      <div className="text-white">
-                        {new Date(`2000-01-01T${slot.start_time}`).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true })}
-                      </div>
-                      <div className="text-slate-500 text-[10px] mt-0.5 uppercase tracking-wide">
-                        till {endTimeString}
-                      </div>
-                    </td>
-                    <td className="p-4 font-mono text-xs text-slate-300">
-                      {blockDuration} Mins
-                    </td>
-                    <td className="p-4 font-mono text-xs font-bold text-cyan-400">
-                      {slot.court_number}
-                    </td>
-                    <td className="p-4 font-mono text-xs text-slate-400">
-                      {slot.reason}
-                    </td>
+                    <td className="p-4 font-mono text-xs text-slate-300">{blockDuration} Mins</td>
+                    <td className="p-4 font-mono text-xs font-bold text-cyan-400">{slot.court_number}</td>
+                    <td className="p-4 font-mono text-xs text-slate-400">{slot.reason}</td>
                   </tr>
                 );
               })}
