@@ -32,6 +32,24 @@ export default function AdminPage() {
     return h * 60 + m;
   };
 
+  // NEW: Helper to calculate and format a clear 12-hour time range (e.g., 4:00 pm to 5:30 pm)
+  const getTimeRangeLabel = (startTimeStr: string, durationMins: number) => {
+    if (!startTimeStr) return "";
+    const [h, m] = startTimeStr.split(":");
+    const startTotal = Number(h) * 60 + Number(m);
+    const endTotal = startTotal + Number(durationMins);
+
+    const formatString = (totalMins: number) => {
+      const hours24 = Math.floor(totalMins / 60) % 24;
+      const mins = totalMins % 60;
+      const ampm = hours24 >= 12 ? "pm" : "am";
+      const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+      return `${hours12}:${String(mins).padStart(2, "0")} ${ampm}`;
+    };
+
+    return `${formatString(startTotal)} to ${formatString(endTotal)}`;
+  };
+
   const [slotDate, setSlotDate] = useState("");
   const adminTimeSlots = Array.from({ length: 48 }, (_, i) => {
     const hours = Math.floor(i / 2);
@@ -126,7 +144,7 @@ export default function AdminPage() {
     const loggedIn = localStorage.getItem("adminLoggedIn");
 
     if (loggedIn !== "true") {
-      router.push("/"); // ⚡ ROUTING FIX: Send unauthorized directly to home app screen
+      router.push("/"); 
       return;
     }
 
@@ -179,7 +197,7 @@ export default function AdminPage() {
         localStorage.removeItem("adminLoginTime");
 
         alert("Session Expired. Please authorize via the Staff Node on the Home Page.");
-        router.push("/"); // ⚡ ROUTING FIX: Send timed-out user back to home
+        router.push("/"); 
       }, 12 * 60 * 60 * 1000);
     };
 
@@ -652,7 +670,7 @@ export default function AdminPage() {
   const handleLogout = () => {
     localStorage.removeItem("adminLoggedIn");
     localStorage.removeItem("adminLoginTime");
-    router.push("/"); // ⚡ ROUTING FIX: Send manual logout to home page
+    router.push("/"); 
   };
 
   const savePayment = async () => {
@@ -1070,7 +1088,7 @@ export default function AdminPage() {
                 <th className="p-4 font-bold">Client</th>
                 <th className="p-4 font-bold">Phone</th>
                 <th className="p-4 font-bold">Schedule</th>
-                <th className="p-4 font-bold">Time</th>
+                <th className="p-4 font-bold">Time Range</th>
                 <th className="p-4 font-bold">Length</th>
                 <th className="p-4 font-bold">Sport</th>
                 <th className="p-4 font-bold">Scale</th>
@@ -1124,12 +1142,9 @@ export default function AdminPage() {
                         )}
                       </td>
 
-                      <td className="p-4 font-mono text-xs text-white whitespace-nowrap">
-                        {new Date(`2000-01-01T${booking.start_time}`).toLocaleTimeString("en-IN", {
-                          hour: "numeric",
-                          minute: "2-digit",
-                          hour12: true,
-                        })}
+                      {/* 🕒 UPDATED: Main Booking dynamic range window calculator cell */}
+                      <td className="p-4 font-mono text-xs text-white font-bold whitespace-nowrap">
+                        {getTimeRangeLabel(booking.start_time, booking.duration_minutes || 60)}
                       </td>
 
                       <td className="p-4 text-xs whitespace-nowrap">{booking.duration_minutes || 60} mins</td>
@@ -1217,7 +1232,7 @@ export default function AdminPage() {
             <thead>
               <tr className="border-b border-white/10 bg-slate-950/40 text-[10px] font-mono uppercase tracking-widest text-slate-400">
                 <th className="p-4 font-bold">Target Date</th>
-                <th className="p-4 font-bold">Time Block</th>
+                <th className="p-4 font-bold">Time Block Range</th>
                 <th className="p-4 font-bold">Duration</th>
                 <th className="p-4 font-bold">Court Section</th>
                 <th className="p-4 font-bold">Block Reason</th>
@@ -1232,12 +1247,9 @@ export default function AdminPage() {
                     {new Date(slot.booking_date).toLocaleDateString("en-GB")}
                   </td>
 
-                  <td className="p-4 font-mono text-xs text-white">
-                    {new Date(`2000-01-01T${slot.start_time}`).toLocaleTimeString("en-IN", {
-                      hour: "numeric",
-                      minute: "2-digit",
-                      hour12: true,
-                    })}
+                  {/* 🕒 UPDATED: Blocked range layout wrapper mapping duration offset output */}
+                  <td className="p-4 font-mono text-xs text-white font-bold whitespace-nowrap">
+                    {getTimeRangeLabel(slot.start_time, slot.duration_minutes || 60)}
                   </td>
 
                   <td className="p-4 text-xs font-mono">{slot.duration_minutes} mins</td>
@@ -1246,7 +1258,7 @@ export default function AdminPage() {
                     {slot.court_number}
                   </td>
 
-                  <td className="p-4 font-mono text-xs text-slate-400">
+                  <td className="p-4 font-mono text-xs text-slate-400 uppercase">
                     {slot.reason}
                   </td>
 
