@@ -43,20 +43,39 @@ export default function SubAdminPage() {
     "Court 2",
   ]);
 
+  // Global Time Conversion Helper
+  const convertToMins = (t: string) => {
+    if (!t) return 0;
+    const [timePart, ampm] = t.split(" ");
+    let [h, m] = timePart.split(":").map(Number);
+    if (ampm === "PM" && h !== 12) h += 12;
+    if (ampm === "AM" && h === 12) h = 0;
+    return h * 60 + m;
+  };
+
+  // NEW: Helper to calculate and format a clear 12-hour time range (e.g., 4:00 pm to 5:30 pm)
+  const getTimeRangeLabel = (startTimeStr: string, durationMins: number) => {
+    if (!startTimeStr) return "";
+    const [h, m] = startTimeStr.split(":");
+    const startTotal = Number(h) * 60 + Number(m);
+    const endTotal = startTotal + Number(durationMins);
+
+    const formatString = (totalMins: number) => {
+      const hours24 = Math.floor(totalMins / 60) % 24;
+      const mins = totalMins % 60;
+      const ampm = hours24 >= 12 ? "pm" : "am";
+      const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+      return `${hours12}:${String(mins).padStart(2, "0")} ${ampm}`;
+    };
+
+    return `${formatString(startTotal)} to ${formatString(endTotal)}`;
+  };
+
   const loadAvailableCourts = async (date: string, time: string) => {
     const { data: bookings } = await supabase.from("bookings").select("*").eq("booking_date", date);
     const { data: blocked } = await supabase.from("blocked_slots").select("*").eq("booking_date", date);
 
     let courts = ["Full Court", "Court 1", "Court 2"];
-
-    const convertToMins = (t: string) => {
-      if (!t) return 0;
-      const [timePart, ampm] = t.split(" ");
-      let [h, m] = timePart.split(":").map(Number);
-      if (ampm === "PM" && h !== 12) h += 12;
-      if (ampm === "AM" && h === 12) h = 0;
-      return h * 60 + m;
-    };
 
     const selectedMinutes = convertToMins(time);
 
@@ -182,13 +201,6 @@ export default function SubAdminPage() {
     const { data: blocked } = await supabase.from("blocked_slots").select("start_time,duration_minutes,court_number").eq("booking_date", date);
 
     const availableTimes: string[] = [];
-    const convertToMins = (t: string) => {
-      const [timePart, ampm] = t.split(" ");
-      let [h, m] = timePart.split(":").map(Number);
-      if (ampm === "PM" && h !== 12) h += 12;
-      if (ampm === "AM" && h === 12) h = 0;
-      return h * 60 + m;
-    };
 
     adminTimeSlots.forEach((slot) => {
       const selectedMinutes = convertToMins(slot);
@@ -217,14 +229,6 @@ export default function SubAdminPage() {
 
     const { data: existingBookings } = await supabase.from("bookings").select("*").eq("booking_date", slotDate);
     const { data: existingBlocks } = await supabase.from("blocked_slots").select("*").eq("booking_date", slotDate);
-
-    const convertToMins = (time: string) => {
-      const [timePart, ampm] = time.split(" ");
-      let [hours, minutes] = timePart.split(":").map(Number);
-      if (ampm === "PM" && hours !== 12) hours += 12;
-      if (ampm === "AM" && hours === 12) hours = 0;
-      return hours * 60 + minutes;
-    };
 
     const selectedStart = convertToMins(slotTime);
     const selectedEnd = selectedStart + Number(slotDuration);
@@ -477,7 +481,7 @@ export default function SubAdminPage() {
         Showing {bookings.filter((b) => b.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) || b.phone?.includes(searchTerm)).length} booking(s) active
       </p>
 
-      {/* 🏟️ UPDATED: Active Bookings Table incorporating a dedicated Duration layout column */}
+      {/* Active Bookings Table with Highlighted Tags, Ranges, and Capsules */}
       <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden shadow-2xl relative z-10 backdrop-blur-xl">
         <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-white/10">
           <table className="w-full text-left border-collapse">
@@ -493,26 +497,66 @@ export default function SubAdminPage() {
                 <th className="p-4 font-bold text-center">Payment Options</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5 text-sm font-medium stale-300">
+            <tbody className="divide-y divide-white/5 text-sm font-medium">
               {bookings.filter((b) => b.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) || b.phone?.includes(searchTerm)).map((booking) => {
                 const bookingDate = booking.booking_date?.split("T")[0];
+                const isToday = bookingDate === today;
+                const isTomorrow = bookingDate === tomorrow;
+                const duration = booking.duration_minutes || 60;
+
+                // Match layout rows tint configuration from admin view
+                let rowColor = "bg-transparent";
+                if (isToday) {
+                  rowColor = "bg-lime-500/[0.04]";
+                } else if (isTomorrow) {
+                  rowColor = "bg-amber-500/[0.03]";
+                }
+
                 return (
-                  <tr key={booking.id} className="hover:bg-white/[0.02] transition-colors text-slate-300">
+                  <tr key={booking.id} className={`${rowColor} hover:bg-white/[0.02] transition-colors text-slate-300`}>
                     <td className="p-4">
                       <div className="font-bold text-white">{booking.customer_name}</div>
                       <div className="font-mono text-[10px] text-slate-400 mt-0.5">{booking.phone}</div>
                     </td>
-                    <td className="p-4 font-mono text-xs">
-                      <div>{new Date(bookingDate).toLocaleDateString("en-GB")}</div>
-                      <div className="text-white mt-0.5">{new Date(`2000-01-01T${booking.start_time}`).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true })}</div>
+                    
+                    {/* 🕒 UPDATED: Injected Today/Tomorrow Status Badges & Full Time Range Windows */}
+                    <td className="p-4 font-mono text-xs whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-200">{new Date(bookingDate).toLocaleDateString("en-GB")}</span>
+                        {isToday && (
+                          <span className="px-2 py-0.5 rounded-full bg-lime-400/10 border border-lime-400/30 text-lime-400 text-[9px] font-black uppercase tracking-wide">
+                            Today
+                          </span>
+                        )}
+                        {isTomorrow && (
+                          <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-400 text-[9px] font-black uppercase tracking-wide">
+                            Tomorrow
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-white mt-1 font-bold">
+                        {getTimeRangeLabel(booking.start_time, duration)}
+                      </div>
                     </td>
+
                     <td className="p-4 font-mono text-xs text-slate-300">
-                      {booking.duration_minutes || 60} Mins
+                      {duration} Mins
                     </td>
+
+                    {/* 🏟️ UPDATED: Added styled visual capsule badges for booking section dimensions */}
                     <td className="p-4 font-mono text-xs">
-                      <div>{booking.booking_type}</div>
+                      <div className="mb-1">
+                        <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-mono uppercase tracking-wider ${
+                          booking.booking_type === "Half Court"
+                            ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400"
+                            : "bg-purple-500/10 border border-purple-500/20 text-purple-400"
+                        }`}>
+                          {booking.booking_type || "Full Court"}
+                        </span>
+                      </div>
                       <div className="text-slate-400 mt-0.5">{booking.court_number}</div>
                     </td>
+
                     <td className="p-4 text-slate-200 font-mono">₹{booking.total_amount}</td>
                     <td className="p-4 text-emerald-400 font-mono">₹{booking.advance_amount || 0}</td>
                     <td className="p-4 font-mono">
@@ -549,7 +593,7 @@ export default function SubAdminPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-white/10 bg-slate-950/40 text-[10px] font-mono uppercase tracking-widest text-slate-400">
+              <tr className="border-b border-white/10 bg-slate-955/40 text-[10px] font-mono uppercase tracking-widest text-slate-400">
                 <th className="p-4 font-bold">Date</th>
                 <th className="p-4 font-bold">Schedule</th>
                 <th className="p-4 font-bold">Duration</th>
