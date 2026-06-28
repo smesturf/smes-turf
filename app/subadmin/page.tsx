@@ -100,7 +100,7 @@ export default function SubAdminPage() {
   useEffect(() => {
     const loggedIn = localStorage.getItem("subadminLoggedIn");
     if (loggedIn !== "true") {
-      router.push("/"); // ⚡ ROUTING FIX: Kicks unauthorized users back to home screen gateway
+      router.push("/"); 
       return;
     }
 
@@ -115,7 +115,6 @@ export default function SubAdminPage() {
     };
   }, [router]);
 
-  // ⚡ SECURITY ADDITION: 12-Hour mobile inactivity auto-logout protection block
   useEffect(() => {
     let timeout: NodeJS.Timeout;
 
@@ -124,10 +123,9 @@ export default function SubAdminPage() {
 
       timeout = setTimeout(() => {
         localStorage.removeItem("subadminLoggedIn");
-
         alert("Session expired after 12 hours. Please re-authorize via the Home Page.");
-        router.push("/"); // Kicks timed-out user back to home
-      }, 12 * 60 * 60 * 1000); // Set to 12 Hours
+        router.push("/"); 
+      }, 12 * 60 * 60 * 1000); 
     };
 
     window.addEventListener("mousemove", resetTimer);
@@ -292,7 +290,7 @@ export default function SubAdminPage() {
 
   const handleLogout = () => {
     localStorage.removeItem("subadminLoggedIn");
-    router.push("/"); // ⚡ ROUTING FIX: Sends manual logout to app home page
+    router.push("/"); 
   };
 
   const savePayment = async () => {
@@ -538,7 +536,7 @@ export default function SubAdminPage() {
         </div>
       </div>
 
-      {/* Blocked Slots List - NO RELEASE BUTTON */}
+      {/* 🚫 UPDATED: Admin Field Blocks List with explicit Duration & calculated End Time Window */}
       <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden shadow-2xl mt-8 relative z-10 backdrop-blur-xl">
         <div className="p-4 bg-slate-900/80 border-b border-white/10">
           <h2 className="text-lg font-black uppercase tracking-wide text-white">🚫 Admin Field Blocks</h2>
@@ -548,20 +546,53 @@ export default function SubAdminPage() {
             <thead>
               <tr className="border-b border-white/10 bg-slate-950/40 text-[10px] font-mono uppercase tracking-widest text-slate-400">
                 <th className="p-4 font-bold">Date</th>
-                <th className="p-4 font-bold">Time</th>
+                <th className="p-4 font-bold">Schedule</th>
+                <th className="p-4 font-bold">Duration</th>
                 <th className="p-4 font-bold">Court</th>
                 <th className="p-4 font-bold">Reason</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 text-sm font-medium text-slate-300">
-              {blockedSlots.map((slot) => (
-                <tr key={slot.id}>
-                  <td className="p-4 font-mono text-xs">{new Date(slot.booking_date).toLocaleDateString("en-GB")}</td>
-                  <td className="p-4 font-mono text-xs">{new Date(`2000-01-01T${slot.start_time}`).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true })}</td>
-                  <td className="p-4 font-mono text-xs font-bold text-cyan-400">{slot.court_number}</td>
-                  <td className="p-4 font-mono text-xs text-slate-400">{slot.reason}</td>
-                </tr>
-              ))}
+              {blockedSlots.map((slot) => {
+                if (!slot.start_time) return null;
+                
+                const bookingDate = slot.booking_date?.split("T")[0];
+                const blockDuration = slot.duration_minutes || 60;
+                
+                // Live math calculation converting start_time + duration into the exact 12-hour end label
+                const [h, m] = slot.start_time.split(":");
+                const totalMinutes = Number(h) * 60 + Number(m) + Number(blockDuration);
+                const endHour = Math.floor(totalMinutes / 60) % 24;
+                const endMinute = totalMinutes % 60;
+                const ampm = endHour >= 12 ? "pm" : "am";
+                const displayHour = endHour % 12 === 0 ? 12 : endHour % 12;
+                const endTimeString = `${displayHour}:${String(endMinute).padStart(2, "0")} ${ampm}`;
+
+                return (
+                  <tr key={slot.id} className="hover:bg-white/[0.01] transition-colors">
+                    <td className="p-4 font-mono text-xs">
+                      {new Date(bookingDate).toLocaleDateString("en-GB")}
+                    </td>
+                    <td className="p-4 font-mono text-xs">
+                      <div className="text-white">
+                        {new Date(`2000-01-01T${slot.start_time}`).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true })}
+                      </div>
+                      <div className="text-slate-500 text-[10px] mt-0.5 uppercase tracking-wide">
+                        till {endTimeString}
+                      </div>
+                    </td>
+                    <td className="p-4 font-mono text-xs text-slate-300">
+                      {blockDuration} Mins
+                    </td>
+                    <td className="p-4 font-mono text-xs font-bold text-cyan-400">
+                      {slot.court_number}
+                    </td>
+                    <td className="p-4 font-mono text-xs text-slate-400">
+                      {slot.reason}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
