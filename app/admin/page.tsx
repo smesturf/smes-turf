@@ -32,7 +32,7 @@ export default function AdminPage() {
     return h * 60 + m;
   };
 
-  // NEW: Helper to calculate and format a clear 12-hour time range (e.g., 4:00 pm to 5:30 pm)
+  // Helper to calculate and format a clear 12-hour time range (e.g., 4:00 pm to 5:30 pm)
   const getTimeRangeLabel = (startTimeStr: string, durationMins: number) => {
     if (!startTimeStr) return "";
     const [h, m] = startTimeStr.split(":");
@@ -866,7 +866,8 @@ export default function AdminPage() {
       {/* Operational Modal Overlay: Slot Configuration Panel */}
       {showManageSlots && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]">
-          <div className="bg-slate-900 border border-white/10 p-5 sm:p-6 rounded-2xl w-full max-w-md shadow-2xl space-y-4">
+          {/* 🛠️ FIXED: Added max-h-[90vh] and overflow-y-auto so the scrollbar renders dynamically on smaller laptop viewports */}
+          <div className="bg-slate-900 border border-white/10 p-5 sm:p-6 rounded-2xl w-full max-w-md shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
             <div>
               <h2 className="text-xl font-black uppercase tracking-wide text-white">
                 Slot Management
@@ -1142,8 +1143,7 @@ export default function AdminPage() {
                         )}
                       </td>
 
-                      {/* 🕒 UPDATED: Main Booking dynamic range window calculator cell */}
-                      <td className="p-4 font-mono text-xs text-white font-bold whitespace-nowrap">
+                      <td className="p-4 font-mono text-xs text-white whitespace-nowrap">
                         {getTimeRangeLabel(booking.start_time, booking.duration_minutes || 60)}
                       </td>
 
@@ -1230,7 +1230,7 @@ export default function AdminPage() {
         <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-white/10">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-white/10 bg-slate-950/40 text-[10px] font-mono uppercase tracking-widest text-slate-400">
+              <tr className="border-b border-white/10 bg-slate-955/40 text-[10px] font-mono uppercase tracking-widest text-slate-400">
                 <th className="p-4 font-bold">Target Date</th>
                 <th className="p-4 font-bold">Time Block Range</th>
                 <th className="p-4 font-bold">Duration</th>
@@ -1247,7 +1247,6 @@ export default function AdminPage() {
                     {new Date(slot.booking_date).toLocaleDateString("en-GB")}
                   </td>
 
-                  {/* 🕒 UPDATED: Blocked range layout wrapper mapping duration offset output */}
                   <td className="p-4 font-mono text-xs text-white font-bold whitespace-nowrap">
                     {getTimeRangeLabel(slot.start_time, slot.duration_minutes || 60)}
                   </td>
