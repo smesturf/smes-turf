@@ -515,7 +515,8 @@ export default function AdminPage() {
     .filter((booking) => booking.booking_date?.split("T")[0] === today)
     .reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
+    // 1. Map Core Turf Bookings History Data
     const exportData = bookings.map((booking) => ({
       Name: booking.customer_name,
       Phone: booking.phone,
@@ -535,13 +536,35 @@ export default function AdminPage() {
       Payment_Status: booking.payment_completed ? "Paid" : "Pending",
     }));
 
+    // Fetch Coaching Students for the Current Month Excel Sync
+    const currentMonthYear = new Date().toISOString().slice(0, 7);
+    const currentMonthNum = new Date().getMonth();
+    const currentYearNum = new Date().getFullYear();
+
+    const { data: dbStudents } = await supabase.from("students").select(`*, student_payments(*)`).order("name", { ascending: true });
+    
+    const academyWorksheetData = (dbStudents || []).map((s: any) => {
+      const joinDate = new Date(s.created_at);
+      const isNew = joinDate.getMonth() === currentMonthNum && joinDate.getFullYear() === currentYearNum;
+      const currentMonthRecord = s.student_payments?.find((p: any) => p.month_year === currentMonthYear);
+
+      return {
+        "Student Name": s.name + (isNew ? " (NEW)" : ""),
+        "Phone Number": s.phone,
+        "Monthly Fee (₹)": s.monthly_fee,
+        "Amount Cleared (₹)": currentMonthRecord ? currentMonthRecord.amount_paid : 0,
+        "Route Method": currentMonthRecord?.payment_method || "-",
+        "Status Summary": currentMonthRecord?.status === "settled" ? "✅ SETTLED" : "❌ PENDING",
+        "Type": isNew ? "NEW REGISTRATION" : "EXISTING"
+      };
+    });
+
     const totalRevenue = bookings.reduce((sum, booking) => sum + (booking.total_amount || 0), 0);
     const totalAdvance = bookings.reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
     const totalBalance = bookings.reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
     const totalCashCollected = bookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
     const totalUpiCollected = bookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
     const totalCollection = totalCashCollected + totalUpiCollected;
-    
     const moneyInHand = totalAdvance + totalCollection;
 
     const workbook = XLSX.utils.book_new();
@@ -564,13 +587,11 @@ export default function AdminPage() {
     ]);
 
     XLSX.utils.sheet_add_json(worksheet, exportData, { origin: "A14" });
-
     worksheet["!cols"] = [
       { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 15 },
       { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 15 },
       { wch: 18 }, { wch: 15 }, { wch: 15 }, { wch: 15 },
     ];
-
     XLSX.utils.book_append_sheet(workbook, worksheet, "Bookings");
 
     const todayBookings = bookings.filter((booking) => booking.booking_date?.split("T")[0] === todayStr);
@@ -595,7 +616,6 @@ export default function AdminPage() {
       ["Actual Money In Hand (Adv + Cash + UPI) (₹)", todayMoneyInHand],
       ["Settlement Status", todayBalance > 0 ? `⚠️ ₹${todayBalance} DUE` : "✅ SETTLED"],
     ]);
-
     XLSX.utils.book_append_sheet(workbook, todaySheet, "Today");
 
     const monthlyCash = bookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
@@ -616,7 +636,6 @@ export default function AdminPage() {
       ["Actual Money In Hand (Adv + Cash + UPI) (₹)", monthlyMoneyInHand],
       ["Settlement Status", monthlyBalance > 0 ? `⚠️ ₹${monthlyBalance} DUE` : "✅ SETTLED"],
     ]);
-
     XLSX.utils.book_append_sheet(workbook, monthlySheet, "Monthly");
 
     const dailyStats: Record<string, any> = {};
@@ -657,14 +676,17 @@ export default function AdminPage() {
     })).sort((a: any, b: any) => a.Date.localeCompare(b.Date));
 
     const dailySheet = XLSX.utils.json_to_sheet(dailySummaryArray);
-
     dailySheet["!cols"] = [
       { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 28 }, { wch: 38 }, { wch: 20 }
     ];
+    XLSX.book_append_sheet(workbook, dailySheet, "Daily Summary");
 
-    XLSX.utils.book_append_sheet(workbook, dailySheet, "Daily Summary");
+    // 🏆 NEW SHEET INTEGRATION: Inject the Football Coaching Data directly into the master workbook
+    const academySheet = XLSX.utils.json_to_sheet(academyWorksheetData);
+    academySheet["!cols"] = [{ wch: 25 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 15 }, { wch: 15 }];
+    XLSX.utils.book_append_sheet(workbook, academySheet, "Football Coaching");
 
-    XLSX.writeFile(workbook, `SMES_Bookings_${todayStr}.xlsx`);
+    XLSX.writeFile(workbook, `SMES_Master_Report_${todayStr}.xlsx`);
   };
 
   const handleLogout = () => {
