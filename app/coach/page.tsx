@@ -2,24 +2,17 @@
 
 import React, { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
-import * as XLSX from "xlsx";
 
 export default function CoachPage() {
   const [bookings, setBookings] = useState<any[]>([]);
   const [blockedSlots, setBlockedSlots] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   
-  // Tab Switcher state: "new" or "existing"
-  const [formTab, setFormTab] = useState<"new" | "existing">("new");
-
-  // Registration Form States (New Student - Paid Flow)
+  // Registration Form States
   const [newStudentName, setNewStudentName] = useState("");
   const [newStudentPhone, setNewStudentPhone] = useState("");
-  const [newStudentMethod, setNewStudentMethod] = useState("UPI"); 
-
-  // Selection states (Existing Student Pairing)
-  const [selectedStudentId, setSelectedStudentId] = useState("");
-  const [existingPaymentMethod, setExistingPaymentMethod] = useState("UPI");
+  const [newStudentDOB, setNewStudentDOB] = useState("");
+  const [newStudentEmail, setNewStudentEmail] = useState("");
 
   const FIXED_COACHING_FEE = 3500; 
   const currentMonthYear = new Date().toISOString().slice(0, 7); // Format: YYYY-MM
@@ -71,15 +64,16 @@ export default function CoachPage() {
     e.preventDefault();
     if (!newStudentName || !newStudentPhone) { alert("Please complete name and phone fields"); return; }
 
-    // 🔒 Guard check: Rejects the pipeline execution if phone digits are incomplete
     if (newStudentPhone.length !== 10) {
-      alert("⚠️ Verification Error: Mobile number must be exactly 10 digits long.");
+      alert("⚠️ Input Error: Mobile number must be exactly 10 digits long.");
       return;
     }
 
     const { data: student, error: stError } = await supabase.from("students").insert([{
       name: newStudentName,
       phone: newStudentPhone,
+      dob: newStudentDOB || null,
+      email: newStudentEmail || null,
       monthly_fee: FIXED_COACHING_FEE
     }]).select().single();
 
@@ -91,73 +85,21 @@ export default function CoachPage() {
     const { error: pmError } = await supabase.from("student_payments").insert([{
       student_id: student.id,
       month_year: currentMonthYear,
-      status: "settled",
-      amount_paid: FIXED_COACHING_FEE,
-      payment_method: newStudentMethod
+      status: "pending",
+      amount_paid: 0,
+      payment_method: null
     }]);
 
     if (pmError) { alert(pmError.message); return; }
 
-    alert(`✅ ${newStudentName} Registered & Current Month Paid via ${newStudentMethod}!`);
-    setNewStudentName(""); setNewStudentPhone("");
+    alert(`✅ ${newStudentName} Enrolled Successfully! Pending Desk Payment Approval.`);
+    setNewStudentName(""); setNewStudentPhone(""); setNewStudentDOB(""); setNewStudentEmail("");
     loadCoachData();
   };
 
-  const pairExistingStudentPayment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedStudentId) { alert("Please select a student name first"); return; }
-
-    const targetStudent = students.find(s => s.id === selectedStudentId);
-    if (!targetStudent) return;
-
-    if (targetStudent.payment_record_id) {
-      const { error } = await supabase.from("student_payments").update({
-        status: "settled",
-        amount_paid: FIXED_COACHING_FEE,
-        payment_method: existingPaymentMethod,
-        updated_at: new Date().toISOString()
-      }).eq("id", targetStudent.payment_record_id);
-
-      if (error) { alert(error.message); return; }
-    } else {
-      const { error } = await supabase.from("student_payments").insert([{
-        student_id: selectedStudentId,
-        month_year: currentMonthYear,
-        status: "settled",
-        amount_paid: FIXED_COACHING_FEE,
-        payment_method: existingPaymentMethod
-      }]);
-
-      if (error) { alert(error.message); return; }
-    }
-
-    alert(`💸 Paired fee clearance successfully for ${targetStudent.name}`);
-    setSelectedStudentId("");
-    loadCoachData();
-  };
-
-  const collectStudentFee = async (student: any, method: string) => {
-    if (student.payment_record_id) {
-      await supabase.from("student_payments").update({
-        status: "settled",
-        amount_paid: student.monthly_fee || FIXED_COACHING_FEE,
-        payment_method: method,
-        updated_at: new Date().toISOString()
-      }).eq("id", student.payment_record_id);
-    } else {
-      await supabase.from("student_payments").insert([{
-        student_id: student.id,
-        month_year: currentMonthYear,
-        status: "settled",
-        amount_paid: student.monthly_fee || FIXED_COACHING_FEE,
-        payment_method: method
-      }]);
-    }
-    alert(`💸 Payment Marked as Settled via ${method}`);
-    loadCoachData();
-  };
-
-  const exportCoachExcel = () => {
+  const exportCoachExcel = async () => {
+    const XLSX = await import("xlsx");
+    
     const currentMonthNum = new Date().getMonth();
     const currentYearNum = new Date().getFullYear();
 
@@ -168,6 +110,8 @@ export default function CoachPage() {
       return {
         "Student Name": s.name + (isNew ? " (NEW)" : ""),
         "Phone Number": s.phone,
+        "Date of Birth": s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-",
+        "Email ID": s.email || "-",
         "Monthly Fee (₹)": s.monthly_fee || FIXED_COACHING_FEE,
         "Amount Paid (₹)": s.amount_paid,
         "Payment Method": s.payment_method,
@@ -180,7 +124,7 @@ export default function CoachPage() {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Coaching Roster");
     
-    worksheet["!cols"] = [{ wch: 25 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 15 }, { wch: 15 }];
+    worksheet["!cols"] = [{ wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
     XLSX.writeFile(workbook, `Coach_Report_${currentMonthYear}.xlsx`);
   };
 
@@ -190,9 +134,9 @@ export default function CoachPage() {
     const startTotal = Number(h) * 60 + Number(m);
     const endTotal = startTotal + Number(durationMins);
     const formatString = (t: number) => {
-      const h24 = Math.floor(t / 60) % 24;
+      const hours24 = Math.floor(t / 60) % 24;
       const mins = t % 60;
-      return `${h24 % 12 === 0 ? 12 : h24 % 12}:${String(mins).padStart(2, "0")} ${h24 >= 12 ? "pm" : "am"}`;
+      return `${hours24 % 12 === 0 ? 12 : hours24 % 12}:${String(mins).padStart(2, "0")} ${hours24 >= 12 ? "pm" : "am"}`;
     };
     return `${formatString(startTotal)} to ${formatString(endTotal)}`;
   };
@@ -213,100 +157,37 @@ export default function CoachPage() {
         <div className="lg:col-span-2 space-y-8">
           
           <div className="bg-slate-900/60 border border-white/5 p-5 rounded-2xl space-y-4">
-            
-            <div className="flex gap-2 border-b border-white/5 pb-3">
-              <button 
-                onClick={() => setFormTab("new")} 
-                className={`px-4 py-2 text-xs font-mono uppercase tracking-wider rounded-lg transition-all ${formTab === "new" ? "bg-emerald-500 text-slate-950 font-black" : "bg-slate-950 text-slate-400 border border-white/5 hover:text-white"}`}
-              >
-                👶 Enroll New Student
-              </button>
-              <button 
-                onClick={() => setFormTab("existing")} 
-                className={`px-4 py-2 text-xs font-mono uppercase tracking-wider rounded-lg transition-all ${formTab === "existing" ? "bg-emerald-500 text-slate-950 font-black" : "bg-slate-950 text-slate-400 border border-white/5 hover:text-white"}`}
-              >
-                🔄 Old Student payment
-              </button>
+            <div>
+              <h2 className="text-base font-black uppercase text-white">Enroll New Student</h2>
+              <p className="text-xs text-slate-400">Add player details to the ledger. Fee collection is handled at the main desk counter.</p>
             </div>
-
-            {formTab === "new" ? (
-              <div className="space-y-4">
-                <div>
-                  <h2 className="text-base font-black uppercase text-white">Enroll New Student</h2>
-                  <p className="text-xs text-slate-400">Creates profile and automatically marks this current month's fees as paid.</p>
-                </div>
-                <form onSubmit={registerNewStudent} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <input type="text" placeholder="Student Name" value={newStudentName} onChange={(e) => setNewStudentName(e.target.value)} className="p-3.5 bg-slate-950 rounded-xl border border-white/5 focus:border-emerald-400 outline-none text-sm font-medium" />
-                  
-                  {/* 🔒 UPDATED: Force filters non-digits out instantly and strictly enforces a 10 digit boundary */}
-                  <input 
-                    type="text" 
-                    placeholder="Phone Number (10 Digits)" 
-                    value={newStudentPhone} 
-                    onChange={(e) => {
-                      const numericValue = e.target.value.replace(/\D/g, "");
-                      if (numericValue.length <= 10) {
-                        setNewStudentPhone(numericValue);
-                      }
-                    }} 
-                    maxLength={10}
-                    className="p-3.5 bg-slate-950 rounded-xl border border-white/5 focus:border-emerald-400 outline-none text-sm font-medium font-mono" 
-                  />
-
-                  <div>
-                    <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Initial Payment Method</label>
-                    <select value={newStudentMethod} onChange={(e) => setNewStudentMethod(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-sm outline-none font-medium text-slate-300 focus:border-emerald-400">
-                      <option value="UPI">UPI</option>
-                      <option value="Cash">Cash</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Amount Paid (₹)</label>
-                    <div className="p-3.5 bg-slate-950 rounded-xl border border-white/5 text-sm font-mono text-emerald-400 font-bold select-none cursor-not-allowed">
-                      ₹3,500 <span className="text-[10px] text-slate-500 font-sans font-normal ml-1.5">(Fixed Rate Paid Today)</span>
-                    </div>
-                  </div>
-                  <button type="submit" className="sm:col-span-2 bg-emerald-500 text-slate-950 font-mono font-black py-3.5 rounded-xl text-xs uppercase tracking-wider shadow-md hover:bg-emerald-400 transition-all">Enroll & Mark As Paid</button>
-                </form>
+            <form onSubmit={registerNewStudent} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <input type="text" placeholder="Student Name" value={newStudentName} onChange={(e) => setNewStudentName(e.target.value)} className="p-3.5 bg-slate-950 rounded-xl border border-white/5 focus:border-emerald-400 outline-none text-sm font-medium" />
+              
+              <input 
+                type="text" 
+                placeholder="Phone Number (10 Digits)" 
+                value={newStudentPhone} 
+                onChange={(e) => {
+                  const numericValue = e.target.value.replace(/\D/g, "");
+                  if (numericValue.length <= 10) setNewStudentPhone(numericValue);
+                }} 
+                maxLength={10}
+                className="p-3.5 bg-slate-950 rounded-xl border border-white/5 focus:border-emerald-400 outline-none text-sm font-medium font-mono" 
+              />
+              
+              <div>
+                <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Date of Birth</label>
+                <input type="date" value={newStudentDOB} onChange={(e) => setNewStudentDOB(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 focus:border-emerald-400 outline-none text-sm font-medium" style={{ colorScheme: "dark" }} />
               </div>
-            ) : (
-              <div className="space-y-4">
-                <div>
-                  <h2 className="text-base font-black uppercase text-white">Record Old Student Payment</h2>
-                  <p className="text-xs text-slate-400">Select an existing registered name from the panel to log fees for this month.</p>
-                </div>
-                <form onSubmit={pairExistingStudentPayment} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="sm:col-span-2">
-                    <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Select Student Name</label>
-                    <select 
-                      value={selectedStudentId} 
-                      onChange={(e) => setSelectedStudentId(e.target.value)}
-                      className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-sm outline-none font-medium text-slate-200 focus:border-emerald-400"
-                    >
-                      <option value="">-- Choose Student --</option>
-                      {/* 🚫 UPDATED FILTER: Automatically drops out anyone who already cleared this month's fee pass */}
-                      {students.filter(s => s.payment_status !== "settled").map(s => (
-                        <option key={s.id} value={s.id}>{s.name} ({s.phone})</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Fee Collected (₹)</label>
-                    <div className="p-3.5 bg-slate-950 rounded-xl border border-white/5 text-sm font-mono text-purple-400 font-bold select-none cursor-not-allowed">
-                      ₹3,500 <span className="text-[10px] text-slate-500 font-sans font-normal ml-1.5">(Fixed Rate)</span>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Accept Method</label>
-                    <select value={existingPaymentMethod} onChange={(e) => setExistingPaymentMethod(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-sm outline-none font-medium text-slate-300">
-                      <option value="UPI">UPI</option>
-                      <option value="Cash">Cash</option>
-                    </select>
-                  </div>
-                  <button type="submit" className="sm:col-span-2 bg-purple-600 hover:bg-purple-500 text-white font-mono font-black py-3.5 rounded-xl text-xs uppercase tracking-wider shadow-md transition-all">Pair & Save Payment</button>
-                </form>
+
+              <div>
+                <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Email ID</label>
+                <input type="email" placeholder="example@email.com" value={newStudentEmail} onChange={(e) => setNewStudentEmail(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 focus:border-emerald-400 outline-none text-sm font-medium" />
               </div>
-            )}
+
+              <button type="submit" className="sm:col-span-2 bg-emerald-500 text-slate-950 font-mono font-black py-3.5 rounded-xl text-xs uppercase tracking-wider shadow-md hover:bg-emerald-400 transition-all">Submit Enrollment</button>
+            </form>
           </div>
 
           <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden">
@@ -317,46 +198,38 @@ export default function CoachPage() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-white/10 text-[10px] font-mono uppercase tracking-widest text-slate-400 bg-slate-950/20">
-                    <th className="p-4">Student</th>
-                    <th className="p-4">Phone</th>
-                    <th className="p-4">Fee Dues</th>
-                    <th className="p-4">Status</th>
-                    <th className="p-4 text-center">Accept Payment</th>
+                    <th className="p-4">Student Info</th>
+                    <th className="p-4">Contact Details</th>
+                    <th className="p-4">Academy Fee</th>
+                    <th className="p-4 text-center">Payment Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5 text-sm font-medium">
                   {students.map((student) => {
                     const joinDate = new Date(student.created_at);
                     const isNew = joinDate.getMonth() === new Date().getMonth() && joinDate.getFullYear() === new Date().getFullYear();
+                    const isUnpaid = student.payment_status !== "settled";
                     
                     return (
-                      <tr key={student.id} className={`hover:bg-white/[0.01] transition-colors ${isNew ? 'bg-emerald-500/[0.04]' : ''}`}>
+                      <tr key={student.id} className={`transition-colors ${isUnpaid ? 'bg-red-500/[0.08] hover:bg-red-500/[0.12]' : 'hover:bg-white/[0.01]'}`}>
                         <td className="p-4">
-                          <div className="font-bold text-white flex items-center gap-2">
+                          <div className={`font-bold flex items-center gap-2 ${isUnpaid ? 'text-red-300' : 'text-white'}`}>
                             {student.name}
                             {isNew && <span className="px-2 py-0.5 rounded text-[9px] bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 tracking-wider font-black uppercase">New</span>}
                           </div>
+                          <div className="text-[11px] text-slate-400 font-mono mt-0.5">DOB: {student.dob ? new Date(student.dob).toLocaleDateString("en-GB") : "-"}</div>
                         </td>
-                        <td className="p-4 font-mono text-slate-400 text-xs">{student.phone}</td>
+                        <td className="p-4 space-y-0.5">
+                          <div className="font-mono text-slate-300 text-xs">{student.phone}</div>
+                          <div className="text-xs text-slate-400 truncate max-w-[200px]">{student.email || "-"}</div>
+                        </td>
                         <td className="p-4 font-mono text-white">₹{student.monthly_fee || FIXED_COACHING_FEE}</td>
-                        <td className="p-4">
+                        <td className="p-4 text-center">
                           {student.payment_status === "settled" ? (
-                            <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded">Settled</span>
+                            <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded">✅ Paid</span>
                           ) : (
-                            <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-red-500/10 border border-red-500/20 text-red-400 rounded">Due</span>
+                            <span className="px-2 py-1 text-[10px] font-mono uppercase bg-red-500/20 border border-red-500/40 text-red-400 rounded font-black animate-pulse">⚠️ Unpaid</span>
                           )}
-                        </td>
-                        <td className="p-4">
-                          <div className="flex items-center justify-center gap-1.5">
-                            {student.payment_status !== "settled" ? (
-                              <>
-                                <button onClick={() => collectStudentFee(student, "UPI")} className="bg-cyan-500 text-slate-950 font-mono text-[10px] uppercase font-bold px-2 py-1 rounded">UPI</button>
-                                <button onClick={() => collectStudentFee(student, "Cash")} className="bg-amber-400 text-slate-950 font-mono text-[10px] uppercase font-bold px-2 py-1 rounded">Cash</button>
-                              </>
-                            ) : (
-                              <span className="text-slate-500 font-mono text-xs">Method: {student.payment_method}</span>
-                            )}
-                          </div>
                         </td>
                       </tr>
                     );
