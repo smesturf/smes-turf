@@ -103,54 +103,28 @@ export default function CoachPage() {
     const currentMonthNum = new Date().getMonth();
     const currentYearNum = new Date().getFullYear();
 
-    // Extract all unique historical payment months across all loaded students
-    const uniqueMonths = Array.from(
-      new Set([
-        ...students.flatMap((s: any) => (s.student_payments || []).map((p: any) => p.month_year)),
-        currentMonthYear
-      ])
-    ).sort();
-
-    // Helper to format raw month strings (e.g., "2026-07" -> "July 2026")
-    const formatMonthLabel = (my: string) => {
-      const [year, month] = my.split("-");
-      const date = new Date(Number(year), Number(month) - 1, 1);
-      return date.toLocaleString("en-US", { month: "long", year: "numeric" });
-    };
-
     const data = students.map((s) => {
       const joinDate = new Date(s.created_at);
       const isNew = joinDate.getMonth() === currentMonthNum && joinDate.getFullYear() === currentYearNum;
       
-      const row: any = {
+      return {
         "Student Name": s.name + (isNew ? " (NEW)" : ""),
         "Phone Number": s.phone,
         "Date of Birth": s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-",
         "Email ID": s.email || "-",
         "Monthly Fee (₹)": s.monthly_fee || FIXED_COACHING_FEE,
+        "Amount Paid (₹)": s.amount_paid,
+        "Payment Method": s.payment_method,
+        "Status": s.payment_status === "settled" ? "✅ SETTLED" : "❌ PENDING",
         "Type": isNew ? "NEW STUDENT" : "EXISTING"
       };
-
-      // Dynamically append columns for every historical month tracking log
-      uniqueMonths.forEach((my) => {
-        const record = s.student_payments?.find((p: any) => p.month_year === my);
-        const colLabel = formatMonthLabel(my);
-        row[colLabel] = record?.status === "settled" ? `✅ PAID (${record.payment_method || "UPI"})` : "❌ PENDING";
-      });
-
-      return row;
     });
 
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Coaching Roster");
     
-    // Set explicit base column widths + dynamic width profiles for variable calendar months
-    worksheet["!cols"] = [
-      { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 15 }, { wch: 15 },
-      ...uniqueMonths.map(() => ({ wch: 22 }))
-    ];
-
+    worksheet["!cols"] = [{ wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
     XLSX.writeFile(workbook, `Coach_Report_${currentMonthYear}.xlsx`);
   };
 
@@ -252,9 +226,13 @@ export default function CoachPage() {
                         <td className="p-4 font-mono text-white">₹{student.monthly_fee || FIXED_COACHING_FEE}</td>
                         <td className="p-4 text-center">
                           {student.payment_status === "settled" ? (
-                            <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded">✅ Paid</span>
+                            <span className="px-2 py-1 text-[10px] font-mono uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded whitespace-nowrap inline-flex items-center gap-1 justify-center">
+                              ✅ Paid
+                            </span>
                           ) : (
-                            <span className="px-2 py-1 text-[10px] font-mono uppercase bg-red-500/20 border border-red-500/40 text-red-400 rounded font-black animate-pulse">⚠️ Unpaid</span>
+                            <span className="px-2 py-1 text-[10px] font-mono uppercase bg-red-500/20 border border-red-500/40 text-red-400 rounded font-black animate-pulse whitespace-nowrap inline-flex items-center gap-1 justify-center">
+                              ⚠️ Unpaid
+                            </span>
                           )}
                         </td>
                       </tr>
