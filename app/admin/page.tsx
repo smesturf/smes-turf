@@ -309,6 +309,38 @@ export default function AdminPage() {
     loadAcademyData();
   };
 
+  // 🗑️ Safely purges student profiles and links ledger logs across relational nodes
+  const deleteStudent = async (studentId: string, studentName: string) => {
+    const confirmDelete = window.confirm(
+      `⚠️ CRITICAL WARNING:\n\nAre you sure you want to completely delete "${studentName}"?\n\nThis will permanently destroy this student's profile and delete their entire multi-month payment history from the master system. This action cannot be undone.`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      // 1. Wipe out nested mapping records first to satisfy foreign key rules
+      const { error: paymentError } = await supabase
+        .from("student_payments")
+        .delete()
+        .eq("student_id", studentId);
+
+      if (paymentError) throw paymentError;
+
+      // 2. Clear out the main root profile
+      const { error: studentError } = await supabase
+        .from("students")
+        .delete()
+        .eq("id", studentId);
+
+      if (studentError) throw studentError;
+
+      alert(`✅ ${studentName} and all associated ledger history records have been purged.`);
+      loadAcademyData();
+    } catch (error: any) {
+      console.error("Deletion matrix failure:", error);
+      alert(`Database Error: ${error.message || "Failed to remove student record safely."}`);
+    }
+  };
+
   const loadBookings = async () => {
     const { data, error } = await supabase
       .from("bookings")
@@ -618,23 +650,45 @@ export default function AdminPage() {
     const currentMonthNum = new Date().getMonth();
     const currentYearNum = new Date().getFullYear();
     const { data: dbStudents } = await supabase.from("students").select(`*, student_payments(*)`).order("name", { ascending: true });
+    
+    // Extract every unique payment month available in database across all system history
+    const uniqueMonths = Array.from(
+      new Set([
+        ...((dbStudents || []).flatMap((s: any) => (s.student_payments || []).map((p: any) => p.month_year))),
+        currentMonthYear
+      ])
+    ).sort();
+
+    // Readable label converter (e.g., "2026-07" -> "July 2026")
+    const formatMonthLabel = (my: string) => {
+      const [year, month] = my.split("-");
+      const date = new Date(Number(year), Number(month) - 1, 1);
+      return date.toLocaleString("en-US", { month: "long", year: "numeric" });
+    };
+
     const academyWorksheetData = (dbStudents || []).map((s: any) => {
       const joinDate = new Date(s.created_at);
       const isNew = joinDate.getMonth() === currentMonthNum && joinDate.getFullYear() === currentYearNum;
-      const currentMonthRecord = s.student_payments?.find((p: any) => p.month_year === currentMonthYear);
 
-      return {
+      const row: any = {
         "Student Name": s.name + (isNew ? " (NEW)" : ""),
         "Phone Number": s.phone,
         "Date of Birth": s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-",
         "Email ID": s.email || "-",
         "Monthly Fee (₹)": s.monthly_fee,
-        "Amount Cleared (₹)": currentMonthRecord ? currentMonthRecord.amount_paid : 0,
-        "Route Method": currentMonthRecord?.payment_method || "-",
-        "Status Summary": currentMonthRecord?.status === "settled" ? "✅ SETTLED" : "❌ PENDING",
         "Type": isNew ? "NEW REGISTRATION" : "EXISTING"
       };
+
+      // Append historical dynamic month status tracks requested by the administration desk
+      uniqueMonths.forEach((my) => {
+        const record = s.student_payments?.find((p: any) => p.month_year === my);
+        const colLabel = formatMonthLabel(my);
+        row[colLabel] = record?.status === "settled" ? `✅ PAID (${record.payment_method || "UPI"})` : "❌ PENDING";
+      });
+
+      return row;
     });
+
     const totalRevenue = bookings.reduce((sum, booking) => sum + (booking.total_amount || 0), 0);
     const totalAdvance = bookings.reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
     const totalBalance = bookings.reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
@@ -755,7 +809,10 @@ export default function AdminPage() {
     XLSX.utils.book_append_sheet(workbook, dailySheet, "Daily Summary");
 
     const academySheet = XLSX.utils.json_to_sheet(academyWorksheetData);
-    academySheet["!cols"] = [{ wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
+    academySheet["!cols"] = [
+      { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 15 }, { wch: 18 },
+      ...uniqueMonths.map(() => ({ wch: 22 }))
+    ];
     XLSX.utils.book_append_sheet(workbook, academySheet, "Football Coaching");
 
     XLSX.writeFile(workbook, `SMES_Master_Report_${todayStr}.xlsx`);
@@ -820,7 +877,7 @@ export default function AdminPage() {
     if (!confirmed) return;
 
     const originalBalance = (booking.total_amount || 0) - (booking.advance_amount || 0);
-    const { error } = await supabase
+    const { error = null } = await supabase
       .from("bookings")
       .update({
         cash_received: 0,
@@ -959,22 +1016,22 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* 🏆 Expanded Football Coaching Workspace Panel (Kept collapsed until clicked) */}
+      {/* 🏆 Expanded Football Coaching Workspace Panel */}
       {showCoachingPanel && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-4 mb-8 p-6 bg-slate-900/40 border border-white/10 rounded-2xl relative z-10 backdrop-blur-xl transition-all">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-4 mb-8 p-4 sm:p-6 bg-slate-900/40 border border-white/10 rounded-2xl relative z-10 backdrop-blur-xl transition-all">
           <div className="lg:col-span-1 bg-slate-900/60 border border-white/5 p-5 rounded-xl space-y-4 h-fit">
             <div className="flex gap-2 border-b border-white/5 pb-3">
-              <button 
-                onClick={() => setAcademyTab("new")} 
-                className={`px-3 py-1.5 text-[11px] font-mono uppercase rounded transition-all ${academyTab === "new" ? "bg-lime-400 text-slate-950 font-black" : "bg-slate-950 text-slate-400"}`}
-              >
-                👶 Enroll Student
-              </button>
               <button 
                 onClick={() => setAcademyTab("existing")} 
                 className={`px-3 py-1.5 text-[11px] font-mono uppercase rounded transition-all ${academyTab === "existing" ? "bg-lime-400 text-slate-950 font-black" : "bg-slate-950 text-slate-400"}`}
               >
                 🔄 Log Old Fee
+              </button>
+              <button 
+                onClick={() => setAcademyTab("new")} 
+                className={`px-3 py-1.5 text-[11px] font-mono uppercase rounded transition-all ${academyTab === "new" ? "bg-lime-400 text-slate-950 font-black" : "bg-slate-950 text-slate-400"}`}
+              >
+                👶 Enroll Student
               </button>
             </div>
 
@@ -1037,38 +1094,104 @@ export default function AdminPage() {
             )}
           </div>
 
-          {/* 🛠️ UPDATED GRID MATRIX TABLE: Adjusted layout to match reference file 77267279-5623-4882-863f-2814b68a5ea9 */}
-          <div className="lg:col-span-2 bg-slate-900/20 border border-white/10 rounded-xl overflow-hidden shadow-inner">
-            <div className="p-4 bg-slate-900/80 border-b border-white/10 flex items-center justify-between">
-              <h2 className="text-sm font-black uppercase text-white">🏆 Master Academy Coaching Roster — {currentMonthLabel}</h2>
+          {/* 🛠️ MOBILE RESPONSIVE MASTER ACADEMY ROSTER WORKSPACE GRID */}
+          <div className="lg:col-span-2 bg-slate-900/20 border border-white/10 rounded-xl overflow-hidden shadow-inner flex flex-col">
+            <div className="p-4 bg-slate-900/80 border-b border-white/10">
+              <h2 className="text-sm font-black uppercase text-white tracking-wide">🏆 Master Academy Coaching Roster — {currentMonthLabel}</h2>
             </div>
-            <div className="overflow-x-auto max-h-[350px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
+
+            {/* 📱 Mobile Layout Grid Container (Hidden on tablet/desktop viewports) */}
+            <div className="block sm:hidden max-h-[380px] overflow-y-auto p-3 space-y-3 scrollbar-thin scrollbar-thumb-white/10">
+              {academyStudents.map((s) => {
+                const isUnpaid = s.payment_status !== "settled";
+                return (
+                  <div 
+                    key={s.id} 
+                    className={`p-4 rounded-xl border transition-all space-y-3.5 ${
+                      isUnpaid 
+                        ? 'bg-red-950/20 border-red-500/20 shadow-lg shadow-red-950/10' 
+                        : 'bg-slate-900/50 border-white/5'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-0.5">
+                        <h4 className="text-sm font-bold text-white tracking-tight">{s.name}</h4>
+                        <p className="text-[10px] font-mono text-slate-400">DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}</p>
+                      </div>
+                      <button
+                        onClick={() => deleteStudent(s.id, s.name)}
+                        className="px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider bg-red-950/60 hover:bg-red-600 border border-red-500/30 hover:border-red-500 text-red-400 hover:text-white rounded-md transition-all duration-150 shrink-0"
+                      >
+                        🗑️ Delete
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-950/40 p-2.5 rounded-lg border border-white/5 font-mono">
+                      <div>
+                        <span className="block text-[9px] uppercase tracking-wider text-slate-500 font-bold mb-0.5">Contact</span>
+                        <span className="text-slate-300">{s.phone}</span>
+                      </div>
+                      <div className="truncate">
+                        <span className="block text-[9px] uppercase tracking-wider text-slate-500 font-bold mb-0.5">Email</span>
+                        <span className="text-slate-300 truncate block" title={s.email}>{s.email || "-"}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-white/5">
+                      <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest font-bold">Month Fee</span>
+                      <div className="flex items-center whitespace-nowrap">
+                        {isUnpaid ? (
+                          <span className="px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider bg-red-500/20 border border-red-500/40 text-red-400 font-bold rounded-md animate-pulse whitespace-nowrap">
+                            ⚠️ Unpaid
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-md font-bold whitespace-nowrap">
+                            ✅ Paid ({s.payment_method})
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 🖥️ Traditional Desktop View Matrix (Hidden on standard mobile viewports) */}
+            <div className="hidden sm:block overflow-x-auto max-h-[350px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-white/10 text-[10px] font-mono uppercase tracking-widest text-slate-400 bg-slate-950/40">
+                  <tr className="border-b border-white/10 text-[10px] font-mono uppercase tracking-widest text-slate-400 bg-slate-950/40 sticky top-0 backdrop-blur z-20">
                     <th className="p-4">Student Profile</th>
                     <th className="p-4">Contact Detail Logs</th>
                     <th className="p-4 text-center">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5 text-xs font-medium">
-                  {academyStudents.map(s => {
+                  {academyStudents.map((s) => {
                     const isUnpaid = s.payment_status !== "settled";
                     return (
-                      <tr key={s.id} className={`transition-colors ${isUnpaid ? 'bg-red-500/[0.08] hover:bg-red-500/[0.12]' : 'hover:bg-white/[0.01]'}`}>
+                      <tr key={s.id} className={`transition-colors ${isUnpaid ? 'bg-red-500/[0.04] hover:bg-red-500/[0.08]' : 'hover:bg-white/[0.01]'}`}>
                         <td className="p-4">
-                          <div className="font-bold text-white">{s.name}</div>
+                          <div className="font-bold text-white flex items-center gap-2">
+                            <span>{s.name}</span>
+                            <button
+                              onClick={() => deleteStudent(s.id, s.name)}
+                              className="px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider bg-red-950/40 hover:bg-red-600 border border-red-500/20 hover:border-red-500 text-red-400 hover:text-white rounded transition-all duration-150 shrink-0"
+                            >
+                              🗑️ Delete
+                            </button>
+                          </div>
                           <div className="text-[10px] font-mono text-slate-400 mt-0.5">DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}</div>
                         </td>
                         <td className="p-4 space-y-0.5">
                           <div className="font-mono text-slate-300">{s.phone}</div>
                           <div className="text-[11px] text-slate-400 truncate max-w-[180px]">{s.email || "-"}</div>
                         </td>
-                        <td className="p-4 text-center">
+                        <td className="p-4 text-center whitespace-nowrap">
                           {isUnpaid ? (
-                            <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-red-500/20 border border-red-500/40 text-red-400 font-bold rounded animate-pulse">⚠️ Unpaid</span>
+                            <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-red-500/20 border border-red-500/40 text-red-400 font-bold rounded animate-pulse whitespace-nowrap">⚠️ Unpaid</span>
                           ) : (
-                            <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded">✅ Paid ({s.payment_method})</span>
+                            <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded whitespace-nowrap">✅ Paid ({s.payment_method})</span>
                           )}
                         </td>
                       </tr>
@@ -1114,7 +1237,7 @@ export default function AdminPage() {
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-white/5 text-sm font-medium">
+            <tbody className="divide-y divide-white/5 text-sm font-medium text-slate-300">
               {bookings
                 .filter((booking) => {
                   const search = searchTerm.toLowerCase();
