@@ -47,12 +47,12 @@ export default function SubAdminPage() {
       hour12: true,
     });
   });
-  
+
   const [slotTime, setSlotTime] = useState("");
   const [offlineAmount, setOfflineAmount] = useState("");
   const [offlinePaymentMethod, setOfflinePaymentMethod] = useState("Cash");
   const [offlineCashAmount, setOfflineCashAmount] = useState("");
-  const [offlineUpiAmount, setOfflineUpiAmount] = useState("");  
+  const [offlineUpiAmount, setOfflineUpiAmount] = useState("");
   const [slotCourt, setSlotCourt] = useState("Full Court");
   const [availableCourts, setAvailableCourts] = useState([
     "Full Court",
@@ -133,9 +133,9 @@ export default function SubAdminPage() {
   const tomorrow = formatDate(tomorrowDate);
 
   useEffect(() => {
-    const loggedIn = localStorage.getItem("subAdminLoggedIn");
+    const loggedIn = localStorage.getItem("subadminLoggedIn");
     if (loggedIn !== "true") {
-      router.push("/"); 
+      router.push("/");
       return;
     }
 
@@ -177,10 +177,10 @@ export default function SubAdminPage() {
       clearTimeout(timeout);
 
       timeout = setTimeout(() => {
-        localStorage.removeItem("subAdminLoggedIn");
+        localStorage.removeItem("subadminLoggedIn");
         alert("Session expired after 12 hours. Please re-authorize via the Home Page.");
-        router.push("/"); 
-      }, 12 * 60 * 60 * 1000); 
+        router.push("/");
+      }, 12 * 60 * 60 * 1000);
     };
 
     window.addEventListener("mousemove", resetTimer);
@@ -202,7 +202,7 @@ export default function SubAdminPage() {
       .from("students")
       .select(`*, student_payments(*)`)
       .order("name", { ascending: true });
-    
+
     if (stData) {
       setAcademyStudents(stData.map((student: any) => {
         const currentMonthRecord = student.student_payments?.find((p: any) => p.month_year === currentMonthYear);
@@ -321,7 +321,7 @@ export default function SubAdminPage() {
         if (!overlaps) return;
         if (b.booking_type === "Full Court" || b.court_number === "Full Court" || b.court_number === "Both Courts") {
           court1Available = false; court2Available = false;
-        } else if (b.court_number === "Court 1") { court1Available = false; } 
+        } else if (b.court_number === "Court 1") { court1Available = false; }
         else if (b.court_number === "Court 2") { court2Available = false; }
       });
 
@@ -339,7 +339,7 @@ export default function SubAdminPage() {
     const selectedStart = convertToMins(slotTime);
     const selectedEnd = selectedStart + Number(slotDuration);
     const allBusyItems = [...(existingBookings || []), ...(existingBlocks || [])];
-    
+
     const isOverlapping = allBusyItems.some((item) => {
       const itemStart = convertToMins(item.start_time);
       const itemEnd = itemStart + (item.duration_minutes || 60);
@@ -399,8 +399,8 @@ export default function SubAdminPage() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("subAdminLoggedIn");
-    router.push("/"); 
+    localStorage.removeItem("subadminLoggedIn");
+    router.push("/");
   };
 
   const savePayment = async () => {
@@ -410,8 +410,8 @@ export default function SubAdminPage() {
     let cash = 0;
     let upi = 0;
 
-    if (paymentType === "Full Cash") { cash = balance; } 
-    else if (paymentType === "Full UPI") { upi = balance; } 
+    if (paymentType === "Full Cash") { cash = balance; }
+    else if (paymentType === "Full UPI") { upi = balance; }
     else if (paymentType === "Cash + UPI") {
       cash = Number(cashAmount);
       upi = Number(upiAmount);
@@ -457,67 +457,63 @@ export default function SubAdminPage() {
     .reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased selection:bg-lime-400 selection:text-slate-950 p-4 sm:p-6 md:p-8 relative overflow-x-hidden">
-      <div className="absolute top-0 inset-x-0 h-48 bg-gradient-to-b from-blue-500/10 via-transparent to-transparent pointer-events-none" />
-
-      <div className="relative flex flex-col sm:flex-row items-center justify-between gap-4 pb-6 mb-8 border-b border-white/10 z-10">
-        <div className="text-center sm:text-left">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-cyan-400">// Ground Staff Terminal</span>
-          <h1 className="text-2xl sm:text-4xl font-black tracking-tight uppercase italic text-white mt-1">
-            SMES Staff Panel
-          </h1>
+    <main className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 md:p-8">
+      {/* Header - Coach Portal Style */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-6 mb-8 border-b border-white/10">
+        <div>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400">// Ground Staff Terminal</span>
+          <h1 className="text-2xl sm:text-4xl font-black uppercase tracking-tight italic text-white mt-1">SMES Staff Panel</h1>
         </div>
-
-        <button onClick={handleLogout} className="w-full sm:w-auto bg-neutral-900 hover:bg-red-950 border border-neutral-800 hover:border-red-900 text-slate-300 hover:text-white px-5 py-3 rounded-xl font-mono text-xs uppercase tracking-wider transition-all min-h-[48px] flex items-center justify-center gap-2">
+        <button onClick={handleLogout} className="bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs uppercase px-5 py-3.5 rounded-xl font-bold transition-all">
           🚪 Logout
         </button>
       </div>
 
-      {/* Staff Financial Overview */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 mb-8 relative z-10">
-        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
-          <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Today Slots</h3>
-          <p className="text-2xl font-black text-cyan-400 mt-2">{todaySlots}</p>
+      {/* Staff Financial Overview - Coach card style */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+        <div className="bg-slate-900/60 border border-white/5 p-5 rounded-2xl">
+          <h3 className="text-[10px] font-mono uppercase tracking-widest text-slate-400">Today Slots</h3>
+          <p className="text-2xl font-black text-emerald-400 mt-2">{todaySlots}</p>
         </div>
-        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
-          <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Tomorrow Slots</h3>
+        <div className="bg-slate-900/60 border border-white/5 p-5 rounded-2xl">
+          <h3 className="text-[10px] font-mono uppercase tracking-widest text-slate-400">Tomorrow Slots</h3>
           <p className="text-2xl font-black text-slate-300 mt-2">{tomorrowSlots}</p>
         </div>
-        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
-          <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Today Advance</h3>
+        <div className="bg-slate-900/60 border border-white/5 p-5 rounded-2xl">
+          <h3 className="text-[10px] font-mono uppercase tracking-widest text-slate-400">Today Advance</h3>
           <p className="text-2xl font-black text-emerald-400 mt-2">₹{todaysAdvance}</p>
         </div>
-        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
-          <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Today Balance</h3>
+        <div className="bg-slate-900/60 border border-white/5 p-5 rounded-2xl">
+          <h3 className="text-[10px] font-mono uppercase tracking-widest text-slate-400">Today Balance</h3>
           <p className="text-2xl font-black text-red-400 mt-2">₹{todaysBalance}</p>
         </div>
-        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
-          <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Cash Vault</h3>
+        <div className="bg-slate-900/60 border border-white/5 p-5 rounded-2xl">
+          <h3 className="text-[10px] font-mono uppercase tracking-widest text-slate-400">Cash Vault</h3>
           <p className="text-2xl font-black text-amber-400 mt-2">₹{todayCashCollection}</p>
         </div>
-        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
-          <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">UPI Nodes</h3>
-          <p className="text-2xl font-black text-cyan-400 mt-2">₹{todayUpiCollection}</p>
+        <div className="bg-slate-900/60 border border-white/5 p-5 rounded-2xl">
+          <h3 className="text-[10px] font-mono uppercase tracking-widest text-slate-400">UPI Nodes</h3>
+          <p className="text-2xl font-black text-emerald-400 mt-2">₹{todayUpiCollection}</p>
         </div>
       </div>
 
-      <div className="flex flex-col md:flex-row items-stretch justify-between gap-4 mb-6 relative z-10">
-        <div className="w-full md:w-96 relative">
+      {/* Search + Actions Row */}
+      <div className="flex flex-col md:flex-row items-stretch justify-between gap-4 mb-8">
+        <div className="w-full md:w-96">
           <input
             type="text"
             placeholder="🔍 Filter by name, phone or date..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full p-4 pl-10 rounded-xl bg-slate-900 text-white border border-white/5 focus:border-cyan-400 outline-none placeholder:text-slate-600 text-base md:text-sm min-h-[52px]"
+            className="w-full p-3.5 rounded-xl bg-slate-900 text-white border border-white/5 focus:border-emerald-400 outline-none placeholder:text-slate-600 text-sm font-medium"
           />
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <button onClick={() => setShowManageSlots(true)} className="bg-purple-600 hover:bg-purple-500 text-white font-mono text-xs uppercase tracking-wider px-6 py-4 rounded-xl transition-all font-bold min-h-[52px]">
+          <button onClick={() => setShowManageSlots(true)} className="bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs uppercase tracking-wider px-5 py-3.5 rounded-xl font-bold transition-all">
             ➕ Walk-in Booking
           </button>
-          
           <button
-            className={`font-mono text-xs uppercase tracking-wider px-5 py-4 rounded-xl transition-all font-bold min-h-[52px] ${showCoachingPanel ? 'bg-lime-400 text-slate-950 font-black' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}
+            className={`font-mono text-xs uppercase tracking-wider px-5 py-3.5 rounded-xl transition-all font-bold ${showCoachingPanel ? 'bg-emerald-500 text-slate-950 font-black' : 'bg-slate-900/60 border border-white/10 hover:border-emerald-400/40 text-slate-300 hover:text-white'}`}
             onClick={() => {
               const nextState = !showCoachingPanel;
               setShowCoachingPanel(nextState);
@@ -529,20 +525,21 @@ export default function SubAdminPage() {
         </div>
       </div>
 
-      {/* 🏆 Expanded Football Coaching Workspace Panel */}
+      {/* 🏆 Football Coaching Workspace Panel */}
       {showCoachingPanel && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-4 mb-8 p-4 sm:p-6 bg-slate-900/40 border border-white/10 rounded-2xl relative z-10 backdrop-blur-xl transition-all">
-          <div className="lg:col-span-1 bg-slate-900/60 border border-white/5 p-5 rounded-xl space-y-4 h-fit">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+          {/* Enroll / Log Old Fee Form Card */}
+          <div className="lg:col-span-1 bg-slate-900/60 border border-white/5 p-5 rounded-2xl space-y-4 h-fit">
             <div className="flex gap-2 border-b border-white/5 pb-3">
-              <button 
-                onClick={() => setAcademyTab("existing")} 
-                className={`px-3 py-1.5 text-[11px] font-mono uppercase rounded transition-all ${academyTab === "existing" ? "bg-lime-400 text-slate-950 font-black" : "bg-slate-950 text-slate-400"}`}
+              <button
+                onClick={() => setAcademyTab("existing")}
+                className={`px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded transition-all ${academyTab === "existing" ? "bg-emerald-500 text-slate-950 font-black" : "bg-slate-950 text-slate-400 hover:text-white"}`}
               >
                 🔄 Log Old Fee
               </button>
-              <button 
-                onClick={() => setAcademyTab("new")} 
-                className={`px-3 py-1.5 text-[11px] font-mono uppercase rounded transition-all ${academyTab === "new" ? "bg-lime-400 text-slate-950 font-black" : "bg-slate-950 text-slate-400"}`}
+              <button
+                onClick={() => setAcademyTab("new")}
+                className={`px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded transition-all ${academyTab === "new" ? "bg-emerald-500 text-slate-950 font-black" : "bg-slate-950 text-slate-400 hover:text-white"}`}
               >
                 👶 Enroll Student
               </button>
@@ -550,44 +547,44 @@ export default function SubAdminPage() {
 
             {academyTab === "new" ? (
               <form onSubmit={handleAdminEnrollStudent} className="space-y-3">
-                <input type="text" placeholder="Student Name" value={adminNewStudentName} onChange={(e) => setAdminNewStudentName(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-xs text-white outline-none focus:border-lime-400 font-medium" />
-                <input 
-                  type="text" 
-                  placeholder="Phone Number (10 Digits)" 
-                  value={adminNewStudentPhone} 
+                <input type="text" placeholder="Student Name" value={adminNewStudentName} onChange={(e) => setAdminNewStudentName(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 focus:border-emerald-400 outline-none text-sm text-white font-medium" />
+                <input
+                  type="text"
+                  placeholder="Phone Number (10 Digits)"
+                  value={adminNewStudentPhone}
                   onChange={(e) => {
                     const numericValue = e.target.value.replace(/\D/g, "");
                     if (numericValue.length <= 10) setAdminNewStudentPhone(numericValue);
-                  }} 
-                  maxLength={10} 
-                  className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-xs text-white outline-none focus:border-lime-400 font-mono font-medium" 
+                  }}
+                  maxLength={10}
+                  className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 focus:border-emerald-400 outline-none text-sm text-white font-mono font-medium"
                 />
-                
+
                 <div>
                   <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Date of Birth</label>
-                  <input type="date" value={adminNewStudentDOB} onChange={(e) => setAdminNewStudentDOB(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-xs text-white outline-none focus:border-lime-400 font-medium" style={{ colorScheme: "dark" }} />
+                  <input type="date" value={adminNewStudentDOB} onChange={(e) => setAdminNewStudentDOB(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 focus:border-emerald-400 outline-none text-sm text-white font-medium" style={{ colorScheme: "dark" }} />
                 </div>
-                
+
                 <div>
                   <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Email ID</label>
-                  <input type="email" placeholder="example@email.com" value={adminNewStudentEmail} onChange={(e) => setAdminNewStudentEmail(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-xs text-white outline-none focus:border-lime-400 font-medium" />
+                  <input type="email" placeholder="example@email.com" value={adminNewStudentEmail} onChange={(e) => setAdminNewStudentEmail(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 focus:border-emerald-400 outline-none text-sm text-white font-medium" />
                 </div>
 
                 <div>
                   <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Payment Method</label>
-                  <select value={adminNewStudentMethod} onChange={(e) => setAdminNewStudentMethod(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-xs text-slate-300 outline-none focus:border-lime-400 font-medium">
+                  <select value={adminNewStudentMethod} onChange={(e) => setAdminNewStudentMethod(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 focus:border-emerald-400 outline-none text-sm text-slate-200 font-medium">
                     <option value="UPI">UPI</option>
                     <option value="Cash">Cash</option>
                   </select>
                 </div>
-                <div className="p-3 bg-slate-950 rounded-xl border border-white/5 text-xs font-mono font-bold text-lime-400">Fixed Fee Rate: ₹3,500</div>
-                <button type="submit" className="w-full bg-lime-400 text-slate-950 font-mono font-black text-xs py-3.5 rounded-xl uppercase tracking-wider shadow-md hover:bg-lime-300 transition-all">Enroll & Mark Paid</button>
+                <div className="p-3 bg-slate-950 rounded-xl border border-white/5 text-xs font-mono font-bold text-emerald-400">Fixed Fee Rate: ₹3,500</div>
+                <button type="submit" className="w-full bg-emerald-500 text-slate-950 font-mono font-black py-3.5 rounded-xl text-xs uppercase tracking-wider shadow-md hover:bg-emerald-400 transition-all">Enroll & Mark Paid</button>
               </form>
             ) : (
               <form onSubmit={handleAdminOldPayment} className="space-y-3">
                 <div>
-                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Select Due Student</label>
-                  <select value={adminSelectedStudentId} onChange={(e) => setAdminSelectedStudentId(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-xs text-slate-200 outline-none focus:border-lime-400 font-medium">
+                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Select Due Student</label>
+                  <select value={adminSelectedStudentId} onChange={(e) => setAdminSelectedStudentId(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 focus:border-emerald-400 outline-none text-sm text-slate-200 font-medium">
                     <option value="">-- Select Due Student --</option>
                     {academyStudents.filter(s => s.payment_status !== "settled").map(s => (
                       <option key={s.id} value={s.id}>{s.name} ({s.phone})</option>
@@ -596,41 +593,39 @@ export default function SubAdminPage() {
                 </div>
                 <div>
                   <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Payment Method</label>
-                  <select value={adminExistingMethod} onChange={(e) => setAdminExistingMethod(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-xs text-slate-300 outline-none focus:border-lime-400 font-medium">
+                  <select value={adminExistingMethod} onChange={(e) => setAdminExistingMethod(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 focus:border-emerald-400 outline-none text-sm text-slate-200 font-medium">
                     <option value="UPI">UPI</option>
                     <option value="Cash">Cash</option>
                   </select>
                 </div>
-                <div className="p-3 bg-slate-950 rounded-xl border border-white/5 text-xs font-mono font-bold text-lime-400">Enforced Rate: ₹3,500</div>
-                <button type="submit" className="w-full bg-purple-600 text-white font-mono font-black text-xs py-3.5 rounded-xl uppercase tracking-wider shadow-md hover:bg-purple-500 transition-all">Settle Selected Student</button>
+                <div className="p-3 bg-slate-950 rounded-xl border border-white/5 text-xs font-mono font-bold text-emerald-400">Enforced Rate: ₹3,500</div>
+                <button type="submit" className="w-full bg-emerald-500 text-slate-950 font-mono font-black py-3.5 rounded-xl text-xs uppercase tracking-wider shadow-md hover:bg-emerald-400 transition-all">Settle Selected Student</button>
               </form>
             )}
           </div>
 
-          {/* MASTER ACADEMY ROSTER WORKSPACE GRID */}
-          <div className="lg:col-span-2 bg-slate-900/20 border border-white/10 rounded-xl overflow-hidden shadow-inner flex flex-col">
+          {/* Master Academy Roster Table Card */}
+          <div className="lg:col-span-2 bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden">
             <div className="p-4 bg-slate-900/80 border-b border-white/10">
-              <h2 className="text-sm font-black uppercase text-white tracking-wide">🏆 Master Academy Coaching Roster — {currentMonthLabel}</h2>
+              <h2 className="text-lg font-black uppercase text-white">🏆 Academy Roster — <span className="text-emerald-400">{currentMonthLabel}</span></h2>
             </div>
 
-            {/* Mobile Layout Grid Container */}
-            <div className="block sm:hidden max-h-[380px] overflow-y-auto p-3 space-y-3 scrollbar-thin scrollbar-thumb-white/10">
+            {/* Mobile card list */}
+            <div className="block sm:hidden max-h-[380px] overflow-y-auto p-3 space-y-3">
               {academyStudents.map((s) => {
                 const isUnpaid = s.payment_status !== "settled";
                 return (
-                  <div 
-                    key={s.id} 
-                    className={`p-4 rounded-xl border transition-all space-y-3.5 ${
-                      isUnpaid 
-                        ? 'bg-red-950/20 border-red-500/20 shadow-lg shadow-red-950/10' 
-                        : 'bg-slate-900/50 border-white/5'
+                  <div
+                    key={s.id}
+                    className={`p-4 rounded-xl border transition-all space-y-3 ${
+                      isUnpaid
+                        ? 'bg-red-500/[0.08] border-red-500/20'
+                        : 'bg-slate-950/40 border-white/5'
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-0.5">
-                        <h4 className="text-sm font-bold text-white tracking-tight">{s.name}</h4>
-                        <p className="text-[10px] font-mono text-slate-400">DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}</p>
-                      </div>
+                    <div>
+                      <h4 className={`text-sm font-bold ${isUnpaid ? 'text-red-300' : 'text-white'}`}>{s.name}</h4>
+                      <p className="text-[10px] font-mono text-slate-400 mt-0.5">DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-950/40 p-2.5 rounded-lg border border-white/5 font-mono">
@@ -646,53 +641,53 @@ export default function SubAdminPage() {
 
                     <div className="flex items-center justify-between pt-1 border-t border-white/5">
                       <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest font-bold">Month Fee</span>
-                      <div className="flex items-center whitespace-nowrap">
-                        {isUnpaid ? (
-                          <span className="px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider bg-red-500/20 border border-red-500/40 text-red-400 font-bold rounded-md animate-pulse whitespace-nowrap">
-                            ⚠️ Unpaid
-                          </span>
-                        ) : (
-                          <span className="px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-md font-bold whitespace-nowrap">
-                            ✅ Paid ({s.payment_method})
-                          </span>
-                        )}
-                      </div>
+                      {isUnpaid ? (
+                        <span className="px-2 py-1 text-[10px] font-mono uppercase bg-red-500/20 border border-red-500/40 text-red-400 rounded font-black animate-pulse">
+                          ⚠️ Unpaid
+                        </span>
+                      ) : (
+                        <span className="px-2 py-1 text-[10px] font-mono uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded">
+                          ✅ Paid ({s.payment_method})
+                        </span>
+                      )}
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            {/* Desktop View Matrix */}
-            <div className="hidden sm:block overflow-x-auto max-h-[350px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
+            {/* Desktop table */}
+            <div className="hidden sm:block overflow-x-auto max-h-[420px] overflow-y-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-white/10 text-[10px] font-mono uppercase tracking-widest text-slate-400 bg-slate-955/40 sticky top-0 backdrop-blur z-20">
-                    <th className="p-4">Student Profile</th>
-                    <th className="p-4">Contact Detail Logs</th>
-                    <th className="p-4 text-center">Status</th>
+                  <tr className="border-b border-white/10 text-[10px] font-mono uppercase tracking-widest text-slate-400 sticky top-0 bg-slate-900/95 backdrop-blur z-10">
+                    <th className="p-4">Student Info</th>
+                    <th className="p-4">Contact Details</th>
+                    <th className="p-4 text-center">Payment Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/5 text-xs font-medium">
+                <tbody className="divide-y divide-white/5 text-sm font-medium">
                   {academyStudents.map((s) => {
                     const isUnpaid = s.payment_status !== "settled";
                     return (
-                      <tr key={s.id} className={`transition-colors ${isUnpaid ? 'bg-red-500/[0.04] hover:bg-red-500/[0.08]' : 'hover:bg-white/[0.01]'}`}>
+                      <tr key={s.id} className={`transition-colors ${isUnpaid ? 'bg-red-500/[0.08] hover:bg-red-500/[0.12]' : 'hover:bg-white/[0.01]'}`}>
                         <td className="p-4">
-                          <div className="font-bold text-white flex items-center gap-2">
-                            <span>{s.name}</span>
-                          </div>
-                          <div className="text-[10px] font-mono text-slate-400 mt-0.5">DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}</div>
+                          <div className={`font-bold ${isUnpaid ? 'text-red-300' : 'text-white'}`}>{s.name}</div>
+                          <div className="text-[11px] text-slate-400 font-mono mt-0.5">DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}</div>
                         </td>
                         <td className="p-4 space-y-0.5">
-                          <div className="font-mono text-slate-300">{s.phone}</div>
-                          <div className="text-[11px] text-slate-400 truncate max-w-[180px]">{s.email || "-"}</div>
+                          <div className="font-mono text-slate-300 text-xs">{s.phone}</div>
+                          <div className="text-xs text-slate-400 truncate max-w-[200px]">{s.email || "-"}</div>
                         </td>
-                        <td className="p-4 text-center whitespace-nowrap">
+                        <td className="p-4 text-center">
                           {isUnpaid ? (
-                            <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-red-500/20 border border-red-500/40 text-red-400 font-bold rounded animate-pulse whitespace-nowrap">⚠️ Unpaid</span>
+                            <span className="px-2 py-1 text-[10px] font-mono uppercase bg-red-500/20 border border-red-500/40 text-red-400 rounded font-black animate-pulse whitespace-nowrap inline-flex items-center gap-1 justify-center">
+                              ⚠️ Unpaid
+                            </span>
                           ) : (
-                            <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded whitespace-nowrap">✅ Paid ({s.payment_method})</span>
+                            <span className="px-2 py-1 text-[10px] font-mono uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded whitespace-nowrap inline-flex items-center gap-1 justify-center">
+                              ✅ Paid ({s.payment_method})
+                            </span>
                           )}
                         </td>
                       </tr>
@@ -705,23 +700,25 @@ export default function SubAdminPage() {
         </div>
       )}
 
+      {/* Walk-in Booking Modal */}
       {showManageSlots && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]">
           <div className="bg-slate-900 border border-white/10 p-5 sm:p-6 rounded-2xl w-full max-w-md shadow-2xl space-y-4">
             <div>
-              <h2 className="text-xl font-black uppercase tracking-wide text-white">Register Walk-in</h2>
-              <p className="text-slate-400 text-xs mt-0.5">Log a manual offline booking into the system.</p>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400">// Manual Entry</span>
+              <h2 className="text-xl font-black uppercase tracking-tight italic text-white mt-1">Register Walk-in</h2>
+              <p className="text-slate-400 text-xs mt-1">Log a manual offline booking into the system.</p>
             </div>
 
             <div className="space-y-3.5">
               <div>
                 <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Target Date</label>
-                <input type="date" min={new Date().toISOString().split("T")[0]} value={slotDate} onChange={(e) => { setSlotDate(e.target.value); loadAvailableAdminSlots(e.target.value); }} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-cyan-400 outline-none text-base md:text-sm font-medium" style={{ colorScheme: "dark" }} />
+                <input type="date" min={new Date().toISOString().split("T")[0]} value={slotDate} onChange={(e) => { setSlotDate(e.target.value); loadAvailableAdminSlots(e.target.value); }} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-emerald-400 outline-none text-sm font-medium" style={{ colorScheme: "dark" }} />
               </div>
 
               <div>
                 <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Launch Time</label>
-                <select value={slotTime} onChange={(e) => { setSlotTime(e.target.value); if (slotDate) loadAvailableCourts(slotDate, e.target.value); }} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-cyan-400 outline-none text-base md:text-sm font-medium">
+                <select value={slotTime} onChange={(e) => { setSlotTime(e.target.value); if (slotDate) loadAvailableCourts(slotDate, e.target.value); }} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-emerald-400 outline-none text-sm font-medium">
                   <option value="">Select Time</option>
                   {availableAdminSlots.map((slot) => (<option key={slot} value={slot}>{slot}</option>))}
                 </select>
@@ -730,7 +727,7 @@ export default function SubAdminPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Duration</label>
-                  <select value={slotDuration} onChange={(e) => setSlotDuration(Number(e.target.value))} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-cyan-400 outline-none text-base md:text-sm font-medium">
+                  <select value={slotDuration} onChange={(e) => setSlotDuration(Number(e.target.value))} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-emerald-400 outline-none text-sm font-medium">
                     <option value={60}>60 Minutes</option>
                     <option value={90}>90 Minutes</option>
                     <option value={120}>120 Minutes</option>
@@ -738,58 +735,61 @@ export default function SubAdminPage() {
                 </div>
                 <div>
                   <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Court</label>
-                  <select value={slotCourt} onChange={(e) => setSlotCourt(e.target.value)} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-cyan-400 outline-none text-base md:text-sm font-medium">
+                  <select value={slotCourt} onChange={(e) => setSlotCourt(e.target.value)} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-emerald-400 outline-none text-sm font-medium">
                     {availableCourts.map((c) => (<option key={c} value={c}>{c}</option>))}
                   </select>
                 </div>
               </div>
 
               <div className="p-4 bg-slate-950 border border-white/5 rounded-xl space-y-3">
-                <label className="block text-[10px] font-mono uppercase tracking-wider text-cyan-400 mb-1.5">Payment Collection</label>
-                
+                <label className="block text-[10px] font-mono uppercase tracking-wider text-emerald-400">Payment Collection</label>
+
                 {offlinePaymentMethod !== "Cash + UPI" && (
-                  <input type="number" placeholder="Total Received (₹)" value={offlineAmount} onChange={(e) => setOfflineAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 outline-none text-base md:text-sm font-medium" />
+                  <input type="number" placeholder="Total Received (₹)" value={offlineAmount} onChange={(e) => setOfflineAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-emerald-400 outline-none text-sm font-medium" />
                 )}
 
-                <select value={offlinePaymentMethod} onChange={(e) => setOfflinePaymentMethod(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 outline-none text-base md:text-sm font-medium">
+                <select value={offlinePaymentMethod} onChange={(e) => setOfflinePaymentMethod(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-emerald-400 outline-none text-sm font-medium">
                   <option value="Cash">Cash</option><option value="UPI">UPI</option><option value="Cash + UPI">Cash + UPI Split</option>
                 </select>
 
                 {offlinePaymentMethod === "Cash + UPI" && (
                   <div className="grid grid-cols-2 gap-2">
-                    <input type="number" placeholder="Cash Split" value={offlineCashAmount} onChange={(e) => setOfflineCashAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 outline-none text-base md:text-sm" />
-                    <input type="number" placeholder="UPI Split" value={offlineUpiAmount} onChange={(e) => setOfflineUpiAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 outline-none text-base md:text-sm" />
+                    <input type="number" placeholder="Cash Split" value={offlineCashAmount} onChange={(e) => setOfflineCashAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-emerald-400 outline-none text-sm" />
+                    <input type="number" placeholder="UPI Split" value={offlineUpiAmount} onChange={(e) => setOfflineUpiAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-emerald-400 outline-none text-sm" />
                   </div>
                 )}
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 pt-2">
-              <button onClick={saveOfflineBooking} className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono text-xs uppercase tracking-wider py-3 font-black transition-all rounded-lg">Save Booking</button>
-              <button onClick={() => setShowManageSlots(false)} className="w-full bg-neutral-800 hover:bg-neutral-700 text-slate-300 font-mono text-xs uppercase tracking-wider py-3 transition-all rounded-lg">Cancel</button>
+              <button onClick={saveOfflineBooking} className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-mono text-xs uppercase tracking-wider py-3.5 font-black transition-all rounded-xl">Save Booking</button>
+              <button onClick={() => setShowManageSlots(false)} className="w-full bg-neutral-800 hover:bg-neutral-700 text-slate-300 font-mono text-xs uppercase tracking-wider py-3.5 transition-all rounded-xl">Cancel</button>
             </div>
           </div>
         </div>
       )}
 
-      <p className="mb-3 text-xs font-mono text-slate-400 tracking-wide uppercase px-1">
+      <p className="mb-3 text-xs font-mono text-slate-400 tracking-widest uppercase px-1">
         Showing {bookings.filter((b) => b.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) || b.phone?.includes(searchTerm)).length} booking(s) active
       </p>
 
-      {/* Active Bookings Table */}
-      <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden shadow-2xl relative z-10 backdrop-blur-xl">
-        <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-white/10">
+      {/* Active Bookings Table - Coach Style */}
+      <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden">
+        <div className="p-4 bg-slate-900/80 border-b border-white/10">
+          <h2 className="text-lg font-black uppercase text-white">📅 Active Turf Bookings</h2>
+        </div>
+        <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[800px]">
             <thead>
-              <tr className="border-b border-white/10 bg-slate-900/80 text-[10px] font-mono uppercase tracking-widest text-slate-400">
-                <th className="p-4 font-bold">Client</th>
-                <th className="p-4 font-bold">Schedule</th>
-                <th className="p-4 font-bold">Duration</th>
-                <th className="p-4 font-bold">Court</th>
-                <th className="p-4 font-bold">Total</th>
-                <th className="p-4 font-bold">Advance</th>
-                <th className="p-4 font-bold">Due Balance</th>
-                <th className="p-4 font-bold text-center">Payment Options</th>
+              <tr className="border-b border-white/10 text-[10px] font-mono uppercase tracking-widest text-slate-400">
+                <th className="p-4">Client</th>
+                <th className="p-4">Schedule</th>
+                <th className="p-4">Duration</th>
+                <th className="p-4">Court</th>
+                <th className="p-4">Total</th>
+                <th className="p-4">Advance</th>
+                <th className="p-4">Due Balance</th>
+                <th className="p-4 text-center">Payment Options</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 text-sm font-medium text-slate-300">
@@ -799,31 +799,31 @@ export default function SubAdminPage() {
                 const isTomorrow = bookingDate === tomorrow;
                 const duration = booking.duration_minutes || 60;
 
-                let rowColor = "bg-transparent";
-                if (isToday) rowColor = "bg-lime-500/[0.04]";
+                let rowColor = "";
+                if (isToday) rowColor = "bg-emerald-500/[0.05]";
                 else if (isTomorrow) rowColor = "bg-amber-500/[0.03]";
 
                 return (
-                  <tr key={booking.id} className={`${rowColor} hover:bg-white/[0.02] transition-colors text-slate-300`}>
+                  <tr key={booking.id} className={`${rowColor} hover:bg-white/[0.02] transition-colors`}>
                     <td className="p-4">
                       <div className="font-bold text-white">{booking.customer_name}</div>
-                      <div className="font-mono text-[10px] text-slate-400 mt-0.5">{booking.phone}</div>
+                      <div className="font-mono text-[11px] text-slate-400 mt-0.5">{booking.phone}</div>
                     </td>
                     <td className="p-4 font-mono text-xs whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <span className="text-slate-200">{new Date(bookingDate).toLocaleDateString("en-GB")}</span>
                         {isToday && (
-                          <span className="px-2 py-0.5 rounded-full bg-lime-400/10 border border-lime-400/30 text-lime-400 text-[9px] font-black uppercase tracking-wide">
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[9px] font-black uppercase tracking-wide">
                             Today
                           </span>
                         )}
                         {isTomorrow && (
-                          <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-400 text-[9px] font-black uppercase tracking-wide">
+                          <span className="px-2 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-400 text-[9px] font-black uppercase tracking-wide">
                             Tomorrow
                           </span>
                         )}
                       </div>
-                      <div className="text-white mt-1 font-bold">
+                      <div className="text-emerald-400 font-black mt-1">
                         {getTimeRangeLabel(booking.start_time, duration)}
                       </div>
                     </td>
@@ -832,15 +832,15 @@ export default function SubAdminPage() {
                       <div className="mb-1">
                         <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-mono uppercase tracking-wider ${
                           booking.booking_type === "Half Court"
-                            ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400"
-                            : "bg-purple-500/10 border border-purple-500/20 text-purple-400"
+                            ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
+                            : "bg-slate-500/10 border border-white/10 text-slate-300"
                         }`}>
                           {booking.booking_type || "Full Court"}
                         </span>
                       </div>
                       <div className="text-slate-400 mt-0.5">{booking.court_number}</div>
                     </td>
-                    <td className="p-4 text-slate-200 font-mono whitespace-nowrap">₹{booking.total_amount}</td>
+                    <td className="p-4 text-white font-mono whitespace-nowrap">₹{booking.total_amount}</td>
                     <td className="p-4 text-emerald-400 font-mono whitespace-nowrap">₹{booking.advance_amount || 0}</td>
                     <td className="p-4 font-mono whitespace-nowrap">
                       {booking.balance_amount > 0 ? (
@@ -850,15 +850,13 @@ export default function SubAdminPage() {
                       )}
                     </td>
                     <td className="p-4 text-center whitespace-nowrap">
-                      <div className="flex items-center justify-center gap-2">
-                        {booking.balance_amount > 0 ? (
-                          <button onClick={() => { setSelectedBooking(booking); setShowPaymentModal(true); }} className="bg-lime-400 hover:bg-lime-300 text-slate-950 text-xs font-mono uppercase font-black px-4 py-2 transition-all rounded">💰 Collect</button>
-                        ) : (
-                          booking.customer_name !== "Offline Booking" && (
-                            <button onClick={() => resetPayment(booking)} className="bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-amber-400 text-xs font-mono uppercase px-4 py-2 transition-all rounded">🔄 Reset</button>
-                          )
-                        )}
-                      </div>
+                      {booking.balance_amount > 0 ? (
+                        <button onClick={() => { setSelectedBooking(booking); setShowPaymentModal(true); }} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-mono uppercase font-black px-4 py-2 transition-all rounded-lg">💰 Collect</button>
+                      ) : (
+                        booking.customer_name !== "Offline Booking" && (
+                          <button onClick={() => resetPayment(booking)} className="bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-amber-400 text-xs font-mono uppercase px-4 py-2 transition-all rounded-lg">🔄 Reset</button>
+                        )
+                      )}
                     </td>
                   </tr>
                 );
@@ -868,20 +866,20 @@ export default function SubAdminPage() {
         </div>
       </div>
 
-      {/* Excluded Field Blocks Summary */}
-      <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden shadow-2xl mt-8 relative z-10 backdrop-blur-xl">
+      {/* Excluded Field Blocks - Coach Style */}
+      <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden mt-8">
         <div className="p-4 bg-slate-900/80 border-b border-white/10">
-          <h2 className="text-lg font-black uppercase tracking-wide text-white">🚫 Admin Field Blocks</h2>
+          <h2 className="text-lg font-black uppercase text-white">🚫 Admin Field Blocks</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[600px]">
             <thead>
-              <tr className="border-b border-white/10 bg-slate-900/40 text-[10px] font-mono uppercase tracking-widest text-slate-400">
-                <th className="p-4 font-bold">Date</th>
-                <th className="p-4 font-bold">Schedule</th>
-                <th className="p-4 font-bold">Duration</th>
-                <th className="p-4 font-bold">Court</th>
-                <th className="p-4 font-bold">Reason</th>
+              <tr className="border-b border-white/10 text-[10px] font-mono uppercase tracking-widest text-slate-400">
+                <th className="p-4">Date</th>
+                <th className="p-4">Schedule</th>
+                <th className="p-4">Duration</th>
+                <th className="p-4">Court</th>
+                <th className="p-4">Reason</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 text-sm font-medium text-slate-300">
@@ -895,11 +893,11 @@ export default function SubAdminPage() {
                     <td className="p-4 font-mono text-xs text-slate-200">
                       {new Date(bookingDate).toLocaleDateString("en-GB")}
                     </td>
-                    <td className="p-4 font-mono text-xs text-white font-bold whitespace-nowrap">
+                    <td className="p-4 font-mono text-xs text-red-400 font-black whitespace-nowrap">
                       {getTimeRangeLabel(slot.start_time, blockDuration)}
                     </td>
                     <td className="p-4 text-xs font-mono">{blockDuration} mins</td>
-                    <td className="p-4 font-mono text-xs font-bold text-cyan-400">{slot.court_number}</td>
+                    <td className="p-4 font-mono text-xs font-bold text-emerald-400">{slot.court_number}</td>
                     <td className="p-4 font-mono text-xs text-slate-400 uppercase">{slot.reason}</td>
                   </tr>
                 );
@@ -909,12 +907,14 @@ export default function SubAdminPage() {
         </div>
       </div>
 
+      {/* Balance Clearing Modal */}
       {showPaymentModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]">
           <div className="bg-slate-900 border border-white/10 p-5 sm:p-6 rounded-2xl w-full max-w-sm shadow-2xl space-y-4">
             <div>
-              <h2 className="text-xl font-black uppercase tracking-wide text-white">💰 Balance Clearing</h2>
-              <p className="text-slate-400 text-xs mt-0.5">Collect the remaining match dues directly below.</p>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400">// Settle Balance</span>
+              <h2 className="text-xl font-black uppercase tracking-tight italic text-white mt-1">💰 Balance Clearing</h2>
+              <p className="text-slate-400 text-xs mt-1">Collect the remaining match dues directly below.</p>
             </div>
 
             <div className="p-4 bg-slate-950 border border-white/5 rounded-xl flex justify-between items-center">
@@ -926,7 +926,7 @@ export default function SubAdminPage() {
               <div>
                 <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Payment Route</label>
                 <div className="relative">
-                  <select value={paymentType} onChange={(e) => setPaymentType(e.target.value)} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-cyan-400 outline-none appearance-none text-base md:text-sm font-medium">
+                  <select value={paymentType} onChange={(e) => setPaymentType(e.target.value)} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-emerald-400 outline-none appearance-none text-sm font-medium">
                     <option value="Full Cash">Full Cash</option>
                     <option value="Full UPI">Full UPI</option>
                     <option value="Cash + UPI">Cash + UPI</option>
@@ -937,15 +937,15 @@ export default function SubAdminPage() {
 
               {paymentType === "Cash + UPI" && (
                 <div className="grid grid-cols-2 gap-2 p-3 bg-slate-950 border border-white/5 rounded-xl">
-                  <input type="number" placeholder="Cash Amount" value={cashAmount} onChange={(e) => setCashAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-cyan-400 outline-none text-base md:text-sm font-medium" />
-                  <input type="number" placeholder="UPI Amount" value={upiAmount} onChange={(e) => setUpiAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-cyan-400 outline-none text-base md:text-sm font-medium" />
+                  <input type="number" placeholder="Cash Amount" value={cashAmount} onChange={(e) => setCashAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-emerald-400 outline-none text-sm font-medium" />
+                  <input type="number" placeholder="UPI Amount" value={upiAmount} onChange={(e) => setUpiAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-emerald-400 outline-none text-sm font-medium" />
                 </div>
               )}
             </div>
 
             <div className="grid grid-cols-2 gap-3 pt-2">
-              <button onClick={savePayment} className="w-full bg-lime-400 hover:bg-lime-300 text-slate-950 font-mono text-xs uppercase tracking-wider py-3 font-black transition-all min-h-[44px]">Save Payment</button>
-              <button onClick={() => { setShowPaymentModal(false); setSelectedBooking(null); }} className="w-full bg-neutral-800 hover:bg-neutral-700 text-slate-300 font-mono text-xs uppercase tracking-wider py-3 transition-all min-h-[44px]">Cancel</button>
+              <button onClick={savePayment} className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-mono text-xs uppercase tracking-wider py-3.5 font-black transition-all rounded-xl">Save Payment</button>
+              <button onClick={() => { setShowPaymentModal(false); setSelectedBooking(null); }} className="w-full bg-neutral-800 hover:bg-neutral-700 text-slate-300 font-mono text-xs uppercase tracking-wider py-3.5 transition-all rounded-xl">Cancel</button>
             </div>
           </div>
         </div>
