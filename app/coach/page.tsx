@@ -9,13 +9,19 @@ export default function CoachPage() {
   const [blockedSlots, setBlockedSlots] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   
-  // Registration Form States
+  // Tab Switcher state: "new" or "existing"
+  const [formTab, setFormTab] = useState<"new" | "existing">("new");
+
+  // Registration Form States (New Student - Paid Flow)
   const [newStudentName, setNewStudentName] = useState("");
   const [newStudentPhone, setNewStudentPhone] = useState("");
-  const [newStudentFee, setNewStudentFee] = useState("2500");
-  const [initialPaymentStatus, setInitialPaymentStatus] = useState("pending");
-  const [initialPaymentMethod, setInitialPaymentMethod] = useState("UPI");
+  const [newStudentMethod, setNewStudentMethod] = useState("UPI"); 
 
+  // Selection states (Existing Student Pairing)
+  const [selectedStudentId, setSelectedStudentId] = useState("");
+  const [existingPaymentMethod, setExistingPaymentMethod] = useState("UPI");
+
+  const FIXED_COACHING_FEE = 3500; 
   const currentMonthYear = new Date().toISOString().slice(0, 7); // Format: YYYY-MM
   const currentMonthLabel = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
 
@@ -38,15 +44,12 @@ export default function CoachPage() {
   const loadCoachData = async () => {
     const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
-    // 1. Fetch Read-only Turf Reservations
     const { data: bData } = await supabase.from("bookings").select("*").gte("booking_date", todayStr).order("booking_date", { ascending: true }).order("start_time", { ascending: true });
     setBookings(bData || []);
 
-    // 2. Fetch Read-only System Restrictive Blocks
     const { data: blData } = await supabase.from("blocked_slots").select("*").gte("booking_date", todayStr).order("booking_date", { ascending: true }).order("start_time", { ascending: true });
     setBlockedSlots(blData || []);
 
-    // 3. Fetch Students with current Month's Payment Status
     const { data: stData } = await supabase.from("students").select(`*, student_payments(*)`).order("name", { ascending: true });
     
     if (stData) {
@@ -68,32 +71,68 @@ export default function CoachPage() {
     e.preventDefault();
     if (!newStudentName || !newStudentPhone) { alert("Please complete name and phone fields"); return; }
 
-    // Insert to Master Students Table
+    // 🔒 Guard check: Rejects the pipeline execution if phone digits are incomplete
+    if (newStudentPhone.length !== 10) {
+      alert("⚠️ Verification Error: Mobile number must be exactly 10 digits long.");
+      return;
+    }
+
     const { data: student, error: stError } = await supabase.from("students").insert([{
       name: newStudentName,
       phone: newStudentPhone,
-      monthly_fee: Number(newStudentFee)
+      monthly_fee: FIXED_COACHING_FEE
     }]).select().single();
 
-    // 🛡️ UPDATED TYPE GUARD: Tells Vercel compiler that 'student' object is guaranteed to exist here
     if (stError || !student) { 
       alert(stError?.message || "Registration failed node mismatch"); 
       return; 
     }
 
-    // Initialize Current Month's Payment Row Reference
     const { error: pmError } = await supabase.from("student_payments").insert([{
       student_id: student.id,
       month_year: currentMonthYear,
-      status: initialPaymentStatus,
-      amount_paid: initialPaymentStatus === "settled" ? Number(newStudentFee) : 0,
-      payment_method: initialPaymentStatus === "settled" ? initialPaymentMethod : null
+      status: "settled",
+      amount_paid: FIXED_COACHING_FEE,
+      payment_method: newStudentMethod
     }]);
 
     if (pmError) { alert(pmError.message); return; }
 
-    alert(`✅ ${newStudentName} Registered Successfully`);
+    alert(`✅ ${newStudentName} Registered & Current Month Paid via ${newStudentMethod}!`);
     setNewStudentName(""); setNewStudentPhone("");
+    loadCoachData();
+  };
+
+  const pairExistingStudentPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedStudentId) { alert("Please select a student name first"); return; }
+
+    const targetStudent = students.find(s => s.id === selectedStudentId);
+    if (!targetStudent) return;
+
+    if (targetStudent.payment_record_id) {
+      const { error } = await supabase.from("student_payments").update({
+        status: "settled",
+        amount_paid: FIXED_COACHING_FEE,
+        payment_method: existingPaymentMethod,
+        updated_at: new Date().toISOString()
+      }).eq("id", targetStudent.payment_record_id);
+
+      if (error) { alert(error.message); return; }
+    } else {
+      const { error } = await supabase.from("student_payments").insert([{
+        student_id: selectedStudentId,
+        month_year: currentMonthYear,
+        status: "settled",
+        amount_paid: FIXED_COACHING_FEE,
+        payment_method: existingPaymentMethod
+      }]);
+
+      if (error) { alert(error.message); return; }
+    }
+
+    alert(`💸 Paired fee clearance successfully for ${targetStudent.name}`);
+    setSelectedStudentId("");
     loadCoachData();
   };
 
@@ -101,7 +140,7 @@ export default function CoachPage() {
     if (student.payment_record_id) {
       await supabase.from("student_payments").update({
         status: "settled",
-        amount_paid: student.monthly_fee,
+        amount_paid: student.monthly_fee || FIXED_COACHING_FEE,
         payment_method: method,
         updated_at: new Date().toISOString()
       }).eq("id", student.payment_record_id);
@@ -110,7 +149,7 @@ export default function CoachPage() {
         student_id: student.id,
         month_year: currentMonthYear,
         status: "settled",
-        amount_paid: student.monthly_fee,
+        amount_paid: student.monthly_fee || FIXED_COACHING_FEE,
         payment_method: method
       }]);
     }
@@ -129,7 +168,7 @@ export default function CoachPage() {
       return {
         "Student Name": s.name + (isNew ? " (NEW)" : ""),
         "Phone Number": s.phone,
-        "Monthly Fee (₹)": s.monthly_fee,
+        "Monthly Fee (₹)": s.monthly_fee || FIXED_COACHING_FEE,
         "Amount Paid (₹)": s.amount_paid,
         "Payment Method": s.payment_method,
         "Status": s.payment_status === "settled" ? "✅ SETTLED" : "❌ PENDING",
@@ -172,36 +211,102 @@ export default function CoachPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
+          
           <div className="bg-slate-900/60 border border-white/5 p-5 rounded-2xl space-y-4">
-            <div>
-              <h2 className="text-lg font-black uppercase text-white">Enroll New Student</h2>
-              <p className="text-xs text-slate-400">Add players to the coaching registry database.</p>
+            
+            <div className="flex gap-2 border-b border-white/5 pb-3">
+              <button 
+                onClick={() => setFormTab("new")} 
+                className={`px-4 py-2 text-xs font-mono uppercase tracking-wider rounded-lg transition-all ${formTab === "new" ? "bg-emerald-500 text-slate-950 font-black" : "bg-slate-950 text-slate-400 border border-white/5 hover:text-white"}`}
+              >
+                👶 Enroll New Student
+              </button>
+              <button 
+                onClick={() => setFormTab("existing")} 
+                className={`px-4 py-2 text-xs font-mono uppercase tracking-wider rounded-lg transition-all ${formTab === "existing" ? "bg-emerald-500 text-slate-950 font-black" : "bg-slate-950 text-slate-400 border border-white/5 hover:text-white"}`}
+              >
+                🔄 Old Student payment
+              </button>
             </div>
-            <form onSubmit={registerNewStudent} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <input type="text" placeholder="Student Name" value={newStudentName} onChange={(e) => setNewStudentName(e.target.value)} className="p-3.5 bg-slate-950 rounded-xl border border-white/5 focus:border-emerald-400 outline-none text-sm" />
-              <input type="text" placeholder="Phone Number" value={newStudentPhone} onChange={(e) => setNewStudentPhone(e.target.value)} className="p-3.5 bg-slate-950 rounded-xl border border-white/5 focus:border-emerald-400 outline-none text-sm" />
-              <div>
-                <label className="block text-[10px] uppercase text-slate-400 mb-1">Monthly Fee (₹)</label>
-                <input type="number" value={newStudentFee} onChange={(e) => setNewStudentFee(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-sm" />
-              </div>
-              <div>
-                <label className="block text-[10px] uppercase text-slate-400 mb-1">Fee Status</label>
-                <select value={initialPaymentStatus} onChange={(e) => setInitialPaymentStatus(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-sm outline-none">
-                  <option value="pending">❌ Pending (Pay Later)</option>
-                  <option value="settled">✅ Settled (Paid Today)</option>
-                </select>
-              </div>
-              {initialPaymentStatus === "settled" && (
-                <div className="sm:col-span-2">
-                  <label className="block text-[10px] uppercase text-slate-400 mb-1">Method</label>
-                  <select value={initialPaymentMethod} onChange={(e) => setInitialPaymentMethod(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-sm outline-none">
-                    <option value="UPI">UPI</option>
-                    <option value="Cash">Cash</option>
-                  </select>
+
+            {formTab === "new" ? (
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-base font-black uppercase text-white">Enroll New Student</h2>
+                  <p className="text-xs text-slate-400">Creates profile and automatically marks this current month's fees as paid.</p>
                 </div>
-              )}
-              <button type="submit" className="sm:col-span-2 bg-emerald-500 text-slate-950 font-mono font-black py-3.5 rounded-xl text-xs uppercase tracking-wider">Complete Registry</button>
-            </form>
+                <form onSubmit={registerNewStudent} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <input type="text" placeholder="Student Name" value={newStudentName} onChange={(e) => setNewStudentName(e.target.value)} className="p-3.5 bg-slate-950 rounded-xl border border-white/5 focus:border-emerald-400 outline-none text-sm font-medium" />
+                  
+                  {/* 🔒 UPDATED: Force filters non-digits out instantly and strictly enforces a 10 digit boundary */}
+                  <input 
+                    type="text" 
+                    placeholder="Phone Number (10 Digits)" 
+                    value={newStudentPhone} 
+                    onChange={(e) => {
+                      const numericValue = e.target.value.replace(/\D/g, "");
+                      if (numericValue.length <= 10) {
+                        setNewStudentPhone(numericValue);
+                      }
+                    }} 
+                    maxLength={10}
+                    className="p-3.5 bg-slate-950 rounded-xl border border-white/5 focus:border-emerald-400 outline-none text-sm font-medium font-mono" 
+                  />
+
+                  <div>
+                    <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Initial Payment Method</label>
+                    <select value={newStudentMethod} onChange={(e) => setNewStudentMethod(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-sm outline-none font-medium text-slate-300 focus:border-emerald-400">
+                      <option value="UPI">UPI</option>
+                      <option value="Cash">Cash</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Amount Paid (₹)</label>
+                    <div className="p-3.5 bg-slate-950 rounded-xl border border-white/5 text-sm font-mono text-emerald-400 font-bold select-none cursor-not-allowed">
+                      ₹3,500 <span className="text-[10px] text-slate-500 font-sans font-normal ml-1.5">(Fixed Rate Paid Today)</span>
+                    </div>
+                  </div>
+                  <button type="submit" className="sm:col-span-2 bg-emerald-500 text-slate-950 font-mono font-black py-3.5 rounded-xl text-xs uppercase tracking-wider shadow-md hover:bg-emerald-400 transition-all">Enroll & Mark As Paid</button>
+                </form>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-base font-black uppercase text-white">Record Old Student Payment</h2>
+                  <p className="text-xs text-slate-400">Select an existing registered name from the panel to log fees for this month.</p>
+                </div>
+                <form onSubmit={pairExistingStudentPayment} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Select Student Name</label>
+                    <select 
+                      value={selectedStudentId} 
+                      onChange={(e) => setSelectedStudentId(e.target.value)}
+                      className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-sm outline-none font-medium text-slate-200 focus:border-emerald-400"
+                    >
+                      <option value="">-- Choose Student --</option>
+                      {/* 🚫 UPDATED FILTER: Automatically drops out anyone who already cleared this month's fee pass */}
+                      {students.filter(s => s.payment_status !== "settled").map(s => (
+                        <option key={s.id} value={s.id}>{s.name} ({s.phone})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Fee Collected (₹)</label>
+                    <div className="p-3.5 bg-slate-950 rounded-xl border border-white/5 text-sm font-mono text-purple-400 font-bold select-none cursor-not-allowed">
+                      ₹3,500 <span className="text-[10px] text-slate-500 font-sans font-normal ml-1.5">(Fixed Rate)</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Accept Method</label>
+                    <select value={existingPaymentMethod} onChange={(e) => setExistingPaymentMethod(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-sm outline-none font-medium text-slate-300">
+                      <option value="UPI">UPI</option>
+                      <option value="Cash">Cash</option>
+                    </select>
+                  </div>
+                  <button type="submit" className="sm:col-span-2 bg-purple-600 hover:bg-purple-500 text-white font-mono font-black py-3.5 rounded-xl text-xs uppercase tracking-wider shadow-md transition-all">Pair & Save Payment</button>
+                </form>
+              </div>
+            )}
           </div>
 
           <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden">
@@ -233,7 +338,7 @@ export default function CoachPage() {
                           </div>
                         </td>
                         <td className="p-4 font-mono text-slate-400 text-xs">{student.phone}</td>
-                        <td className="p-4 font-mono text-white">₹{student.monthly_fee}</td>
+                        <td className="p-4 font-mono text-white">₹{student.monthly_fee || FIXED_COACHING_FEE}</td>
                         <td className="p-4">
                           {student.payment_status === "settled" ? (
                             <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded">Settled</span>
