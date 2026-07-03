@@ -2,8 +2,10 @@
 
 import React, { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { useRouter } from "next/navigation";
 
 export default function CoachPage() {
+  const router = useRouter();
   const [bookings, setBookings] = useState<any[]>([]);
   const [blockedSlots, setBlockedSlots] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
@@ -17,6 +19,11 @@ export default function CoachPage() {
   const FIXED_COACHING_FEE = 3500; 
   const currentMonthYear = new Date().toISOString().slice(0, 7); // Format: YYYY-MM
   const currentMonthLabel = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
+
+  useEffect(() => {
+    // Instantly bounce traffic back to the primary landing path if accessed directly
+    router.replace("/");
+  }, [router]);
 
   useEffect(() => {
     loadCoachData();
