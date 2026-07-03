@@ -1,26 +1,55 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation"; 
+import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "./lib/supabase";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 
+/* ------------------------------------------------------------------ */
+/*  Motion Presets                                                    */
+/* ------------------------------------------------------------------ */
+const easeOut = [0.22, 1, 0.36, 1] as const;
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 24 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: easeOut } },
+};
+
+const fadeIn = {
+  hidden: { opacity: 0 },
+  show: { opacity: 1, transition: { duration: 0.8, ease: easeOut } },
+};
+
+const stagger = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.08, delayChildren: 0.1 } },
+};
+
+const slotItem = {
+  hidden: { opacity: 0, scale: 0.9, y: 8 },
+  show: { opacity: 1, scale: 1, y: 0, transition: { duration: 0.25, ease: easeOut } },
+};
+
+/* ------------------------------------------------------------------ */
+/*  Main Component                                                    */
+/* ------------------------------------------------------------------ */
 export default function Home() {
-  const router = useRouter(); 
+  const router = useRouter();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [sport, setSport] = useState("Football");
   const [bookingDate, setBookingDate] = useState("");
-  const [startTime, setStartTime] = useState(""); 
+  const [startTime, setStartTime] = useState("");
   const [duration, setDuration] = useState("60");
   const [bookingType, setBookingType] = useState("Full Court");
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
 
-  // App Staff Authentication States
+  // Staff Auth
   const [showStaffModal, setShowStaffModal] = useState(false);
   const [staffRole, setStaffRole] = useState("Admin");
   const [staffPassword, setStaffPassword] = useState("");
 
+  /* -------- Load Razorpay -------- */
   useEffect(() => {
     const script = document.createElement("script");
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
@@ -32,26 +61,20 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (bookingDate) {
-      loadBookedSlots(bookingDate);
-    }
+    if (bookingDate) loadBookedSlots(bookingDate);
   }, [bookingDate, bookingType]);
 
-  const totalAmount =
-    bookingType === "Half Court"
-      ? duration === "60"
-        ? 750
-        : duration === "90"
-        ? 1100
-        : 1500
-      : duration === "60"
-      ? 1250
-      : duration === "90"
-      ? 1850
-      : 2500;
+  /* -------- Pricing -------- */
+  const totalAmount = useMemo(() => {
+    if (bookingType === "Half Court") {
+      return duration === "60" ? 750 : duration === "90" ? 1100 : 1500;
+    }
+    return duration === "60" ? 1250 : duration === "90" ? 1850 : 2500;
+  }, [bookingType, duration]);
 
-  const advanceAmount = 205; 
-  
+  const advanceAmount = 205;
+
+  /* -------- Slot Grid -------- */
   const allSlots = Array.from({ length: 48 }, (_, i) => {
     const h = Math.floor(i / 2);
     const m = i % 2 === 0 ? "00" : "30";
@@ -60,11 +83,8 @@ export default function Home() {
     return `${String(displayH).padStart(2, "0")}:${m} ${ampm}`;
   });
 
-  const getLocalDateString = () => {
-    return new Date().toLocaleDateString("en-CA", {
-      timeZone: "Asia/Kolkata",
-    });
-  };
+  const getLocalDateString = () =>
+    new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
   const convert12to24 = (time12: string) => {
     const [time, ampm] = time12.split(" ");
@@ -76,10 +96,8 @@ export default function Home() {
 
   const isSlotAvailable = (slot: string) => {
     if (!bookingDate) return false;
-
     const segmentsNeeded = Number(duration) / 30;
     const slotIndex = allSlots.indexOf(slot);
-    
     for (let i = 0; i < segmentsNeeded; i++) {
       const targetIndex = slotIndex + i;
       if (targetIndex < allSlots.length) {
@@ -87,13 +105,15 @@ export default function Home() {
         if (bookedSlots.includes(nextSlot)) return false;
       }
     }
-
     const today = getLocalDateString();
     if (bookingDate && bookingDate < today) return false;
     if (bookingDate !== today) return true;
 
     const now = new Date();
-    const istTimeStr = now.toLocaleTimeString("en-US", { timeZone: "Asia/Kolkata", hour12: false });
+    const istTimeStr = now.toLocaleTimeString("en-US", {
+      timeZone: "Asia/Kolkata",
+      hour12: false,
+    });
     const [currentHours, currentMins] = istTimeStr.split(":").map(Number);
     const currentMinutes = currentHours * 60 + currentMins;
 
@@ -102,16 +122,15 @@ export default function Home() {
     if (ampm === "PM" && hours !== 12) hours += 12;
     if (ampm === "AM" && hours === 12) hours = 0;
     const slotMinutes = hours * 60 + minutes;
-    
+
     return slotMinutes > currentMinutes;
   };
 
   useEffect(() => {
-    if (startTime && !isSlotAvailable(startTime)) {
-      setStartTime("");
-    }
+    if (startTime && !isSlotAvailable(startTime)) setStartTime("");
   }, [bookingDate, bookedSlots, duration]);
 
+  /* -------- Supabase Load Booked Slots -------- */
   const loadBookedSlots = async (date: string) => {
     const { data, error } = await supabase
       .from("bookings")
@@ -142,7 +161,6 @@ export default function Home() {
         for (let i = 0; i < slotsToBlock; i++) {
           const current = minutes + i * 30;
           if (current >= 24 * 60) continue;
-
           const hour24 = Math.floor(current / 60);
           const minute = current % 60;
           const ampm = hour24 >= 12 ? "PM" : "AM";
@@ -177,7 +195,6 @@ export default function Home() {
         for (let i = 0; i < slotsToBlock; i++) {
           const current = minutes + i * 30;
           if (current >= 24 * 60) continue;
-
           const hour24 = Math.floor(current / 60);
           const minute = current % 60;
           const ampm = hour24 >= 12 ? "PM" : "AM";
@@ -190,6 +207,7 @@ export default function Home() {
     setBookedSlots(blocked);
   };
 
+  /* -------- Razorpay -------- */
   const openRazorpay = async () => {
     try {
       if (!name || !phone || !bookingDate || !startTime) {
@@ -197,9 +215,8 @@ export default function Home() {
         return;
       }
       const availabilityCheck = await handleBooking("CHECK_ONLY");
-      if (!availabilityCheck) {
-        return;
-      }
+      if (!availabilityCheck) return;
+
       const response = await fetch("/api/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -218,7 +235,7 @@ export default function Home() {
         handler: async function (res: any) {
           await handleBooking(res);
         },
-        prefill: { name: name, contact: phone },
+        prefill: { name, contact: phone },
       };
 
       if ((window as any).Razorpay) {
@@ -233,6 +250,7 @@ export default function Home() {
     }
   };
 
+  /* -------- Booking Handler -------- */
   const handleBooking = async (paymentData?: any) => {
     if (!name || !phone || !bookingDate || !startTime) {
       alert("Please fill all fields and select a valid time slot.");
@@ -285,20 +303,14 @@ export default function Home() {
       }) || [];
 
     if (bookingType === "Half Court") {
-      const fullCourtExists = overlappingBookings.some((b) => b.booking_type === "Full Court") || overlappingBlocked.length > 0;
-      if (fullCourtExists) {
-        alert("❌ No Half Court Available.");
-        return;
-      }
+      const fullCourtExists =
+        overlappingBookings.some((b) => b.booking_type === "Full Court") || overlappingBlocked.length > 0;
+      if (fullCourtExists) { alert("❌ No Half Court Available."); return; }
       const court1Taken = overlappingBookings.some((b) => b.court_number === "Court 1");
       const court2Taken = overlappingBookings.some((b) => b.court_number === "Court 2");
-
       if (!court1Taken) courtNumber = "Court 1";
       else if (!court2Taken) courtNumber = "Court 2";
-      else {
-        alert("❌ No Half Court Available.");
-        return;
-      }
+      else { alert("❌ No Half Court Available."); return; }
     }
 
     if (bookingType === "Full Court") {
@@ -314,15 +326,15 @@ export default function Home() {
     const { data: insertedData, error } = await supabase.from("bookings").insert([
       {
         customer_name: name,
-        phone: phone,
+        phone,
         booking_type: bookingType,
         court_number: courtNumber,
         sport: sport.toLowerCase(),
         booking_date: bookingDate,
-        start_time: convert12to24(startTime), 
+        start_time: convert12to24(startTime),
         duration_minutes: Number(duration),
         total_amount: totalAmount,
-        advance_amount: 200,                  
+        advance_amount: 200,
         balance_amount: totalAmount - 200,
         razorpay_order_id: paymentData?.razorpay_order_id,
         razorpay_payment_id: paymentData?.razorpay_payment_id,
@@ -330,14 +342,12 @@ export default function Home() {
       },
     ]).select();
 
-    if (error) {
-      console.error(error);
-      alert(error.message);
-      return;
-    }
+    if (error) { console.error(error); alert(error.message); return; }
 
     const balanceAmount = totalAmount - 200;
-    const bookingId = insertedData?.[0]?.id ? `#${insertedData[0].id.toString().slice(-4)}` : "#----";
+    const bookingId = insertedData?.[0]?.id
+      ? `#${insertedData[0].id.toString().slice(-4)}`
+      : "#----";
 
     const clientText = `🏟️ *SMES Sports Academy Booking Confirmed*\n\nHello ${name},\n\nYour booking has been successfully confirmed.\n\n📅 *Date:* ${bookingDate}\n🕒 *Time:* ${startTime}\n⏱ *Duration:* ${duration} Minutes\n🏏 *Sport:* ${sport}\n🏟 *Court:* ${bookingType}\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200\n💳 *Balance Due:* ₹${balanceAmount}\n\n📍 *Location:*\nSMES Sports Academy, Mysuru\n\n⚠️ Please arrive 10 minutes before your slot.\n⚠️ Balance payment must be completed before play starts.\n\nThank you for choosing SMES Sports Academy.\n\n📞 *Support:* 8453095258`;
 
@@ -348,10 +358,10 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          customerPhone: `91${phone}`, 
+          customerPhone: `91${phone}`,
           customerMessage: clientText,
-          adminMessage: adminText
-        })
+          adminMessage: adminText,
+        }),
       });
     } catch (e) {
       console.log("Notification route connection failed.");
@@ -366,6 +376,7 @@ export default function Home() {
     setDuration("60");
   };
 
+  /* -------- Staff Login -------- */
   const handleStaffLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (staffRole === "Admin") {
@@ -375,43 +386,70 @@ export default function Home() {
         router.push("/admin");
         setShowStaffModal(false);
         setStaffPassword("");
-      } else {
-        alert("❌ Invalid Admin Password");
-      }
+      } else alert("❌ Invalid Admin Password");
     } else if (staffRole === "Sub-Admin") {
-      if (staffPassword === "1234") { 
+      if (staffPassword === "1234") {
         localStorage.setItem("subadminLoggedIn", "true");
-        router.push("/subadmin"); 
+        router.push("/subadmin");
         setShowStaffModal(false);
         setStaffPassword("");
-      } else {
-        alert("❌ Invalid Sub-Admin Password");
-      }
+      } else alert("❌ Invalid Sub-Admin Password");
     } else if (staffRole === "Coach") {
       if (staffPassword === "2468") {
         localStorage.setItem("coachLoggedIn", "true");
         router.push("/coach");
         setShowStaffModal(false);
         setStaffPassword("");
-      } else {
-        alert("❌ Invalid Coach Password");
-      }
+      } else alert("❌ Invalid Coach Password");
     }
   };
 
   const scrollToBooking = () => {
-    const targetElement = document.getElementById("booking-engine-section");
-    if (targetElement) {
-      targetElement.scrollIntoView({ behavior: "smooth" });
-    }
+    const el = document.getElementById("booking-engine-section");
+    if (el) el.scrollIntoView({ behavior: "smooth" });
   };
 
+  /* ================================================================ */
+  /*  RENDER                                                          */
+  /* ================================================================ */
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden">
-      
-      {/* Top Right Hamburger Menu for Staff Login */}
-      <div className="absolute top-6 right-4 sm:top-8 sm:right-6 z-[100]">
-        <button
+
+      {/* ---------- Animated Aurora Background ---------- */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+        <div className="absolute top-0 inset-x-0 h-[400px] sm:h-[640px] bg-gradient-to-b from-lime-500/10 via-transparent to-transparent" />
+        <motion.div
+          animate={{ x: [0, 40, 0], y: [0, 30, 0] }}
+          transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute top-[-5%] left-[-10%] w-[60%] h-[40%] bg-emerald-500/10 rounded-full blur-[80px] sm:blur-[120px]"
+        />
+        <motion.div
+          animate={{ x: [0, -50, 0], y: [0, 40, 0] }}
+          transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute top-[15%] right-[-10%] w-[50%] h-[50%] bg-lime-500/10 rounded-full blur-[80px] sm:blur-[120px]"
+        />
+        {/* Subtle grid */}
+        <div
+          className="absolute inset-0 opacity-[0.03]"
+          style={{
+            backgroundImage:
+              "linear-gradient(to right, rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.5) 1px, transparent 1px)",
+            backgroundSize: "60px 60px",
+          }}
+        />
+      </div>
+
+      {/* ---------- Hamburger ---------- */}
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+        className="absolute top-6 right-4 sm:top-8 sm:right-6 z-[100]"
+      >
+        <motion.button
+          whileHover={{ scale: 1.1, rotate: 90 }}
+          whileTap={{ scale: 0.95 }}
+          transition={{ type: "spring", stiffness: 300, damping: 20 }}
           onClick={() => setShowStaffModal(true)}
           className="text-neutral-400 hover:text-lime-400 p-2 transition-colors cursor-pointer flex items-center justify-center"
           title="Staff Login"
@@ -419,20 +457,19 @@ export default function Home() {
           <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
-        </button>
-      </div>
+        </motion.button>
+      </motion.div>
 
-      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="absolute top-0 inset-x-0 h-[400px] sm:h-[640px] bg-gradient-to-b from-lime-500/10 via-transparent to-transparent" />
-        <div className="absolute top-[-5%] left-[-10%] w-[60%] h-[40%] bg-emerald-500/5 rounded-full blur-[80px] sm:blur-[120px]" />
-        <div className="absolute top-[15%] right-[-10%] w-[50%] h-[50%] bg-lime-500/5 rounded-full blur-[80px] sm:blur-[120px]" />
-      </div>
-
-      <header className="max-w-7xl mx-auto px-4 pt-12 pb-6 sm:pt-16 sm:pb-8 relative z-10 text-center">
+      {/* ---------- Header ---------- */}
+      <motion.header
+        variants={stagger}
+        initial="hidden"
+        animate="show"
+        className="max-w-7xl mx-auto px-4 pt-12 pb-6 sm:pt-16 sm:pb-8 relative z-10 text-center"
+      >
         <motion.div
-          initial={{ opacity: 0, y: -15 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="inline-flex items-center gap-1.5 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-slate-900 border border-slate-800 text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-lime-400 mb-4 sm:mb-6 mt-4"
+          variants={fadeUp}
+          className="inline-flex items-center gap-1.5 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-slate-900/80 backdrop-blur border border-slate-800 text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-lime-400 mb-4 sm:mb-6 mt-4"
         >
           <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />
           Elite Sports Venue
@@ -441,97 +478,145 @@ export default function Home() {
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 sm:gap-8">
           <div className="text-center lg:text-left">
             <motion.h1
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4 }}
+              variants={fadeUp}
               className="text-4xl sm:text-6xl md:text-8xl font-black tracking-tighter uppercase leading-none text-white"
             >
-              SMES TURF
+              <span className="inline-block bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-neutral-400">
+                SMES TURF
+              </span>
             </motion.h1>
             <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.2 }}
+              variants={fadeUp}
               className="text-base sm:text-lg md:text-xl font-medium tracking-normal text-neutral-400 mt-3 sm:mt-4 max-w-xl mx-auto lg:mx-0"
             >
-              Premium multisport arena built for high-performance Football & Cricket action.
+              Premium multisport arena built for high-performance{" "}
+              <span className="text-lime-400">Football</span> &amp;{" "}
+              <span className="text-lime-400">Cricket</span> action.
             </motion.p>
           </div>
 
-          <div className="grid grid-cols-1 gap-2 w-full max-w-md mx-auto lg:max-w-none lg:mx-0 lg:flex lg:w-auto lg:gap-3">
-            <button
+          <motion.div
+            variants={fadeUp}
+            className="grid grid-cols-1 gap-2 w-full max-w-md mx-auto lg:max-w-none lg:mx-0 lg:flex lg:w-auto lg:gap-3"
+          >
+            <motion.button
+              whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.35)" }}
+              whileTap={{ scale: 0.97 }}
               onClick={scrollToBooking}
               type="button"
-              className="bg-lime-400 hover:bg-lime-300 text-black text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-all font-black text-center shadow-lg shadow-lime-400/5 cursor-pointer flex items-center justify-center gap-2"
+              className="bg-lime-400 hover:bg-lime-300 text-black text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-colors font-black text-center shadow-lg shadow-lime-400/10 cursor-pointer flex items-center justify-center gap-2"
             >
               📅 BOOK NOW
-            </button>
-            <a
-              href="https://wa.me/918453095258"
-              className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-all text-center flex items-center justify-center"
-            >
-              WhatsApp
-            </a>
-            <a
-              href="https://maps.google.com/?q=12.329329,76.612008"
-              className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-all text-center flex items-center justify-center"
-            >
-              Find Arena
-            </a>
-            <a
-              href="tel:+918453095258"
-              className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-all font-bold text-center flex items-center justify-center"
-            >
-              Call Desk
-            </a>
-          </div>
+            </motion.button>
+            {[
+              { href: "https://wa.me/918453095258", label: "WhatsApp" },
+              { href: "https://maps.google.com/?q=12.329329,76.612008", label: "Find Arena" },
+              { href: "tel:+918453095258", label: "Call Desk" },
+            ].map((btn) => (
+              <motion.a
+                key={btn.label}
+                whileHover={{ y: -2, borderColor: "rgba(163,230,53,0.6)" }}
+                whileTap={{ scale: 0.97 }}
+                href={btn.href}
+                className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-colors text-center flex items-center justify-center"
+              >
+                {btn.label}
+              </motion.a>
+            ))}
+          </motion.div>
         </div>
 
-        <div className="mt-8 sm:mt-12 inline-flex items-center gap-3 sm:gap-4 bg-neutral-900 border border-neutral-800 px-4 py-3 rounded-none w-full sm:w-auto">
+        <motion.div
+          variants={fadeUp}
+          className="mt-8 sm:mt-12 inline-flex items-center gap-3 sm:gap-4 bg-neutral-900/70 backdrop-blur border border-neutral-800 px-4 py-3 rounded-none w-full sm:w-auto"
+        >
           <span className="flex h-2 w-2 relative flex-shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500"></span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500" />
           </span>
           <p className="text-[11px] sm:text-xs font-mono uppercase tracking-wide text-neutral-300">
-            ⚡ Live Promo Offer: <span className="text-lime-400 font-bold">₹1250 / Hr Only</span>
+            ⚡ Live Promo Offer:{" "}
+            <span className="text-lime-400 font-bold">₹1250 / Hr Only</span>
           </p>
-        </div>
-      </header>
+        </motion.div>
+      </motion.header>
 
-      <section className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-20 border-b border-neutral-900 relative z-10">
-        <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-2">01 — Disciplines</span>
-        <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white mb-8 sm:mb-12">Sports Arena Layout</h2>
+      {/* ---------- Disciplines ---------- */}
+      <motion.section
+        variants={stagger}
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, amount: 0.2 }}
+        className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-20 border-b border-neutral-900 relative z-10"
+      >
+        <motion.span variants={fadeUp} className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-2">
+          01 — Disciplines
+        </motion.span>
+        <motion.h2 variants={fadeUp} className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white mb-8 sm:mb-12">
+          Sports Arena Layout
+        </motion.h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-8">
-          <div className="border border-neutral-900 bg-neutral-900/20 p-6 sm:p-8 flex flex-col justify-between group hover:border-neutral-700 transition-all min-h-[180px] sm:min-h-[220px]">
-            <div>
-              <span className="text-[11px] font-mono text-neutral-600 block mb-3 sm:mb-4">01 // TRACK FIELD</span>
-              <h3 className="text-xl sm:text-2xl font-bold uppercase tracking-tight text-white group-hover:text-lime-400 transition-colors">Football Arena</h3>
-              <p className="text-neutral-400 text-xs sm:text-sm mt-2 max-w-sm">From fast-paced 7-A-side tactical clashes to open-field training drills.</p>
-            </div>
-          </div>
-
-          <div className="border border-neutral-900 bg-neutral-900/20 p-6 sm:p-8 flex flex-col justify-between group hover:border-neutral-700 transition-all min-h-[180px] sm:min-h-[220px]">
-            <div>
-              <span className="text-[11px] font-mono text-neutral-600 block mb-3 sm:mb-4">02 // NET BOX</span>
-              <h3 className="text-xl sm:text-2xl font-bold uppercase tracking-tight text-white group-hover:text-lime-400 transition-colors">Box Cricket</h3>
-              <p className="text-neutral-400 text-xs sm:text-sm mt-2 max-w-sm">High-bounce, entirely enclosed system built for maximum velocity cricket action.</p>
-            </div>
-          </div>
+          {[
+            {
+              tag: "01 // TRACK FIELD",
+              title: "Football Arena",
+              desc: "From fast-paced 7-A-side tactical clashes to open-field training drills.",
+            },
+            {
+              tag: "02 // NET BOX",
+              title: "Box Cricket",
+              desc: "High-bounce, entirely enclosed system built for maximum velocity cricket action.",
+            },
+          ].map((card) => (
+            <motion.div
+              key={card.title}
+              variants={fadeUp}
+              whileHover={{ y: -4, borderColor: "rgba(163,230,53,0.4)" }}
+              transition={{ duration: 0.3, ease: easeOut }}
+              className="border border-neutral-900 bg-neutral-900/20 p-6 sm:p-8 flex flex-col justify-between group transition-colors min-h-[180px] sm:min-h-[220px]"
+            >
+              <div>
+                <span className="text-[11px] font-mono text-neutral-600 block mb-3 sm:mb-4">
+                  {card.tag}
+                </span>
+                <h3 className="text-xl sm:text-2xl font-bold uppercase tracking-tight text-white group-hover:text-lime-400 transition-colors">
+                  {card.title}
+                </h3>
+                <p className="text-neutral-400 text-xs sm:text-sm mt-2 max-w-sm">{card.desc}</p>
+              </div>
+            </motion.div>
+          ))}
         </div>
-      </section>
+      </motion.section>
 
-      <section id="booking-engine-section" className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-20 relative z-10 scroll-mt-6">
+      {/* ---------- Booking Engine ---------- */}
+      <section
+        id="booking-engine-section"
+        className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-20 relative z-10 scroll-mt-6"
+      >
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
-          
-          <div className="lg:col-span-7 space-y-6 sm:space-y-8">
-            <div>
-              <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-2">02 — Reservation</span>
-              <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">Select and Secure Pitch</h2>
-            </div>
+
+          {/* -------- Form Side -------- */}
+          <motion.div
+            variants={stagger}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, amount: 0.15 }}
+            className="lg:col-span-7 space-y-6 sm:space-y-8"
+          >
+            <motion.div variants={fadeUp}>
+              <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-2">
+                02 — Reservation
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">
+                Select and Secure Pitch
+              </h2>
+            </motion.div>
 
             <div className="space-y-4 sm:space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+              {/* Name + Phone */}
+              <motion.div variants={fadeUp} className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400">Full Name</label>
                   <input
@@ -555,9 +640,10 @@ export default function Home() {
                     className="w-full p-4 bg-neutral-900/50 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all font-medium text-base md:text-sm"
                   />
                 </div>
-              </div>
+              </motion.div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+              {/* Sport + Type */}
+              <motion.div variants={fadeUp} className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400">Sport</label>
                   <div className="relative">
@@ -587,9 +673,10 @@ export default function Home() {
                     <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
                   </div>
                 </div>
-              </div>
+              </motion.div>
 
-              <div className="space-y-2">
+              {/* Date */}
+              <motion.div variants={fadeUp} className="space-y-2">
                 <label className="text-xs font-mono uppercase text-neutral-400">Calendar Date</label>
                 <input
                   type="date"
@@ -602,13 +689,14 @@ export default function Home() {
                   className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none font-medium text-base md:text-sm"
                   style={{ colorScheme: "dark" }}
                 />
-              </div>
+              </motion.div>
 
-              <div className="space-y-2 relative">
+              {/* Duration */}
+              <motion.div variants={fadeUp} className="space-y-2 relative">
                 <label className="text-xs font-mono uppercase text-neutral-400">Session Length</label>
                 <div className="relative">
                   {!bookingDate && (
-                    <div 
+                    <div
                       className="absolute inset-0 z-20 cursor-pointer"
                       onClick={(e) => {
                         e.preventDefault();
@@ -631,17 +719,16 @@ export default function Home() {
                   </select>
                   <div className={`pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-xs transition-all ${
                     !bookingDate ? "text-neutral-700 opacity-40" : "text-neutral-500"
-                  }`}>
-                    ▼
-                  </div>
+                  }`}>▼</div>
                 </div>
-              </div>
+              </motion.div>
 
-              <div className="space-y-2 relative">
+              {/* Slot Grid */}
+              <motion.div variants={fadeUp} className="space-y-2 relative">
                 <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Slot</label>
                 <div className="relative">
                   {!bookingDate && (
-                    <div 
+                    <div
                       className="absolute inset-0 z-20 cursor-pointer"
                       onClick={(e) => {
                         e.preventDefault();
@@ -650,102 +737,157 @@ export default function Home() {
                       }}
                     />
                   )}
-                  <div className={`grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 p-3 sm:p-4 bg-neutral-900/30 border border-neutral-800 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-700 transition-all ${
-                    !bookingDate ? "opacity-40" : ""
-                  }`}>
-                    {allSlots.map((slot) => {
-                      const available = isSlotAvailable(slot);
-                      const selected = startTime === slot;
+                  <LayoutGroup>
+                    <motion.div
+                      variants={stagger}
+                      initial="hidden"
+                      animate="show"
+                      className={`grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 p-3 sm:p-4 bg-neutral-900/30 border border-neutral-800 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-700 transition-all ${
+                        !bookingDate ? "opacity-40" : ""
+                      }`}
+                    >
+                      {allSlots.map((slot) => {
+                        const available = isSlotAvailable(slot);
+                        const selected = startTime === slot;
 
-                      return (
-                        <button
-                          key={slot}
-                          type="button"
-                          disabled={!available}
-                          onClick={() => setStartTime(slot)}
-                          className={`py-3 px-1 text-[11px] sm:text-xs font-mono font-bold uppercase transition-all border ${
-                            selected
-                              ? "bg-red-600 border-red-500 text-white shadow-[0_0_10px_rgba(220,38,38,0.4)]"
-                              : available
-                              ? "bg-lime-500/10 border-lime-500/30 text-lime-400 hover:bg-lime-500 hover:text-black cursor-pointer"
-                              : "bg-neutral-950 border-neutral-900 text-neutral-600 opacity-50 cursor-not-allowed"
-                          }`}
-                        >
-                          {slot}
-                        </button>
-                      );
-                    })}
-                  </div>
+                        return (
+                          <motion.button
+                            key={slot}
+                            variants={slotItem}
+                            whileHover={available && !selected ? { scale: 1.06 } : {}}
+                            whileTap={available ? { scale: 0.94 } : {}}
+                            type="button"
+                            disabled={!available}
+                            onClick={() => setStartTime(slot)}
+                            className={`relative py-3 px-1 text-[11px] sm:text-xs font-mono font-bold uppercase transition-colors border ${
+                              selected
+                                ? "bg-red-600 border-red-500 text-white"
+                                : available
+                                ? "bg-lime-500/10 border-lime-500/30 text-lime-400 hover:bg-lime-500 hover:text-black cursor-pointer"
+                                : "bg-neutral-950 border-neutral-900 text-neutral-600 opacity-50 cursor-not-allowed"
+                            }`}
+                          >
+                            {selected && (
+                              <motion.span
+                                layoutId="slot-selected-glow"
+                                className="absolute inset-0 bg-red-600 -z-0 shadow-[0_0_18px_rgba(220,38,38,0.55)]"
+                                transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                              />
+                            )}
+                            <span className="relative z-10">{slot}</span>
+                          </motion.button>
+                        );
+                      })}
+                    </motion.div>
+                  </LayoutGroup>
                 </div>
-              </div>
-
+              </motion.div>
             </div>
-          </div>
+          </motion.div>
 
-          <div className="lg:col-span-5 bg-neutral-900/50 border border-neutral-900 p-4 sm:p-6 md:p-8 rounded-none space-y-6">
+          {/* -------- Summary Side -------- */}
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.15 }}
+            transition={{ duration: 0.7, ease: easeOut }}
+            className="lg:col-span-5 bg-neutral-900/50 backdrop-blur border border-neutral-900 p-4 sm:p-6 md:p-8 rounded-none space-y-6 lg:sticky lg:top-6"
+          >
             <div className="border-b border-neutral-800 pb-4">
-              <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Live Breakdown Summary</span>
+              <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">
+                Live Breakdown Summary
+              </span>
               <h3 className="text-lg font-bold uppercase text-white mt-1">Pitch Bill Receipt</h3>
             </div>
 
             <div className="space-y-3 text-xs font-mono">
-              <div className="flex justify-between gap-4">
-                <span className="text-neutral-500 flex-shrink-0">SPORT:</span>
-                <span className="text-white uppercase font-bold text-right break-all">{sport}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-neutral-500 flex-shrink-0">ARENA SCALE:</span>
-                <span className="text-white font-bold text-right break-all">{bookingType}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-neutral-500 flex-shrink-0">TARGET DATE:</span>
-                <span className="text-lime-400 font-bold text-right break-all">{bookingDate || "Unselected"}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-neutral-500 flex-shrink-0">KICKOFF TIME:</span>
-                <span className="text-white font-bold text-right break-all">{startTime || "None"}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-neutral-500 flex-shrink-0">DURATION TIMEFRAME:</span>
-                <span className="text-white font-bold text-right break-all">{duration} Minutes</span>
-              </div>
+              {[
+                { k: "SPORT", v: sport, cls: "text-white uppercase" },
+                { k: "ARENA SCALE", v: bookingType, cls: "text-white" },
+                { k: "TARGET DATE", v: bookingDate || "Unselected", cls: "text-lime-400" },
+                { k: "KICKOFF TIME", v: startTime || "None", cls: "text-white" },
+                { k: "DURATION TIMEFRAME", v: `${duration} Minutes`, cls: "text-white" },
+              ].map((row) => (
+                <div key={row.k} className="flex justify-between gap-4">
+                  <span className="text-neutral-500 flex-shrink-0">{row.k}:</span>
+                  <AnimatePresence mode="wait">
+                    <motion.span
+                      key={row.v}
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 4 }}
+                      transition={{ duration: 0.2 }}
+                      className={`font-bold text-right break-all ${row.cls}`}
+                    >
+                      {row.v}
+                    </motion.span>
+                  </AnimatePresence>
+                </div>
+              ))}
             </div>
 
             <div className="bg-black p-4 border border-neutral-800 space-y-2">
               <div className="flex justify-between items-center text-xs font-mono gap-2">
                 <span className="text-neutral-400">LOCKDOWN RESERVATION FEE:</span>
-                <span className="text-lime-400 font-bold whitespace-nowrap">₹200 + Convenience Fee</span>
+                <span className="text-lime-400 font-bold whitespace-nowrap">
+                  ₹200 + Convenience Fee
+                </span>
               </div>
-              <p className="text-[10px] text-neutral-600 leading-normal font-mono">An advance lock deposit reserves the stadium slot uniquely for your team line.</p>
+              <p className="text-[10px] text-neutral-600 leading-normal font-mono">
+                An advance lock deposit reserves the stadium slot uniquely for your team line.
+              </p>
               <div className="h-px bg-neutral-800 my-2" />
               <div className="flex justify-between items-center gap-2">
                 <span className="text-xs font-mono text-white font-bold">GROSS FIELD VALUE:</span>
-                <span className="text-xl font-black text-lime-400 whitespace-nowrap">₹{totalAmount}</span>
+                <AnimatePresence mode="wait">
+                  <motion.span
+                    key={totalAmount}
+                    initial={{ opacity: 0, y: -6, scale: 0.9 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 6, scale: 0.9 }}
+                    transition={{ duration: 0.25, ease: easeOut }}
+                    className="text-xl font-black text-lime-400 whitespace-nowrap"
+                  >
+                    ₹{totalAmount}
+                  </motion.span>
+                </AnimatePresence>
               </div>
             </div>
 
-            <button
+            <motion.button
+              whileHover={startTime ? { y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.35)" } : {}}
+              whileTap={startTime ? { scale: 0.97 } : {}}
               type="button"
               onClick={openRazorpay}
               disabled={!startTime}
-              className={`w-full font-mono text-xs uppercase tracking-widest py-4 rounded-none transition-all font-black ${
-                !startTime 
-                  ? "bg-neutral-800 text-neutral-500 cursor-not-allowed" 
+              className={`w-full font-mono text-xs uppercase tracking-widest py-4 rounded-none transition-colors font-black ${
+                !startTime
+                  ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
                   : "bg-lime-400 hover:bg-lime-300 text-black cursor-pointer"
               }`}
             >
               {!startTime ? "Select Slot" : "Confirm Match Slot"}
-            </button>
-          </div>
-
+            </motion.button>
+          </motion.div>
         </div>
       </section>
 
-      <footer className="w-full border-t border-neutral-900 pt-8 pb-32 px-4 sm:px-6 relative z-10">
+      {/* ---------- Footer ---------- */}
+      <motion.footer
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.6 }}
+        className="w-full border-t border-neutral-900 pt-8 pb-32 px-4 sm:px-6 relative z-10"
+      >
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center md:items-start gap-6 text-center md:text-left">
           <div className="space-y-1.5">
-            <p className="text-[10px] font-mono text-neutral-400 uppercase tracking-widest">SMES Sports Academy Ground Hub</p>
-            <p className="text-[9px] text-neutral-600 font-mono">© 2026 Built for competitive team sports action and weekend fun.</p>
+            <p className="text-[10px] font-mono text-neutral-400 uppercase tracking-widest">
+              SMES Sports Academy Ground Hub
+            </p>
+            <p className="text-[9px] text-neutral-600 font-mono">
+              © 2026 Built for competitive team sports action and weekend fun.
+            </p>
           </div>
           <div className="flex flex-wrap justify-center md:justify-end gap-x-6 gap-y-2 font-mono text-[9px] sm:text-[10px] text-neutral-400 uppercase tracking-widest">
             <div><span className="text-lime-500">P:</span> +91 8453095258</div>
@@ -753,105 +895,128 @@ export default function Home() {
             <div><span className="text-lime-500">L:</span> Mysuru, Karnataka</div>
           </div>
         </div>
-      </footer>
+      </motion.footer>
 
-      {/* Floating "Book Now" Button */}
-      <button
+      {/* ---------- Floating CTA ---------- */}
+      <motion.button
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 1.2, duration: 0.5, ease: easeOut }}
+        whileHover={{ scale: 1.05, boxShadow: "0 0 30px rgba(163,230,53,0.5)" }}
+        whileTap={{ scale: 0.95 }}
         onClick={scrollToBooking}
-        className="fixed bottom-6 right-4 md:bottom-8 md:right-8 z-[9000] bg-lime-400 hover:bg-lime-300 text-black px-6 py-3.5 rounded-full transition-all shadow-[0_0_20px_rgba(163,230,53,0.3)] cursor-pointer flex items-center gap-2 text-[12px] font-mono font-black uppercase tracking-widest"
+        className="fixed bottom-6 right-4 md:bottom-8 md:right-8 z-[9000] bg-lime-400 hover:bg-lime-300 text-black px-6 py-3.5 rounded-full transition-colors shadow-[0_0_20px_rgba(163,230,53,0.3)] cursor-pointer flex items-center gap-2 text-[12px] font-mono font-black uppercase tracking-widest"
         title="Book Now"
       >
-        <span>⚡</span>
+        <motion.span
+          animate={{ rotate: [0, 15, -10, 0] }}
+          transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+        >
+          ⚡
+        </motion.span>
         <span>Book Now</span>
-      </button>
+      </motion.button>
 
-      {/* Secure Gateways Authentication Dropdown System */}
-      {showStaffModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-[99999]">
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl w-full max-w-sm shadow-2xl space-y-4"
+      {/* ---------- Staff Modal ---------- */}
+      <AnimatePresence>
+        {showStaffModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-[99999]"
+            onClick={() => setShowStaffModal(false)}
           >
-            <div className="text-center">
-              <span className="text-[10px] font-mono uppercase tracking-widest text-lime-400">// Secure Node Terminal</span>
-              <h3 className="text-lg font-black uppercase text-white mt-1">System Gateway</h3>
-            </div>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 30 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 30 }}
+              transition={{ type: "spring", stiffness: 260, damping: 24 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl w-full max-w-sm shadow-2xl space-y-4"
+            >
+              <div className="text-center">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-lime-400">
+                  // Secure Node Terminal
+                </span>
+                <h3 className="text-lg font-black uppercase text-white mt-1">System Gateway</h3>
+              </div>
 
-            <form onSubmit={handleStaffLogin} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="block text-[10px] font-mono uppercase tracking-wider text-neutral-400">Target Role</label>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setStaffRole("Admin")}
-                    className={`py-2.5 text-[11px] font-mono uppercase tracking-wider transition-all border ${
-                      staffRole === "Admin"
-                        ? "bg-lime-400 border-lime-400 text-black font-black"
-                        : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white"
-                    }`}
-                  >
-                    Admin
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStaffRole("Sub-Admin")}
-                    className={`py-2.5 text-[11px] font-mono uppercase tracking-wider transition-all border ${
-                      staffRole === "Sub-Admin"
-                        ? "bg-lime-400 border-lime-400 text-black font-black"
-                        : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white"
-                    }`}
-                  >
-                    Sub-Admin
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStaffRole("Coach")}
-                    className={`py-2.5 text-[11px] font-mono uppercase tracking-wider transition-all border ${
-                      staffRole === "Coach"
-                        ? "bg-lime-400 border-lime-400 text-black font-black"
-                        : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white"
-                    }`}
-                  >
-                    Coach
-                  </button>
+              <form onSubmit={handleStaffLogin} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-mono uppercase tracking-wider text-neutral-400">
+                    Target Role
+                  </label>
+                  <LayoutGroup>
+                    <div className="grid grid-cols-3 gap-2">
+                      {["Admin", "Sub-Admin", "Coach"].map((role) => (
+                        <motion.button
+                          key={role}
+                          type="button"
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => setStaffRole(role)}
+                          className={`relative py-2.5 text-[11px] font-mono uppercase tracking-wider transition-colors border ${
+                            staffRole === role
+                              ? "bg-lime-400 border-lime-400 text-black font-black"
+                              : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white"
+                          }`}
+                        >
+                          {staffRole === role && (
+                            <motion.span
+                              layoutId="role-highlight"
+                              className="absolute inset-0 bg-lime-400 -z-0"
+                              transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                            />
+                          )}
+                          <span className="relative z-10">{role}</span>
+                        </motion.button>
+                      ))}
+                    </div>
+                  </LayoutGroup>
                 </div>
-              </div>
 
-              <div className="space-y-1.5">
-                <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400">Access Keycode</label>
-                <input
-                  type="password"
-                  placeholder="Enter password"
-                  value={staffPassword}
-                  onChange={(e) => setStaffPassword(e.target.value)}
-                  className="w-full p-3.5 rounded-xl bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium"
-                  autoFocus
-                />
-              </div>
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400">
+                    Access Keycode
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Enter password"
+                    value={staffPassword}
+                    onChange={(e) => setStaffPassword(e.target.value)}
+                    className="w-full p-3.5 rounded-xl bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium"
+                    autoFocus
+                  />
+                </div>
 
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <button
-                  type="submit"
-                  className="w-full bg-gradient-to-r from-lime-400 to-lime-300 text-neutral-950 font-mono text-xs uppercase tracking-wider py-3 font-black transition-all min-h-[44px]"
-                >
-                  Authorize
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowStaffModal(false);
-                    setStaffPassword("");
-                  }}
-                  className="w-full bg-neutral-800 hover:bg-neutral-700 text-slate-300 font-mono text-xs uppercase tracking-wider py-3 transition-all min-h-[44px]"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <motion.button
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.97 }}
+                    type="submit"
+                    className="w-full bg-gradient-to-r from-lime-400 to-lime-300 text-neutral-950 font-mono text-xs uppercase tracking-wider py-3 font-black transition-all min-h-[44px]"
+                  >
+                    Authorize
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.97 }}
+                    type="button"
+                    onClick={() => {
+                      setShowStaffModal(false);
+                      setStaffPassword("");
+                    }}
+                    className="w-full bg-neutral-800 hover:bg-neutral-700 text-slate-300 font-mono text-xs uppercase tracking-wider py-3 transition-colors min-h-[44px]"
+                  >
+                    Cancel
+                  </motion.button>
+                </div>
+              </form>
+            </motion.div>
           </motion.div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </main>
   );
 }
