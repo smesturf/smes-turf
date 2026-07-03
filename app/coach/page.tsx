@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react"; // 👈 Explicitly added React here to satisfy Vercel's strict compiler
+import React, { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import * as XLSX from "xlsx";
 
@@ -75,7 +75,11 @@ export default function CoachPage() {
       monthly_fee: Number(newStudentFee)
     }]).select().single();
 
-    if (stError) { alert(stError.message); return; }
+    // 🛡️ UPDATED TYPE GUARD: Tells Vercel compiler that 'student' object is guaranteed to exist here
+    if (stError || !student) { 
+      alert(stError?.message || "Registration failed node mismatch"); 
+      return; 
+    }
 
     // Initialize Current Month's Payment Row Reference
     const { error: pmError } = await supabase.from("student_payments").insert([{
@@ -95,7 +99,6 @@ export default function CoachPage() {
 
   const collectStudentFee = async (student: any, method: string) => {
     if (student.payment_record_id) {
-      // Update existing current month record
       await supabase.from("student_payments").update({
         status: "settled",
         amount_paid: student.monthly_fee,
@@ -103,7 +106,6 @@ export default function CoachPage() {
         updated_at: new Date().toISOString()
       }).eq("id", student.payment_record_id);
     } else {
-      // Create new current month record
       await supabase.from("student_payments").insert([{
         student_id: student.id,
         month_year: currentMonthYear,
@@ -169,9 +171,7 @@ export default function CoachPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left Side: Student Roster and Registration */}
         <div className="lg:col-span-2 space-y-8">
-          {/* Enrollment Panel Form */}
           <div className="bg-slate-900/60 border border-white/5 p-5 rounded-2xl space-y-4">
             <div>
               <h2 className="text-lg font-black uppercase text-white">Enroll New Student</h2>
@@ -204,7 +204,6 @@ export default function CoachPage() {
             </form>
           </div>
 
-          {/* Student Roster Directory Matrix */}
           <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden">
             <div className="p-4 bg-slate-900/80 border-b border-white/10">
               <h2 className="text-lg font-black uppercase text-white">Academy Roster — <span className="text-emerald-400">{currentMonthLabel}</span></h2>
@@ -263,7 +262,6 @@ export default function CoachPage() {
           </div>
         </div>
 
-        {/* Right Side: Read-Only Turf Schedule View */}
         <div className="space-y-8 lg:col-span-1">
           <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden">
             <div className="p-4 bg-slate-900/80 border-b border-white/10">
