@@ -89,13 +89,13 @@ export default function SubAdminPage() {
   };
 
   const loadAvailableCourts = async (date: string, time: string) => {
-    const { data: bookings } = await supabase.from("bookings").select("*").eq("booking_date", date);
-    const { data: blocked } = await supabase.from("blocked_slots").select("*").eq("booking_date", date);
+    const { data: bookingsData } = await supabase.from("bookings").select("*").eq("booking_date", date);
+    const { data: blockedData } = await supabase.from("blocked_slots").select("*").eq("booking_date", date);
 
     let courts = ["Full Court", "Court 1", "Court 2"];
     const selectedMinutes = convertToMins(time);
 
-    [...(bookings || []), ...(blocked || [])].forEach((b: any) => {
+    [...(bookingsData || []), ...(blockedData || [])].forEach((b: any) => {
       const startMinutes = convertToMins(b.start_time);
       const endMinutes = startMinutes + (b.duration_minutes || 60);
       const overlaps = selectedMinutes >= startMinutes && selectedMinutes < endMinutes;
@@ -152,7 +152,6 @@ export default function SubAdminPage() {
       .on("postgres_changes", { event: "*", schema: "public", table: "blocked_slots" }, () => loadBookings())
       .subscribe();
 
-    // Realtime Hooks for coaching sync components within SubAdmin scope
     const studentsChannel = supabase
       .channel("students-realtime-sub")
       .on("postgres_changes", { event: "*", schema: "public", table: "students" }, () => loadAcademyData())
@@ -304,8 +303,8 @@ export default function SubAdminPage() {
   };
 
   const loadAvailableAdminSlots = async (date: string) => {
-    const { data: bookings } = await supabase.from("bookings").select("start_time,duration_minutes,booking_type,court_number").eq("booking_date", date);
-    const { data: blocked } = await supabase.from("blocked_slots").select("start_time,duration_minutes,court_number").eq("booking_date", date);
+    const { data: bookingsData } = await supabase.from("bookings").select("start_time,duration_minutes,booking_type,court_number").eq("booking_date", date);
+    const { data: blockedData } = await supabase.from("blocked_slots").select("start_time,duration_minutes,court_number").eq("booking_date", date);
 
     const availableTimes: string[] = [];
 
@@ -314,7 +313,7 @@ export default function SubAdminPage() {
       let court1Available = true;
       let court2Available = true;
 
-      [...(bookings || []), ...(blocked || [])].forEach((b: any) => {
+      [...(bookingsData || []), ...(blockedData || [])].forEach((b: any) => {
         const startMinutes = convertToMins(b.start_time);
         const endMinutes = startMinutes + (b.duration_minutes || 60);
         const overlaps = selectedMinutes >= startMinutes && selectedMinutes < endMinutes;
@@ -517,7 +516,6 @@ export default function SubAdminPage() {
             ➕ Walk-in Booking
           </button>
           
-          {/* ⚽ ACADEMY PANEL TOGGLE CONTROL KEY - Aligned with Admin styling and defaults to "existing" tab */}
           <button
             className={`font-mono text-xs uppercase tracking-wider px-5 py-4 rounded-xl transition-all font-bold min-h-[52px] ${showCoachingPanel ? 'bg-lime-400 text-slate-950 font-black' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}
             onClick={() => {
@@ -531,7 +529,7 @@ export default function SubAdminPage() {
         </div>
       </div>
 
-      {/* 🏆 Expanded Football Coaching Workspace Panel - Identical layout to Admin Page without Delete */}
+      {/* 🏆 Expanded Football Coaching Workspace Panel */}
       {showCoachingPanel && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-4 mb-8 p-4 sm:p-6 bg-slate-900/40 border border-white/10 rounded-2xl relative z-10 backdrop-blur-xl transition-all">
           <div className="lg:col-span-1 bg-slate-900/60 border border-white/5 p-5 rounded-xl space-y-4 h-fit">
@@ -615,7 +613,7 @@ export default function SubAdminPage() {
               <h2 className="text-sm font-black uppercase text-white tracking-wide">🏆 Master Academy Coaching Roster — {currentMonthLabel}</h2>
             </div>
 
-            {/* Mobile Layout Grid Container (Delete Option Stripped Out) */}
+            {/* Mobile Layout Grid Container */}
             <div className="block sm:hidden max-h-[380px] overflow-y-auto p-3 space-y-3 scrollbar-thin scrollbar-thumb-white/10">
               {academyStudents.map((s) => {
                 const isUnpaid = s.payment_status !== "settled";
@@ -665,11 +663,11 @@ export default function SubAdminPage() {
               })}
             </div>
 
-            {/* Desktop View Matrix (Delete Options Stripped Out) */}
+            {/* Desktop View Matrix */}
             <div className="hidden sm:block overflow-x-auto max-h-[350px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-white/10 text-[10px] font-mono uppercase tracking-widest text-slate-400 bg-slate-950/40 sticky top-0 backdrop-blur z-20">
+                  <tr className="border-b border-white/10 text-[10px] font-mono uppercase tracking-widest text-slate-400 bg-slate-955/40 sticky top-0 backdrop-blur z-20">
                     <th className="p-4">Student Profile</th>
                     <th className="p-4">Contact Detail Logs</th>
                     <th className="p-4 text-center">Status</th>
@@ -878,7 +876,7 @@ export default function SubAdminPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[600px]">
             <thead>
-              <tr className="border-b border-white/10 bg-slate-955/40 text-[10px] font-mono uppercase tracking-widest text-slate-400">
+              <tr className="border-b border-white/10 bg-slate-900/40 text-[10px] font-mono uppercase tracking-widest text-slate-400">
                 <th className="p-4 font-bold">Date</th>
                 <th className="p-4 font-bold">Schedule</th>
                 <th className="p-4 font-bold">Duration</th>

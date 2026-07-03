@@ -215,8 +215,8 @@ export default function Home() {
         name: "SMES Turf",
         description: "Advance Booking Payment",
         order_id: order.id,
-        handler: async function (response: any) {
-          await handleBooking(response);
+        handler: async function (res: any) {
+          await handleBooking(res);
         },
         prefill: { name: name, contact: phone },
       };
@@ -390,7 +390,7 @@ export default function Home() {
     } else if (staffRole === "Coach") {
       if (staffPassword === "2468") {
         localStorage.setItem("coachLoggedIn", "true");
-        router.push("/coach"); // Fixed: Now correctly pushes to /coach
+        router.push("/coach");
         setShowStaffModal(false);
         setStaffPassword("");
       } else {

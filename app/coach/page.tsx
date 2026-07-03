@@ -197,7 +197,7 @@ export default function CoachPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-white/10 text-[10px] font-mono uppercase tracking-widest text-slate-400 bg-slate-950/20">
+                  <tr className="border-b border-white/10 text-[10px] font-mono uppercase tracking-widest text-slate-400 bg-slate-955/20">
                     <th className="p-4">Student Info</th>
                     <th className="p-4">Contact Details</th>
                     <th className="p-4">Academy Fee</th>
