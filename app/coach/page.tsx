@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react"; // 👈 Explicitly added React here to satisfy Vercel's strict compiler
 import { supabase } from "../lib/supabase";
 import * as XLSX from "xlsx";
 
