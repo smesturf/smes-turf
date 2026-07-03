@@ -133,7 +133,7 @@ export default function SubAdminPage() {
   const tomorrow = formatDate(tomorrowDate);
 
   useEffect(() => {
-    const loggedIn = localStorage.getItem("subadminLoggedIn");
+    const loggedIn = localStorage.getItem("subAdminLoggedIn");
     if (loggedIn !== "true") {
       router.push("/"); 
       return;
@@ -177,7 +177,7 @@ export default function SubAdminPage() {
       clearTimeout(timeout);
 
       timeout = setTimeout(() => {
-        localStorage.removeItem("subadminLoggedIn");
+        localStorage.removeItem("subAdminLoggedIn");
         alert("Session expired after 12 hours. Please re-authorize via the Home Page.");
         router.push("/"); 
       }, 12 * 60 * 60 * 1000); 
@@ -399,7 +399,7 @@ export default function SubAdminPage() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("subadminLoggedIn");
+    localStorage.removeItem("subAdminLoggedIn");
     router.push("/"); 
   };
 

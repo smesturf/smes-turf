@@ -396,7 +396,8 @@ export default function Home() {
       } else alert("❌ Invalid Sub-Admin Password");
     } else if (staffRole === "Coach") {
       if (staffPassword === "2468") {
-        localStorage.setItem("coachLoggedIn", "true");
+        // FIXED: Changed 'coachLoggedIn' to 'subAdminLoggedIn' to match the coach page guard.
+        localStorage.setItem("subAdminLoggedIn", "true");
         router.push("/coach");
         setShowStaffModal(false);
         setStaffPassword("");
@@ -826,7 +827,7 @@ export default function Home() {
               ))}
             </div>
 
-            <div className="bg-black p-4 border border-neutral-800 space-y-2">
+            <div className="black bg-black p-4 border border-neutral-800 space-y-2">
               <div className="flex justify-between items-center text-xs font-mono gap-2">
                 <span className="text-neutral-400">LOCKDOWN RESERVATION FEE:</span>
                 <span className="text-lime-400 font-bold whitespace-nowrap">
