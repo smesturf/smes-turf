@@ -458,62 +458,62 @@ export default function SubAdminPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 md:p-8">
-      {/* Header - Coach Portal Style */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-6 mb-8 border-b border-white/10">
         <div>
           <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400">// Ground Staff Terminal</span>
           <h1 className="text-2xl sm:text-4xl font-black uppercase tracking-tight italic text-white mt-1">SMES Staff Panel</h1>
         </div>
-        <button onClick={handleLogout} className="bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs uppercase px-5 py-3.5 rounded-xl font-bold transition-all">
+
+        <button onClick={handleLogout} className="w-full sm:w-auto bg-slate-900/60 hover:bg-slate-800 border border-white/10 hover:border-emerald-500/40 text-slate-300 hover:text-white font-mono text-xs uppercase px-5 py-3.5 rounded-xl font-bold transition-all">
           🚪 Logout
         </button>
       </div>
 
-      {/* Staff Financial Overview - Coach card style */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-        <div className="bg-slate-900/60 border border-white/5 p-5 rounded-2xl">
+      {/* Staff Financial Overview */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 mb-8">
+        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-2xl flex flex-col justify-between min-h-[100px]">
           <h3 className="text-[10px] font-mono uppercase tracking-widest text-slate-400">Today Slots</h3>
           <p className="text-2xl font-black text-emerald-400 mt-2">{todaySlots}</p>
         </div>
-        <div className="bg-slate-900/60 border border-white/5 p-5 rounded-2xl">
+        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-2xl flex flex-col justify-between min-h-[100px]">
           <h3 className="text-[10px] font-mono uppercase tracking-widest text-slate-400">Tomorrow Slots</h3>
           <p className="text-2xl font-black text-slate-300 mt-2">{tomorrowSlots}</p>
         </div>
-        <div className="bg-slate-900/60 border border-white/5 p-5 rounded-2xl">
+        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-2xl flex flex-col justify-between min-h-[100px]">
           <h3 className="text-[10px] font-mono uppercase tracking-widest text-slate-400">Today Advance</h3>
           <p className="text-2xl font-black text-emerald-400 mt-2">₹{todaysAdvance}</p>
         </div>
-        <div className="bg-slate-900/60 border border-white/5 p-5 rounded-2xl">
+        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-2xl flex flex-col justify-between min-h-[100px]">
           <h3 className="text-[10px] font-mono uppercase tracking-widest text-slate-400">Today Balance</h3>
           <p className="text-2xl font-black text-red-400 mt-2">₹{todaysBalance}</p>
         </div>
-        <div className="bg-slate-900/60 border border-white/5 p-5 rounded-2xl">
+        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-2xl flex flex-col justify-between min-h-[100px]">
           <h3 className="text-[10px] font-mono uppercase tracking-widest text-slate-400">Cash Vault</h3>
-          <p className="text-2xl font-black text-amber-400 mt-2">₹{todayCashCollection}</p>
+          <p className="text-2xl font-black text-white mt-2">₹{todayCashCollection}</p>
         </div>
-        <div className="bg-slate-900/60 border border-white/5 p-5 rounded-2xl">
+        <div className="bg-slate-900/60 border border-white/5 p-4 rounded-2xl flex flex-col justify-between min-h-[100px]">
           <h3 className="text-[10px] font-mono uppercase tracking-widest text-slate-400">UPI Nodes</h3>
-          <p className="text-2xl font-black text-emerald-400 mt-2">₹{todayUpiCollection}</p>
+          <p className="text-2xl font-black text-white mt-2">₹{todayUpiCollection}</p>
         </div>
       </div>
 
-      {/* Search + Actions Row */}
-      <div className="flex flex-col md:flex-row items-stretch justify-between gap-4 mb-8">
-        <div className="w-full md:w-96">
+      <div className="flex flex-col md:flex-row items-stretch justify-between gap-4 mb-6">
+        <div className="w-full md:w-96 relative">
           <input
             type="text"
             placeholder="🔍 Filter by name, phone or date..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full p-3.5 rounded-xl bg-slate-900 text-white border border-white/5 focus:border-emerald-400 outline-none placeholder:text-slate-600 text-sm font-medium"
+            className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-emerald-400 outline-none placeholder:text-slate-600 text-sm font-medium"
           />
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <button onClick={() => setShowManageSlots(true)} className="bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs uppercase tracking-wider px-5 py-3.5 rounded-xl font-bold transition-all">
+          <button onClick={() => setShowManageSlots(true)} className="bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs uppercase px-5 py-3.5 rounded-xl font-bold transition-all">
             ➕ Walk-in Booking
           </button>
+
           <button
-            className={`font-mono text-xs uppercase tracking-wider px-5 py-3.5 rounded-xl transition-all font-bold ${showCoachingPanel ? 'bg-emerald-500 text-slate-950 font-black' : 'bg-slate-900/60 border border-white/10 hover:border-emerald-400/40 text-slate-300 hover:text-white'}`}
+            className={`font-mono text-xs uppercase px-5 py-3.5 rounded-xl font-bold transition-all ${showCoachingPanel ? 'bg-emerald-500 text-slate-950 font-black' : 'bg-slate-900/60 hover:bg-slate-800 border border-white/10 hover:border-emerald-500/40 text-slate-300 hover:text-white'}`}
             onClick={() => {
               const nextState = !showCoachingPanel;
               setShowCoachingPanel(nextState);
@@ -525,21 +525,20 @@ export default function SubAdminPage() {
         </div>
       </div>
 
-      {/* 🏆 Football Coaching Workspace Panel */}
+      {/* 🏆 Expanded Football Coaching Workspace Panel */}
       {showCoachingPanel && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          {/* Enroll / Log Old Fee Form Card */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-4 mb-8">
           <div className="lg:col-span-1 bg-slate-900/60 border border-white/5 p-5 rounded-2xl space-y-4 h-fit">
             <div className="flex gap-2 border-b border-white/5 pb-3">
               <button
                 onClick={() => setAcademyTab("existing")}
-                className={`px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded transition-all ${academyTab === "existing" ? "bg-emerald-500 text-slate-950 font-black" : "bg-slate-950 text-slate-400 hover:text-white"}`}
+                className={`px-3 py-1.5 text-[11px] font-mono uppercase rounded transition-all ${academyTab === "existing" ? "bg-emerald-500 text-slate-950 font-black" : "bg-slate-950 text-slate-400 border border-white/5"}`}
               >
                 🔄 Log Old Fee
               </button>
               <button
                 onClick={() => setAcademyTab("new")}
-                className={`px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded transition-all ${academyTab === "new" ? "bg-emerald-500 text-slate-950 font-black" : "bg-slate-950 text-slate-400 hover:text-white"}`}
+                className={`px-3 py-1.5 text-[11px] font-mono uppercase rounded transition-all ${academyTab === "new" ? "bg-emerald-500 text-slate-950 font-black" : "bg-slate-950 text-slate-400 border border-white/5"}`}
               >
                 👶 Enroll Student
               </button>
@@ -583,7 +582,7 @@ export default function SubAdminPage() {
             ) : (
               <form onSubmit={handleAdminOldPayment} className="space-y-3">
                 <div>
-                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Select Due Student</label>
+                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Select Due Student</label>
                   <select value={adminSelectedStudentId} onChange={(e) => setAdminSelectedStudentId(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 focus:border-emerald-400 outline-none text-sm text-slate-200 font-medium">
                     <option value="">-- Select Due Student --</option>
                     {academyStudents.filter(s => s.payment_status !== "settled").map(s => (
@@ -599,36 +598,38 @@ export default function SubAdminPage() {
                   </select>
                 </div>
                 <div className="p-3 bg-slate-950 rounded-xl border border-white/5 text-xs font-mono font-bold text-emerald-400">Enforced Rate: ₹3,500</div>
-                <button type="submit" className="w-full bg-emerald-500 text-slate-950 font-mono font-black py-3.5 rounded-xl text-xs uppercase tracking-wider shadow-md hover:bg-emerald-400 transition-all">Settle Selected Student</button>
+                <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-mono font-black py-3.5 rounded-xl text-xs uppercase tracking-wider shadow-md transition-all">Settle Selected Student</button>
               </form>
             )}
           </div>
 
-          {/* Master Academy Roster Table Card */}
-          <div className="lg:col-span-2 bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden">
+          {/* MASTER ACADEMY ROSTER WORKSPACE GRID */}
+          <div className="lg:col-span-2 bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden flex flex-col">
             <div className="p-4 bg-slate-900/80 border-b border-white/10">
-              <h2 className="text-lg font-black uppercase text-white">🏆 Academy Roster — <span className="text-emerald-400">{currentMonthLabel}</span></h2>
+              <h2 className="text-lg font-black uppercase text-white">🏆 Master Academy Roster — <span className="text-emerald-400">{currentMonthLabel}</span></h2>
             </div>
 
-            {/* Mobile card list */}
+            {/* Mobile Layout Grid Container */}
             <div className="block sm:hidden max-h-[380px] overflow-y-auto p-3 space-y-3">
               {academyStudents.map((s) => {
                 const isUnpaid = s.payment_status !== "settled";
                 return (
                   <div
                     key={s.id}
-                    className={`p-4 rounded-xl border transition-all space-y-3 ${
+                    className={`p-4 rounded-xl border transition-all space-y-3.5 ${
                       isUnpaid
                         ? 'bg-red-500/[0.08] border-red-500/20'
                         : 'bg-slate-950/40 border-white/5'
                     }`}
                   >
-                    <div>
-                      <h4 className={`text-sm font-bold ${isUnpaid ? 'text-red-300' : 'text-white'}`}>{s.name}</h4>
-                      <p className="text-[10px] font-mono text-slate-400 mt-0.5">DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}</p>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-0.5">
+                        <h4 className={`text-sm font-bold tracking-tight ${isUnpaid ? 'text-red-300' : 'text-white'}`}>{s.name}</h4>
+                        <p className="text-[10px] font-mono text-slate-400">DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}</p>
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-950/40 p-2.5 rounded-lg border border-white/5 font-mono">
+                    <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-950/60 p-2.5 rounded-lg border border-white/5 font-mono">
                       <div>
                         <span className="block text-[9px] uppercase tracking-wider text-slate-500 font-bold mb-0.5">Contact</span>
                         <span className="text-slate-300">{s.phone}</span>
@@ -641,26 +642,28 @@ export default function SubAdminPage() {
 
                     <div className="flex items-center justify-between pt-1 border-t border-white/5">
                       <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest font-bold">Month Fee</span>
-                      {isUnpaid ? (
-                        <span className="px-2 py-1 text-[10px] font-mono uppercase bg-red-500/20 border border-red-500/40 text-red-400 rounded font-black animate-pulse">
-                          ⚠️ Unpaid
-                        </span>
-                      ) : (
-                        <span className="px-2 py-1 text-[10px] font-mono uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded">
-                          ✅ Paid ({s.payment_method})
-                        </span>
-                      )}
+                      <div className="flex items-center whitespace-nowrap">
+                        {isUnpaid ? (
+                          <span className="px-2 py-1 text-[10px] font-mono uppercase bg-red-500/20 border border-red-500/40 text-red-400 rounded font-black animate-pulse whitespace-nowrap inline-flex items-center gap-1 justify-center">
+                            ⚠️ Unpaid
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 text-[10px] font-mono uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded whitespace-nowrap inline-flex items-center gap-1 justify-center">
+                            ✅ Paid ({s.payment_method})
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            {/* Desktop table */}
-            <div className="hidden sm:block overflow-x-auto max-h-[420px] overflow-y-auto">
+            {/* Desktop View Matrix */}
+            <div className="hidden sm:block overflow-x-auto max-h-[350px] overflow-y-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-white/10 text-[10px] font-mono uppercase tracking-widest text-slate-400 sticky top-0 bg-slate-900/95 backdrop-blur z-10">
+                  <tr className="border-b border-white/10 text-[10px] font-mono uppercase tracking-widest text-slate-400 bg-slate-900/80 sticky top-0 z-20">
                     <th className="p-4">Student Info</th>
                     <th className="p-4">Contact Details</th>
                     <th className="p-4 text-center">Payment Status</th>
@@ -672,22 +675,20 @@ export default function SubAdminPage() {
                     return (
                       <tr key={s.id} className={`transition-colors ${isUnpaid ? 'bg-red-500/[0.08] hover:bg-red-500/[0.12]' : 'hover:bg-white/[0.01]'}`}>
                         <td className="p-4">
-                          <div className={`font-bold ${isUnpaid ? 'text-red-300' : 'text-white'}`}>{s.name}</div>
+                          <div className={`font-bold ${isUnpaid ? 'text-red-300' : 'text-white'}`}>
+                            {s.name}
+                          </div>
                           <div className="text-[11px] text-slate-400 font-mono mt-0.5">DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}</div>
                         </td>
                         <td className="p-4 space-y-0.5">
                           <div className="font-mono text-slate-300 text-xs">{s.phone}</div>
                           <div className="text-xs text-slate-400 truncate max-w-[200px]">{s.email || "-"}</div>
                         </td>
-                        <td className="p-4 text-center">
+                        <td className="p-4 text-center whitespace-nowrap">
                           {isUnpaid ? (
-                            <span className="px-2 py-1 text-[10px] font-mono uppercase bg-red-500/20 border border-red-500/40 text-red-400 rounded font-black animate-pulse whitespace-nowrap inline-flex items-center gap-1 justify-center">
-                              ⚠️ Unpaid
-                            </span>
+                            <span className="px-2 py-1 text-[10px] font-mono uppercase bg-red-500/20 border border-red-500/40 text-red-400 rounded font-black animate-pulse whitespace-nowrap inline-flex items-center gap-1 justify-center">⚠️ Unpaid</span>
                           ) : (
-                            <span className="px-2 py-1 text-[10px] font-mono uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded whitespace-nowrap inline-flex items-center gap-1 justify-center">
-                              ✅ Paid ({s.payment_method})
-                            </span>
+                            <span className="px-2 py-1 text-[10px] font-mono uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded whitespace-nowrap inline-flex items-center gap-1 justify-center">✅ Paid ({s.payment_method})</span>
                           )}
                         </td>
                       </tr>
@@ -700,12 +701,11 @@ export default function SubAdminPage() {
         </div>
       )}
 
-      {/* Walk-in Booking Modal */}
       {showManageSlots && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]">
-          <div className="bg-slate-900 border border-white/10 p-5 sm:p-6 rounded-2xl w-full max-w-md shadow-2xl space-y-4">
+          <div className="bg-slate-900/95 border border-white/10 p-5 sm:p-6 rounded-2xl w-full max-w-md shadow-2xl space-y-4">
             <div>
-              <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400">// Manual Entry</span>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400">// Walk-in Registration</span>
               <h2 className="text-xl font-black uppercase tracking-tight italic text-white mt-1">Register Walk-in</h2>
               <p className="text-slate-400 text-xs mt-1">Log a manual offline booking into the system.</p>
             </div>
@@ -742,7 +742,7 @@ export default function SubAdminPage() {
               </div>
 
               <div className="p-4 bg-slate-950 border border-white/5 rounded-xl space-y-3">
-                <label className="block text-[10px] font-mono uppercase tracking-wider text-emerald-400">Payment Collection</label>
+                <label className="block text-[10px] font-mono uppercase tracking-wider text-emerald-400 mb-1.5">Payment Collection</label>
 
                 {offlinePaymentMethod !== "Cash + UPI" && (
                   <input type="number" placeholder="Total Received (₹)" value={offlineAmount} onChange={(e) => setOfflineAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-emerald-400 outline-none text-sm font-medium" />
@@ -762,18 +762,18 @@ export default function SubAdminPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-3 pt-2">
-              <button onClick={saveOfflineBooking} className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-mono text-xs uppercase tracking-wider py-3.5 font-black transition-all rounded-xl">Save Booking</button>
-              <button onClick={() => setShowManageSlots(false)} className="w-full bg-neutral-800 hover:bg-neutral-700 text-slate-300 font-mono text-xs uppercase tracking-wider py-3.5 transition-all rounded-xl">Cancel</button>
+              <button onClick={saveOfflineBooking} className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-mono font-black py-3.5 rounded-xl text-xs uppercase tracking-wider shadow-md transition-all">Save Booking</button>
+              <button onClick={() => setShowManageSlots(false)} className="w-full bg-slate-900/60 hover:bg-slate-800 border border-white/10 text-slate-300 font-mono font-bold py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all">Cancel</button>
             </div>
           </div>
         </div>
       )}
 
-      <p className="mb-3 text-xs font-mono text-slate-400 tracking-widest uppercase px-1">
+      <p className="mb-3 text-[10px] font-mono uppercase tracking-widest text-slate-400 px-1">
         Showing {bookings.filter((b) => b.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) || b.phone?.includes(searchTerm)).length} booking(s) active
       </p>
 
-      {/* Active Bookings Table - Coach Style */}
+      {/* Active Bookings Table */}
       <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden">
         <div className="p-4 bg-slate-900/80 border-b border-white/10">
           <h2 className="text-lg font-black uppercase text-white">📅 Active Turf Bookings</h2>
@@ -799,8 +799,8 @@ export default function SubAdminPage() {
                 const isTomorrow = bookingDate === tomorrow;
                 const duration = booking.duration_minutes || 60;
 
-                let rowColor = "";
-                if (isToday) rowColor = "bg-emerald-500/[0.05]";
+                let rowColor = "bg-transparent";
+                if (isToday) rowColor = "bg-emerald-500/[0.04]";
                 else if (isTomorrow) rowColor = "bg-amber-500/[0.03]";
 
                 return (
@@ -813,27 +813,27 @@ export default function SubAdminPage() {
                       <div className="flex items-center gap-2">
                         <span className="text-slate-200">{new Date(bookingDate).toLocaleDateString("en-GB")}</span>
                         {isToday && (
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[9px] font-black uppercase tracking-wide">
+                          <span className="px-2 py-0.5 rounded text-[9px] bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 tracking-wider font-black uppercase">
                             Today
                           </span>
                         )}
                         {isTomorrow && (
-                          <span className="px-2 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-400 text-[9px] font-black uppercase tracking-wide">
+                          <span className="px-2 py-0.5 rounded text-[9px] bg-amber-400/10 border border-amber-400/30 text-amber-400 tracking-wider font-black uppercase">
                             Tomorrow
                           </span>
                         )}
                       </div>
-                      <div className="text-emerald-400 font-black mt-1">
+                      <div className="text-emerald-400 mt-1 font-black">
                         {getTimeRangeLabel(booking.start_time, duration)}
                       </div>
                     </td>
                     <td className="p-4 font-mono text-xs text-slate-300 whitespace-nowrap">{duration} Mins</td>
                     <td className="p-4 font-mono text-xs whitespace-nowrap">
                       <div className="mb-1">
-                        <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-mono uppercase tracking-wider ${
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider ${
                           booking.booking_type === "Half Court"
-                            ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
-                            : "bg-slate-500/10 border border-white/10 text-slate-300"
+                            ? "bg-slate-500/10 border border-slate-500/20 text-slate-300"
+                            : "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
                         }`}>
                           {booking.booking_type || "Full Court"}
                         </span>
@@ -844,19 +844,21 @@ export default function SubAdminPage() {
                     <td className="p-4 text-emerald-400 font-mono whitespace-nowrap">₹{booking.advance_amount || 0}</td>
                     <td className="p-4 font-mono whitespace-nowrap">
                       {booking.balance_amount > 0 ? (
-                        <span className="text-red-400 font-bold">₹{booking.balance_amount}</span>
+                        <span className="text-red-400 font-black">₹{booking.balance_amount}</span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono uppercase tracking-widest">Paid</span>
+                        <span className="px-2 py-1 text-[10px] font-mono uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded whitespace-nowrap inline-flex items-center gap-1 justify-center">✅ Paid</span>
                       )}
                     </td>
                     <td className="p-4 text-center whitespace-nowrap">
-                      {booking.balance_amount > 0 ? (
-                        <button onClick={() => { setSelectedBooking(booking); setShowPaymentModal(true); }} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-mono uppercase font-black px-4 py-2 transition-all rounded-lg">💰 Collect</button>
-                      ) : (
-                        booking.customer_name !== "Offline Booking" && (
-                          <button onClick={() => resetPayment(booking)} className="bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-amber-400 text-xs font-mono uppercase px-4 py-2 transition-all rounded-lg">🔄 Reset</button>
-                        )
-                      )}
+                      <div className="flex items-center justify-center gap-2">
+                        {booking.balance_amount > 0 ? (
+                          <button onClick={() => { setSelectedBooking(booking); setShowPaymentModal(true); }} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-mono uppercase font-black px-4 py-2 transition-all rounded-lg">💰 Collect</button>
+                        ) : (
+                          booking.customer_name !== "Offline Booking" && (
+                            <button onClick={() => resetPayment(booking)} className="bg-slate-900/60 hover:bg-slate-800 border border-white/10 hover:border-amber-500/40 text-amber-400 text-xs font-mono uppercase px-4 py-2 transition-all rounded-lg">🔄 Reset</button>
+                          )
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -866,7 +868,7 @@ export default function SubAdminPage() {
         </div>
       </div>
 
-      {/* Excluded Field Blocks - Coach Style */}
+      {/* Excluded Field Blocks Summary */}
       <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden mt-8">
         <div className="p-4 bg-slate-900/80 border-b border-white/10">
           <h2 className="text-lg font-black uppercase text-white">🚫 Admin Field Blocks</h2>
@@ -890,14 +892,14 @@ export default function SubAdminPage() {
 
                 return (
                   <tr key={slot.id} className="hover:bg-white/[0.01] transition-colors">
-                    <td className="p-4 font-mono text-xs text-slate-200">
+                    <td className="p-4 font-mono text-xs text-slate-400">
                       {new Date(bookingDate).toLocaleDateString("en-GB")}
                     </td>
                     <td className="p-4 font-mono text-xs text-red-400 font-black whitespace-nowrap">
                       {getTimeRangeLabel(slot.start_time, blockDuration)}
                     </td>
                     <td className="p-4 text-xs font-mono">{blockDuration} mins</td>
-                    <td className="p-4 font-mono text-xs font-bold text-emerald-400">{slot.court_number}</td>
+                    <td className="p-4 font-mono text-xs font-bold text-slate-200">{slot.court_number}</td>
                     <td className="p-4 font-mono text-xs text-slate-400 uppercase">{slot.reason}</td>
                   </tr>
                 );
@@ -907,18 +909,17 @@ export default function SubAdminPage() {
         </div>
       </div>
 
-      {/* Balance Clearing Modal */}
       {showPaymentModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]">
-          <div className="bg-slate-900 border border-white/10 p-5 sm:p-6 rounded-2xl w-full max-w-sm shadow-2xl space-y-4">
+          <div className="bg-slate-900/95 border border-white/10 p-5 sm:p-6 rounded-2xl w-full max-w-sm shadow-2xl space-y-4">
             <div>
-              <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400">// Settle Balance</span>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400">// Balance Settlement</span>
               <h2 className="text-xl font-black uppercase tracking-tight italic text-white mt-1">💰 Balance Clearing</h2>
               <p className="text-slate-400 text-xs mt-1">Collect the remaining match dues directly below.</p>
             </div>
 
             <div className="p-4 bg-slate-950 border border-white/5 rounded-xl flex justify-between items-center">
-              <span className="text-xs font-mono uppercase tracking-wider text-slate-400">Outstanding Balance</span>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-slate-400">Outstanding Balance</span>
               <span className="text-lg font-black text-red-400">₹{selectedBooking?.balance_amount || 0}</span>
             </div>
 
@@ -944,8 +945,8 @@ export default function SubAdminPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-3 pt-2">
-              <button onClick={savePayment} className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-mono text-xs uppercase tracking-wider py-3.5 font-black transition-all rounded-xl">Save Payment</button>
-              <button onClick={() => { setShowPaymentModal(false); setSelectedBooking(null); }} className="w-full bg-neutral-800 hover:bg-neutral-700 text-slate-300 font-mono text-xs uppercase tracking-wider py-3.5 transition-all rounded-xl">Cancel</button>
+              <button onClick={savePayment} className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-mono font-black py-3.5 rounded-xl text-xs uppercase tracking-wider shadow-md transition-all">Save Payment</button>
+              <button onClick={() => { setShowPaymentModal(false); setSelectedBooking(null); }} className="w-full bg-slate-900/60 hover:bg-slate-800 border border-white/10 text-slate-300 font-mono font-bold py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all">Cancel</button>
             </div>
           </div>
         </div>

@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { supabase } from "../lib/supabase";
 import { useRouter } from "next/navigation";
+import { supabase } from "../lib/supabase";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 
 /* ------------------------------------------------------------------ */
-/*  Motion Presets                                                    */
+/*  Motion Presets (mirrored from coach)                              */
 /* ------------------------------------------------------------------ */
 const easeOut = [0.22, 1, 0.36, 1] as const;
 
@@ -28,64 +28,132 @@ const rowItem = {
 /* ------------------------------------------------------------------ */
 /*  Component                                                         */
 /* ------------------------------------------------------------------ */
-export default function CoachPage() {
+export default function SubAdminPage() {
   const router = useRouter();
-  const [isAuthorized, setIsAuthorized] = useState(false); // Secure validation state
+  const [isAuthorized, setIsAuthorized] = useState(false);
+
   const [bookings, setBookings] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
   const [blockedSlots, setBlockedSlots] = useState<any[]>([]);
-  const [students, setStudents] = useState<any[]>([]);
+  const [todaySlots, setTodaySlots] = useState(0);
+  const [tomorrowSlots, setTomorrowSlots] = useState(0);
+  const [todayCashCollection, setTodayCashCollection] = useState(0);
+  const [todayUpiCollection, setTodayUpiCollection] = useState(0);
+  const [todayTotalCollection, setTodayTotalCollection] = useState(0);
+  const [showManageSlots, setShowManageSlots] = useState(false);
 
-  // Registration Form States
-  const [newStudentName, setNewStudentName] = useState("");
-  const [newStudentPhone, setNewStudentPhone] = useState("");
-  const [newStudentDOB, setNewStudentDOB] = useState("");
-  const [newStudentEmail, setNewStudentEmail] = useState("");
+  // ⚽ Synchronized Academy Coaching Parameters
+  const [showCoachingPanel, setShowCoachingPanel] = useState(false);
+  const [academyStudents, setAcademyStudents] = useState<any[]>([]);
+  const [academyTab, setAcademyTab] = useState<"new" | "existing">("existing");
+  const [adminNewStudentName, setAdminNewStudentName] = useState("");
+  const [adminNewStudentPhone, setAdminNewStudentPhone] = useState("");
+  const [adminNewStudentDOB, setAdminNewStudentDOB] = useState("");
+  const [adminNewStudentEmail, setAdminNewStudentEmail] = useState("");
+  const [adminNewStudentMethod, setAdminNewStudentMethod] = useState("UPI");
+  const [adminSelectedStudentId, setAdminSelectedStudentId] = useState("");
+  const [adminExistingMethod, setAdminExistingMethod] = useState("UPI");
 
-  // UI state (visual only — does not touch business logic)
-  const [tab, setTab] = useState<"bookings" | "blocks">("bookings"); // Set default tab cleanly
-  const [search, setSearch] = useState("");
+  // Feed tab (visual only)
+  const [feedTab, setFeedTab] = useState<"bookings" | "blocks">("bookings");
 
   const FIXED_COACHING_FEE = 3500;
-  const currentMonthYear = new Date().toISOString().slice(0, 7); // YYYY-MM
-  const currentMonthLabel = new Date().toLocaleString("en-US", {
-    month: "long",
-    year: "numeric",
+  const currentMonthYear = new Date().toISOString().slice(0, 7);
+  const currentMonthLabel = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
+
+  const [slotDate, setSlotDate] = useState("");
+  const adminTimeSlots = Array.from({ length: 48 }, (_, i) => {
+    const hours = Math.floor(i / 2);
+    const minutes = i % 2 === 0 ? "00" : "30";
+    const date = new Date();
+    date.setHours(hours);
+    date.setMinutes(Number(minutes));
+    return date.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
   });
 
-  /* -------- 1. FIXED ROUTE GUARD -------- */
+  const [slotTime, setSlotTime] = useState("");
+  const [offlineAmount, setOfflineAmount] = useState("");
+  const [offlinePaymentMethod, setOfflinePaymentMethod] = useState("Cash");
+  const [offlineCashAmount, setOfflineCashAmount] = useState("");
+  const [offlineUpiAmount, setOfflineUpiAmount] = useState("");
+  const [slotCourt, setSlotCourt] = useState("Full Court");
+  const [availableCourts, setAvailableCourts] = useState(["Full Court", "Court 1", "Court 2"]);
+
+  const [availableAdminSlots, setAvailableAdminSlots] = useState<string[]>([]);
+  const [slotDuration, setSlotDuration] = useState(60);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState<any>(null);
+
+  const [paymentType, setPaymentType] = useState("Full Cash");
+  const [cashAmount, setCashAmount] = useState("");
+  const [upiAmount, setUpiAmount] = useState("");
+
+  /* ---------- Helpers ---------- */
+  const convertToMins = (t: string) => {
+    if (!t) return 0;
+    const [timePart, ampm] = t.split(" ");
+    let [h, m] = timePart.split(":").map(Number);
+    if (ampm?.toUpperCase() === "PM" && h !== 12) h += 12;
+    if (ampm?.toUpperCase() === "AM" && h === 12) h = 0;
+    return h * 60 + m;
+  };
+
+  const getTimeRangeLabel = (startTimeStr: string, durationMins: number) => {
+    if (!startTimeStr) return "";
+    const [h, m] = startTimeStr.split(":");
+    const startTotal = Number(h) * 60 + Number(m);
+    const endTotal = startTotal + Number(durationMins);
+    const formatString = (totalMins: number) => {
+      const hours24 = Math.floor(totalMins / 60) % 24;
+      const mins = totalMins % 60;
+      const ampm = hours24 >= 12 ? "pm" : "am";
+      const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+      return `${hours12}:${String(mins).padStart(2, "0")} ${ampm}`;
+    };
+    return `${formatString(startTotal)} to ${formatString(endTotal)}`;
+  };
+
+  const formatDate = (date: Date) => date.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  const today = formatDate(new Date());
+  const tomorrowDate = new Date();
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrow = formatDate(tomorrowDate);
+
+  /* ---------- Auth Guard ---------- */
   useEffect(() => {
-    const isCoach = localStorage.getItem("subAdminLoggedIn");
-    
-    if (isCoach !== "true") {
-      // If the coach token is missing, send them away
+    const loggedIn = localStorage.getItem("subadminLoggedIn");
+    if (loggedIn !== "true") {
       router.replace("/");
     } else {
-      // Token confirmed! Access allowed
       setIsAuthorized(true);
     }
   }, [router]);
 
-  /* -------- 2. REALTIME SYNCHRONIZATION -------- */
+  /* ---------- Realtime + Initial Load ---------- */
   useEffect(() => {
-    if (!isAuthorized) return; // Wait to connect until authorized
+    if (!isAuthorized) return;
 
-    loadCoachData();
+    loadBookings();
+    loadAcademyData();
 
     const bookingsChannel = supabase
-      .channel("coach-b-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, () => loadCoachData())
+      .channel("bookings-realtime-sub")
+      .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, () => loadBookings())
       .subscribe();
+
     const blockedChannel = supabase
-      .channel("coach-bl-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "blocked_slots" }, () => loadCoachData())
+      .channel("blocked-slots-realtime-sub")
+      .on("postgres_changes", { event: "*", schema: "public", table: "blocked_slots" }, () => loadBookings())
       .subscribe();
+
     const studentsChannel = supabase
-      .channel("coach-st-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "students" }, () => loadCoachData())
+      .channel("students-realtime-sub")
+      .on("postgres_changes", { event: "*", schema: "public", table: "students" }, () => loadAcademyData())
       .subscribe();
+
     const paymentsChannel = supabase
-      .channel("coach-p-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "student_payments" }, () => loadCoachData())
+      .channel("payments-realtime-sub")
+      .on("postgres_changes", { event: "*", schema: "public", table: "student_payments" }, () => loadAcademyData())
       .subscribe();
 
     return () => {
@@ -96,35 +164,43 @@ export default function CoachPage() {
     };
   }, [isAuthorized]);
 
-  const loadCoachData = async () => {
-    const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  /* ---------- 12h Session Timeout ---------- */
+  useEffect(() => {
+    if (!isAuthorized) return;
+    let timeout: NodeJS.Timeout;
 
-    const { data: bData } = await supabase
-      .from("bookings")
-      .select("*")
-      .gte("booking_date", todayStr)
-      .order("booking_date", { ascending: true })
-      .order("start_time", { ascending: true });
-    setBookings(bData || []);
+    const resetTimer = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        localStorage.removeItem("subadminLoggedIn");
+        alert("Session expired after 12 hours. Please re-authorize via the Home Page.");
+        router.push("/");
+      }, 12 * 60 * 60 * 1000);
+    };
 
-    const { data: blData } = await supabase
-      .from("blocked_slots")
-      .select("*")
-      .gte("booking_date", todayStr)
-      .order("booking_date", { ascending: true })
-      .order("start_time", { ascending: true });
-    setBlockedSlots(blData || []);
+    window.addEventListener("mousemove", resetTimer);
+    window.addEventListener("keypress", resetTimer);
+    window.addEventListener("click", resetTimer);
+    resetTimer();
 
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener("mousemove", resetTimer);
+      window.removeEventListener("keypress", resetTimer);
+      window.removeEventListener("click", resetTimer);
+    };
+  }, [router, isAuthorized]);
+
+  /* ---------- Data Loaders ---------- */
+  const loadAcademyData = async () => {
     const { data: stData } = await supabase
       .from("students")
       .select(`*, student_payments(*)`)
       .order("name", { ascending: true });
 
     if (stData) {
-      const processedStudents = stData.map((student: any) => {
-        const currentMonthRecord = student.student_payments?.find(
-          (p: any) => p.month_year === currentMonthYear
-        );
+      setAcademyStudents(stData.map((student: any) => {
+        const currentMonthRecord = student.student_payments?.find((p: any) => p.month_year === currentMonthYear);
         return {
           ...student,
           payment_status: currentMonthRecord ? currentMonthRecord.status : "pending",
@@ -132,134 +208,273 @@ export default function CoachPage() {
           payment_method: currentMonthRecord ? currentMonthRecord.payment_method : "-",
           payment_record_id: currentMonthRecord ? currentMonthRecord.id : null,
         };
-      });
-      setStudents(processedStudents);
+      }));
     }
   };
 
-  const registerNewStudent = async (e: React.FormEvent) => {
+  const loadBookings = async () => {
+    const { data, error } = await supabase
+      .from("bookings")
+      .select("*")
+      .or(`booking_date.gte.${today},balance_amount.gt.0`)
+      .order("booking_date", { ascending: true })
+      .order("start_time", { ascending: true });
+
+    if (error) { console.log(error); return; }
+    setBookings(data || []);
+
+    const { data: blockedData } = await supabase
+      .from("blocked_slots")
+      .select("*")
+      .gte("booking_date", today)
+      .order("booking_date", { ascending: true })
+      .order("start_time", { ascending: true });
+    setBlockedSlots(blockedData || []);
+
+    const todaysBookings = data?.filter((b) => b.booking_date?.split("T")[0] === today) || [];
+    const tomorrowsBookings = data?.filter((b) => b.booking_date?.split("T")[0] === tomorrow) || [];
+
+    setTodaySlots(todaysBookings.length);
+    setTomorrowSlots(tomorrowsBookings.length);
+
+    const cashCollectedToday = todaysBookings.reduce((sum, b) => sum + Number(b.cash_received || 0), 0);
+    const upiCollectedToday = todaysBookings.reduce((sum, b) => sum + Number(b.upi_received || 0), 0);
+    setTodayCashCollection(cashCollectedToday);
+    setTodayUpiCollection(upiCollectedToday);
+    setTodayTotalCollection(Number(cashCollectedToday) + Number(upiCollectedToday));
+  };
+
+  const loadAvailableCourts = async (date: string, time: string) => {
+    const { data: bookingsData } = await supabase.from("bookings").select("*").eq("booking_date", date);
+    const { data: blockedData } = await supabase.from("blocked_slots").select("*").eq("booking_date", date);
+
+    let courts = ["Full Court", "Court 1", "Court 2"];
+    const selectedMinutes = convertToMins(time);
+
+    [...(bookingsData || []), ...(blockedData || [])].forEach((b: any) => {
+      const startMinutes = convertToMins(b.start_time);
+      const endMinutes = startMinutes + (b.duration_minutes || 60);
+      const overlaps = selectedMinutes >= startMinutes && selectedMinutes < endMinutes;
+      if (!overlaps) return;
+
+      if (b.booking_type === "Full Court" || b.court_number === "Full Court" || b.court_number === "Both Courts") {
+        courts = [];
+      } else if (b.court_number === "Court 1") {
+        courts = courts.filter((c) => c !== "Court 1" && c !== "Full Court");
+      } else if (b.court_number === "Court 2") {
+        courts = courts.filter((c) => c !== "Court 2" && c !== "Full Court");
+      }
+    });
+    setAvailableCourts(courts);
+  };
+
+  const loadAvailableAdminSlots = async (date: string) => {
+    const { data: bookingsData } = await supabase.from("bookings").select("start_time,duration_minutes,booking_type,court_number").eq("booking_date", date);
+    const { data: blockedData } = await supabase.from("blocked_slots").select("start_time,duration_minutes,court_number").eq("booking_date", date);
+
+    const availableTimes: string[] = [];
+    adminTimeSlots.forEach((slot) => {
+      const selectedMinutes = convertToMins(slot);
+      let court1Available = true;
+      let court2Available = true;
+
+      [...(bookingsData || []), ...(blockedData || [])].forEach((b: any) => {
+        const startMinutes = convertToMins(b.start_time);
+        const endMinutes = startMinutes + (b.duration_minutes || 60);
+        const overlaps = selectedMinutes >= startMinutes && selectedMinutes < endMinutes;
+        if (!overlaps) return;
+        if (b.booking_type === "Full Court" || b.court_number === "Full Court" || b.court_number === "Both Courts") {
+          court1Available = false; court2Available = false;
+        } else if (b.court_number === "Court 1") { court1Available = false; }
+        else if (b.court_number === "Court 2") { court2Available = false; }
+      });
+      if (court1Available || court2Available) availableTimes.push(slot);
+    });
+    setAvailableAdminSlots(availableTimes);
+  };
+
+  /* ---------- Actions ---------- */
+  const handleAdminEnrollStudent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newStudentName || !newStudentPhone) {
-      alert("Please complete name and phone fields");
-      return;
-    }
-    if (newStudentPhone.length !== 10) {
-      alert("⚠️ Input Error: Mobile number must be exactly 10 digits long.");
-      return;
-    }
+    if (!adminNewStudentName || !adminNewStudentPhone) { alert("Please complete name and phone fields"); return; }
+    if (adminNewStudentPhone.length !== 10) { alert("Phone number must be exactly 10 digits"); return; }
 
     const { data: student, error: stError } = await supabase
       .from("students")
-      .insert([{
-        name: newStudentName,
-        phone: newStudentPhone,
-        dob: newStudentDOB || null,
-        email: newStudentEmail || null,
-        monthly_fee: FIXED_COACHING_FEE,
-      }])
-      .select()
-      .single();
+      .insert([{ name: adminNewStudentName, phone: adminNewStudentPhone, dob: adminNewStudentDOB || null, email: adminNewStudentEmail || null, monthly_fee: FIXED_COACHING_FEE }])
+      .select().single();
 
-    if (stError || !student) {
-      alert(stError?.message || "Registration failed node mismatch");
-      return;
-    }
+    if (stError || !student) { alert(stError?.message || "Enrollment failure"); return; }
 
-    const { error: pmError } = await supabase.from("student_payments").insert([{
-      student_id: student.id,
-      month_year: currentMonthYear,
-      status: "pending",
-      amount_paid: 0,
-      payment_method: null,
-    }]);
+    const { error: pmError } = await supabase
+      .from("student_payments")
+      .insert([{ student_id: student.id, month_year: currentMonthYear, status: "settled", amount_paid: FIXED_COACHING_FEE, payment_method: adminNewStudentMethod }]);
 
     if (pmError) { alert(pmError.message); return; }
 
-    alert(`✅ ${newStudentName} Enrolled Successfully! Pending Desk Payment Approval.`);
-    setNewStudentName(""); setNewStudentPhone(""); setNewStudentDOB(""); setNewStudentEmail("");
-    loadCoachData();
+    alert(`✅ ${adminNewStudentName} Enrolled & Marked as Paid via ${adminNewStudentMethod}`);
+    setAdminNewStudentName(""); setAdminNewStudentPhone(""); setAdminNewStudentDOB(""); setAdminNewStudentEmail("");
+    loadAcademyData();
   };
 
-  const exportCoachExcel = async () => {
-    const XLSX = await import("xlsx");
+  const handleAdminOldPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminSelectedStudentId) { alert("Please select a student name first"); return; }
+    const target = academyStudents.find(s => s.id === adminSelectedStudentId);
+    if (!target) return;
 
-    const currentMonthNum = new Date().getMonth();
-    const currentYearNum = new Date().getFullYear();
+    if (target.payment_record_id) {
+      await supabase
+        .from("student_payments")
+        .update({ status: "settled", amount_paid: FIXED_COACHING_FEE, payment_method: adminExistingMethod, updated_at: new Date().toISOString() })
+        .eq("id", target.payment_record_id);
+    } else {
+      await supabase
+        .from("student_payments")
+        .insert([{ student_id: adminSelectedStudentId, month_year: currentMonthYear, status: "settled", amount_paid: FIXED_COACHING_FEE, payment_method: adminExistingMethod }]);
+    }
+    alert("💸 Monthly Payment Logged Successfully");
+    setAdminSelectedStudentId("");
+    loadAcademyData();
+  };
 
-    const data = students.map((s) => {
-      const joinDate = new Date(s.created_at);
-      const isNew =
-        joinDate.getMonth() === currentMonthNum && joinDate.getFullYear() === currentYearNum;
+  const saveOfflineBooking = async () => {
+    if (!slotDate || !slotTime) { alert("Please select date and time"); return; }
 
-      return {
-        "Student Name": s.name + (isNew ? " (NEW)" : ""),
-        "Phone Number": s.phone,
-        "Date of Birth": s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-",
-        "Email ID": s.email || "-",
-        "Monthly Fee (₹)": s.monthly_fee || FIXED_COACHING_FEE,
-        "Amount Paid (₹)": s.amount_paid,
-        "Payment Method": s.payment_method,
-        "Status": s.payment_status === "settled" ? "✅ SETTLED" : "❌ PENDING",
-        "Type": isNew ? "NEW STUDENT" : "EXISTING",
-      };
+    const { data: existingBookings } = await supabase.from("bookings").select("*").eq("booking_date", slotDate);
+    const { data: existingBlocks } = await supabase.from("blocked_slots").select("*").eq("booking_date", slotDate);
+
+    const selectedStart = convertToMins(slotTime);
+    const selectedEnd = selectedStart + Number(slotDuration);
+    const allBusyItems = [...(existingBookings || []), ...(existingBlocks || [])];
+
+    const isOverlapping = allBusyItems.some((item) => {
+      const itemStart = convertToMins(item.start_time);
+      const itemEnd = itemStart + (item.duration_minutes || 60);
+      const overlaps = selectedStart < itemEnd && selectedEnd > itemStart;
+      if (!overlaps) return false;
+      if (slotCourt === "Full Court" || slotCourt === "Both Courts") return true;
+      if (item.booking_type === "Full Court" || item.court_number === "Full Court" || item.court_number === "Both Courts") return true;
+      return item.court_number === slotCourt;
     });
 
-    const worksheet = XLSX.utils.json_to_sheet(data);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Coaching Roster");
+    if (isOverlapping) { alert("⚠️ This court is already booked or blocked at the selected time."); return; }
 
-    worksheet["!cols"] = [
-      { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 25 },
-      { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 },
-    ];
-    XLSX.writeFile(workbook, `Coach_Report_${currentMonthYear}.xlsx`);
+    let totalAmount = 0;
+    let cashReceived = 0;
+    let upiReceived = 0;
+
+    if (offlinePaymentMethod === "Cash") {
+      totalAmount = Number(offlineAmount);
+      cashReceived = totalAmount;
+    } else if (offlinePaymentMethod === "UPI") {
+      totalAmount = Number(offlineAmount);
+      upiReceived = totalAmount;
+    } else if (offlinePaymentMethod === "Cash + UPI") {
+      cashReceived = Number(offlineCashAmount || 0);
+      upiReceived = Number(offlineUpiAmount || 0);
+      totalAmount = cashReceived + upiReceived;
+    }
+
+    if (totalAmount <= 0) { alert("Enter amount received"); return; }
+
+    const { error } = await supabase.from("bookings").insert([{
+      customer_name: "Offline Booking",
+      phone: "-",
+      sport: "Football",
+      booking_date: slotDate,
+      start_time: slotTime,
+      duration_minutes: Number(slotDuration),
+      booking_type: slotCourt === "Full Court" ? "Full Court" : "Half Court",
+      court_number: slotCourt,
+      total_amount: totalAmount,
+      advance_amount: totalAmount,
+      balance_amount: 0,
+      payment_status: "paid",
+      payment_method: offlinePaymentMethod,
+      cash_received: cashReceived,
+      upi_received: upiReceived,
+      payment_completed: true,
+    }]);
+
+    if (error) { alert(error.message); return; }
+
+    alert("✅ Offline Walk-in Booking Saved");
+    await loadBookings();
+    setSlotDate(""); setSlotTime(""); setSlotDuration(60); setSlotCourt("Full Court");
+    setOfflineAmount(""); setOfflineCashAmount(""); setOfflineUpiAmount(""); setShowManageSlots(false);
   };
 
-  const getTimeRangeLabel = (startTimeStr: string, durationMins: number) => {
-    if (!startTimeStr) return "";
-    const [h, m] = startTimeStr.split(":");
-    const startTotal = Number(h) * 60 + Number(m);
-    const endTotal = startTotal + Number(durationMins);
-    const formatString = (t: number) => {
-      const hours24 = Math.floor(t / 60) % 24;
-      const mins = t % 60;
-      return `${hours24 % 12 === 0 ? 12 : hours24 % 12}:${String(mins).padStart(2, "0")} ${hours24 >= 12 ? "pm" : "am"}`;
-    };
-    return `${formatString(startTotal)} to ${formatString(endTotal)}`;
+  const handleLogout = () => {
+    localStorage.removeItem("subadminLoggedIn");
+    router.push("/");
   };
 
-  /* -------- Derived stats (visual only) -------- */
-  const stats = useMemo(() => {
-    const total = students.length;
-    const paid = students.filter((s) => s.payment_status === "settled").length;
-    const pending = total - paid;
-    const currentMonthNum = new Date().getMonth();
-    const currentYearNum = new Date().getFullYear();
-    const newThisMonth = students.filter((s) => {
-      const d = new Date(s.created_at);
-      return d.getMonth() === currentMonthNum && d.getFullYear() === currentYearNum;
-    }).length;
-    return { total, paid, pending, newThisMonth };
-  }, [students]);
+  const savePayment = async () => {
+    if (!selectedBooking) return;
+    const balance = selectedBooking.balance_amount || 0;
+    let cash = 0;
+    let upi = 0;
 
-  const filteredStudents = useMemo(() => {
-    if (!search.trim()) return students;
-    const q = search.toLowerCase();
-    return students.filter(
-      (s) =>
-        s.name?.toLowerCase().includes(q) ||
-        s.phone?.includes(q) ||
-        s.email?.toLowerCase().includes(q)
+    if (paymentType === "Full Cash") { cash = balance; }
+    else if (paymentType === "Full UPI") { upi = balance; }
+    else if (paymentType === "Cash + UPI") {
+      cash = Number(cashAmount);
+      upi = Number(upiAmount);
+      if (cash + upi !== balance) { alert(`Cash + UPI must equal ₹${balance}`); return; }
+    }
+
+    const { error } = await supabase.from("bookings").update({
+      cash_received: cash,
+      upi_received: upi,
+      payment_method: paymentType,
+      payment_completed: true,
+      balance_amount: 0,
+    }).eq("id", selectedBooking.id);
+
+    if (error) { alert(error.message); return; }
+    alert("✅ Payment Collected");
+    setShowPaymentModal(false); setCashAmount(""); setUpiAmount(""); loadBookings();
+  };
+
+  const resetPayment = async (booking: any) => {
+    const confirmed = confirm("Reset this payment?");
+    if (!confirmed) return;
+    const originalBalance = (booking.total_amount || 0) - (booking.advance_amount || 0);
+
+    const { error } = await supabase.from("bookings").update({
+      cash_received: 0, upi_received: 0, payment_method: null, payment_completed: false, balance_amount: originalBalance,
+    }).eq("id", booking.id);
+
+    if (error) { alert(error.message); return; }
+    alert("✅ Payment Reset");
+    loadBookings();
+  };
+
+  /* ---------- Derived ---------- */
+  const todaysAdvance = bookings
+    .filter((b) => b.created_at?.split("T")[0] === today)
+    .reduce((sum, b) => sum + (b.advance_amount || 0), 0);
+
+  const todaysBalance = bookings
+    .filter((b) => b.booking_date?.split("T")[0] === today)
+    .reduce((sum, b) => sum + (b.balance_amount || 0), 0);
+
+  const filteredBookings = useMemo(() => {
+    if (!searchTerm.trim()) return bookings;
+    const q = searchTerm.toLowerCase();
+    return bookings.filter((b) =>
+      b.customer_name?.toLowerCase().includes(q) || b.phone?.includes(searchTerm)
     );
-  }, [students, search]);
+  }, [bookings, searchTerm]);
 
-  /* -------- 3. SECURE LOADER INTERCEPTOR -------- */
+  /* ---------- Auth Loader ---------- */
   if (!isAuthorized) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-955 text-neutral-400">
+      <div className="flex min-h-screen items-center justify-center bg-neutral-950 text-neutral-400">
         <div className="text-center space-y-3">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-lime-400 border-t-transparent mx-auto"></div>
-          <p className="text-xs font-mono tracking-widest uppercase text-neutral-500">// Syncing Coach Credentials</p>
+          <p className="text-xs font-mono tracking-widest uppercase text-neutral-500">// Syncing Staff Credentials</p>
         </div>
       </div>
     );
@@ -306,35 +521,48 @@ export default function CoachPage() {
           <motion.div variants={fadeUp}>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-900/80 backdrop-blur border border-neutral-800 text-[10px] font-mono uppercase tracking-widest text-lime-400 mb-3">
               <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />
-              // Football Academy Terminal
+              // Ground Staff Terminal
             </div>
             <h1 className="text-3xl sm:text-5xl font-black uppercase tracking-tighter text-white leading-none">
               <span className="bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-neutral-400">
-                Coach Portal
+                SMES Staff Panel
               </span>
             </h1>
             <p className="text-neutral-400 text-sm mt-2 font-mono">
-              Live roster · Real-time sync · <span className="text-lime-400">{currentMonthLabel}</span>
+              Live booking desk · Real-time sync · <span className="text-lime-400">{currentMonthLabel}</span>
             </p>
           </motion.div>
 
-          <div className="flex items-center gap-3">
+          <motion.div variants={fadeUp} className="flex items-center gap-3">
             <motion.button
-              variants={fadeUp}
               whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.35)" }}
               whileTap={{ scale: 0.97 }}
-              onClick={exportCoachExcel}
+              onClick={() => setShowManageSlots(true)}
               className="bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest px-6 py-4 font-black transition-colors flex items-center gap-2"
             >
-              📊 Download Roster Excel
+              ➕ Walk-in Booking
             </motion.button>
-            <button 
-              onClick={() => { localStorage.removeItem("subAdminLoggedIn"); router.replace("/"); }}
+            <button
+              onClick={() => {
+                const nextState = !showCoachingPanel;
+                setShowCoachingPanel(nextState);
+                if (nextState) setAcademyTab("existing");
+              }}
+              className={`text-xs font-mono py-4 px-5 uppercase tracking-widest transition-colors border ${
+                showCoachingPanel
+                  ? "bg-lime-400 text-black border-lime-400 font-black"
+                  : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-lime-400"
+              }`}
+            >
+              ⚽ Football Coaching
+            </button>
+            <button
+              onClick={handleLogout}
               className="bg-neutral-900 border border-neutral-800 text-neutral-400 text-xs font-mono py-4 px-5 hover:text-red-400 transition-colors uppercase tracking-wider"
             >
               Exit Terminal
             </button>
-          </div>
+          </motion.div>
         </motion.div>
 
         {/* ---------- Stat Cards ---------- */}
@@ -342,13 +570,15 @@ export default function CoachPage() {
           variants={stagger}
           initial="hidden"
           animate="show"
-          className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-10"
+          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-10"
         >
           {[
-            { label: "Total Students", value: stats.total, accent: "text-white", tag: "01" },
-            { label: "Paid This Month", value: stats.paid, accent: "text-lime-400", tag: "02" },
-            { label: "Pending Fees", value: stats.pending, accent: "text-red-400", tag: "03" },
-            { label: "New This Month", value: stats.newThisMonth, accent: "text-emerald-400", tag: "04" },
+            { label: "Today Slots", value: todaySlots, accent: "text-lime-400", tag: "01" },
+            { label: "Tomorrow Slots", value: tomorrowSlots, accent: "text-white", tag: "02" },
+            { label: "Today Advance", value: `₹${todaysAdvance}`, accent: "text-emerald-400", tag: "03" },
+            { label: "Today Balance", value: `₹${todaysBalance}`, accent: "text-red-400", tag: "04" },
+            { label: "Cash Vault", value: `₹${todayCashCollection}`, accent: "text-amber-300", tag: "05" },
+            { label: "UPI Nodes", value: `₹${todayUpiCollection}`, accent: "text-cyan-300", tag: "06" },
           ].map((s) => (
             <motion.div
               key={s.label}
@@ -357,12 +587,10 @@ export default function CoachPage() {
               className="border border-neutral-900 bg-neutral-900/30 backdrop-blur p-4 sm:p-5 transition-colors"
             >
               <span className="text-[10px] font-mono text-neutral-600 block mb-2">{s.tag} //</span>
-              <p className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">
-                {s.label}
-              </p>
+              <p className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">{s.label}</p>
               <AnimatePresence mode="wait">
                 <motion.div
-                  key={s.value}
+                  key={String(s.value)}
                   initial={{ opacity: 0, y: -6, scale: 0.9 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 6, scale: 0.9 }}
@@ -376,211 +604,357 @@ export default function CoachPage() {
           ))}
         </motion.div>
 
-        {/* ---------- Main Grid ---------- */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-
-          {/* -------- Left column -------- */}
-          <div className="lg:col-span-2 space-y-6 lg:space-y-8">
-
-            {/* Enrollment Card */}
+        {/* ---------- Football Coaching Panel (conditional) ---------- */}
+        <AnimatePresence>
+          {showCoachingPanel && (
             <motion.section
-              variants={fadeUp}
-              initial="hidden"
-              whileInView="show"
-              viewport={{ once: true, amount: 0.2 }}
-              className="border border-neutral-900 bg-neutral-900/40 backdrop-blur p-5 sm:p-6 space-y-5"
+              key="coaching"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.4, ease: easeOut }}
+              className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10"
             >
-              <div>
-                <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-1">
-                  01 — Enrollment
-                </span>
-                <h2 className="text-lg sm:text-xl font-black uppercase text-white">
-                  Enroll New Student
-                </h2>
-                <p className="text-xs text-neutral-400 mt-1">
-                  Add player details to the ledger. Fee collection is handled at the main desk counter.
-                </p>
+              {/* Left: Form */}
+              <div className="lg:col-span-1 border border-neutral-900 bg-neutral-900/40 backdrop-blur p-5 sm:p-6 space-y-4 h-fit">
+                <div>
+                  <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-1">A — Coaching Ops</span>
+                  <h2 className="text-lg font-black uppercase text-white">Academy Fee Desk</h2>
+                </div>
+
+                <div className="flex gap-2 border-b border-neutral-900 pb-3">
+                  <button
+                    onClick={() => setAcademyTab("existing")}
+                    className={`px-3 py-1.5 text-[11px] font-mono uppercase tracking-widest transition-colors ${
+                      academyTab === "existing" ? "bg-lime-400 text-black font-black" : "bg-neutral-950 border border-neutral-800 text-neutral-400 hover:text-white"
+                    }`}
+                  >
+                    🔄 Log Old Fee
+                  </button>
+                  <button
+                    onClick={() => setAcademyTab("new")}
+                    className={`px-3 py-1.5 text-[11px] font-mono uppercase tracking-widest transition-colors ${
+                      academyTab === "new" ? "bg-lime-400 text-black font-black" : "bg-neutral-950 border border-neutral-800 text-neutral-400 hover:text-white"
+                    }`}
+                  >
+                    👶 Enroll Student
+                  </button>
+                </div>
+
+                {academyTab === "new" ? (
+                  <form onSubmit={handleAdminEnrollStudent} className="space-y-3">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Student Name</label>
+                      <input type="text" placeholder="Enter player name" value={adminNewStudentName} onChange={(e) => setAdminNewStudentName(e.target.value)} className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors text-white" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Phone (10 Digits)</label>
+                      <input
+                        type="text"
+                        placeholder="10-digit number"
+                        value={adminNewStudentPhone}
+                        onChange={(e) => {
+                          const numericValue = e.target.value.replace(/\D/g, "");
+                          if (numericValue.length <= 10) setAdminNewStudentPhone(numericValue);
+                        }}
+                        maxLength={10}
+                        className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium font-mono transition-colors text-white"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Date of Birth</label>
+                      <input type="date" value={adminNewStudentDOB} onChange={(e) => setAdminNewStudentDOB(e.target.value)} className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors text-white" style={{ colorScheme: "dark" }} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Email ID</label>
+                      <input type="email" placeholder="example@email.com" value={adminNewStudentEmail} onChange={(e) => setAdminNewStudentEmail(e.target.value)} className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors text-white" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Payment Method</label>
+                      <select value={adminNewStudentMethod} onChange={(e) => setAdminNewStudentMethod(e.target.value)} className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors text-white">
+                        <option value="UPI">UPI</option>
+                        <option value="Cash">Cash</option>
+                      </select>
+                    </div>
+                    <div className="p-3 bg-neutral-950 border border-neutral-800 text-xs font-mono font-black text-lime-400">Fixed Fee Rate: ₹3,500</div>
+                    <motion.button
+                      whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.3)" }}
+                      whileTap={{ scale: 0.97 }}
+                      type="submit"
+                      className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono font-black py-4 text-xs uppercase tracking-widest transition-colors"
+                    >
+                      Enroll & Mark Paid
+                    </motion.button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleAdminOldPayment} className="space-y-3">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Select Due Student</label>
+                      <select value={adminSelectedStudentId} onChange={(e) => setAdminSelectedStudentId(e.target.value)} className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors text-white">
+                        <option value="">-- Select Due Student --</option>
+                        {academyStudents.filter(s => s.payment_status !== "settled").map(s => (
+                          <option key={s.id} value={s.id}>{s.name} ({s.phone})</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Payment Method</label>
+                      <select value={adminExistingMethod} onChange={(e) => setAdminExistingMethod(e.target.value)} className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors text-white">
+                        <option value="UPI">UPI</option>
+                        <option value="Cash">Cash</option>
+                      </select>
+                    </div>
+                    <div className="p-3 bg-neutral-950 border border-neutral-800 text-xs font-mono font-black text-lime-400">Enforced Rate: ₹3,500</div>
+                    <motion.button
+                      whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.3)" }}
+                      whileTap={{ scale: 0.97 }}
+                      type="submit"
+                      className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono font-black py-4 text-xs uppercase tracking-widest transition-colors"
+                    >
+                      Settle Selected Student
+                    </motion.button>
+                  </form>
+                )}
               </div>
 
-              <form onSubmit={registerNewStudent} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Student Name</label>
-                  <input
-                    type="text"
-                    placeholder="Enter player name"
-                    value={newStudentName}
-                    onChange={(e) => setNewStudentName(e.target.value)}
-                    className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors text-white"
-                  />
+              {/* Right: Roster */}
+              <div className="lg:col-span-2 border border-neutral-900 bg-neutral-900/30 backdrop-blur overflow-hidden">
+                <div className="p-4 sm:p-5 border-b border-neutral-900">
+                  <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block">B — Roster</span>
+                  <h2 className="text-base sm:text-lg font-black uppercase text-white mt-0.5">
+                    Master Academy Roster · <span className="text-lime-400">{currentMonthLabel}</span>
+                  </h2>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Phone (10 Digits)</label>
-                  <input
-                    type="text"
-                    placeholder="10-digit number"
-                    value={newStudentPhone}
-                    onChange={(e) => {
-                      const numericValue = e.target.value.replace(/\D/g, "");
-                      if (numericValue.length <= 10) setNewStudentPhone(numericValue);
-                    }}
-                    maxLength={10}
-                    className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium font-mono transition-colors text-white"
-                  />
+                {/* Mobile Cards */}
+                <div className="block sm:hidden max-h-[380px] overflow-y-auto p-3 space-y-2">
+                  {academyStudents.map((s) => {
+                    const isUnpaid = s.payment_status !== "settled";
+                    return (
+                      <div key={s.id} className={`p-4 border transition-colors ${isUnpaid ? "bg-red-500/[0.05] border-red-500/20" : "bg-neutral-950/60 border-neutral-900"}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h4 className={`text-sm font-bold ${isUnpaid ? "text-red-300" : "text-white"}`}>{s.name}</h4>
+                            <p className="text-[10px] font-mono text-neutral-500">DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 mt-3 text-[11px] bg-neutral-950/60 p-2.5 border border-neutral-900 font-mono">
+                          <div>
+                            <span className="block text-[9px] uppercase tracking-widest text-neutral-600 font-bold mb-0.5">Contact</span>
+                            <span className="text-neutral-300">{s.phone}</span>
+                          </div>
+                          <div className="truncate">
+                            <span className="block text-[9px] uppercase tracking-widest text-neutral-600 font-bold mb-0.5">Email</span>
+                            <span className="text-neutral-300 truncate block" title={s.email}>{s.email || "-"}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between pt-3 mt-3 border-t border-neutral-900">
+                          <span className="text-[10px] font-mono text-neutral-600 uppercase tracking-widest font-bold">Month Fee</span>
+                          {isUnpaid ? (
+                            <motion.span animate={{ opacity: [1, 0.5, 1] }} transition={{ duration: 2, repeat: Infinity }} className="px-3 py-1 text-[10px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black">⚠️ Unpaid</motion.span>
+                          ) : (
+                            <span className="px-3 py-1 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400">✅ Paid ({s.payment_method})</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Date of Birth</label>
-                  <input
-                    type="date"
-                    value={newStudentDOB}
-                    onChange={(e) => setNewStudentDOB(e.target.value)}
-                    className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors text-white"
-                    style={{ colorScheme: "dark" }}
-                  />
+                {/* Desktop Table */}
+                <div className="hidden sm:block overflow-x-auto max-h-[380px] overflow-y-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-neutral-900 text-[10px] font-mono uppercase tracking-widest text-neutral-500 bg-neutral-950/40 sticky top-0 backdrop-blur z-20">
+                        <th className="p-4">Student Profile</th>
+                        <th className="p-4">Contact Detail Logs</th>
+                        <th className="p-4 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <motion.tbody variants={stagger} initial="hidden" animate="show" className="divide-y divide-neutral-900 text-sm font-medium">
+                      {academyStudents.map((s) => {
+                        const isUnpaid = s.payment_status !== "settled";
+                        return (
+                          <motion.tr key={s.id} variants={rowItem} className={`transition-colors ${isUnpaid ? "bg-red-500/[0.05] hover:bg-red-500/[0.10]" : "hover:bg-lime-400/[0.03]"}`}>
+                            <td className="p-4">
+                              <div className={`font-bold ${isUnpaid ? "text-red-300" : "text-white"}`}>{s.name}</div>
+                              <div className="text-[10px] font-mono text-neutral-500 mt-0.5">DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}</div>
+                            </td>
+                            <td className="p-4 space-y-0.5">
+                              <div className="font-mono text-neutral-300">{s.phone}</div>
+                              <div className="text-[11px] text-neutral-500 truncate max-w-[180px]">{s.email || "-"}</div>
+                            </td>
+                            <td className="p-4 text-center whitespace-nowrap">
+                              {isUnpaid ? (
+                                <motion.span animate={{ opacity: [1, 0.5, 1] }} transition={{ duration: 2, repeat: Infinity }} className="px-3 py-1 text-[10px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black">⚠️ Unpaid</motion.span>
+                              ) : (
+                                <span className="px-3 py-1 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400">✅ Paid ({s.payment_method})</span>
+                              )}
+                            </td>
+                          </motion.tr>
+                        );
+                      })}
+                    </motion.tbody>
+                  </table>
                 </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Email ID</label>
-                  <input
-                    type="email"
-                    placeholder="example@email.com"
-                    value={newStudentEmail}
-                    onChange={(e) => setNewStudentEmail(e.target.value)}
-                    className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors text-white"
-                  />
-                </div>
-
-                <motion.button
-                  whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.3)" }}
-                  whileTap={{ scale: 0.97 }}
-                  type="submit"
-                  className="sm:col-span-2 bg-lime-400 hover:bg-lime-300 text-black font-mono font-black py-4 text-xs uppercase tracking-widest transition-colors"
-                >
-                  Submit Enrollment
-                </motion.button>
-              </form>
+              </div>
             </motion.section>
+          )}
+        </AnimatePresence>
 
-            {/* Roster Table */}
+        {/* ---------- Feed Tab Pills ---------- */}
+        <LayoutGroup>
+          <div className="grid grid-cols-2 gap-2 p-1.5 border border-neutral-900 bg-neutral-900/30 backdrop-blur mb-6 max-w-md">
+            {[
+              { id: "bookings", label: "Active Bookings" },
+              { id: "blocks", label: "Field Blocks" },
+            ].map((t) => (
+              <motion.button
+                key={t.id}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => setFeedTab(t.id as any)}
+                className={`relative py-2.5 text-[10px] font-mono uppercase tracking-widest transition-colors ${
+                  feedTab === t.id ? "text-black font-black" : "text-neutral-500 hover:text-white"
+                }`}
+              >
+                {feedTab === t.id && (
+                  <motion.span
+                    layoutId="feed-tab-highlight"
+                    className="absolute inset-0 bg-lime-400 -z-0"
+                    transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                  />
+                )}
+                <span className="relative z-10">{t.label}</span>
+              </motion.button>
+            ))}
+          </div>
+        </LayoutGroup>
+
+        {/* ---------- Feed Content ---------- */}
+        <AnimatePresence mode="wait">
+          {feedTab === "bookings" ? (
             <motion.section
-              variants={fadeUp}
-              initial="hidden"
-              whileInView="show"
-              viewport={{ once: true, amount: 0.15 }}
+              key="bookings-feed"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.3, ease: easeOut }}
               className="border border-neutral-900 bg-neutral-900/30 backdrop-blur overflow-hidden"
             >
               <div className="p-4 sm:p-5 border-b border-neutral-900 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
                 <div>
-                  <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block">
-                    02 — Roster
-                  </span>
+                  <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block">03 — Bookings</span>
                   <h2 className="text-base sm:text-lg font-black uppercase text-white mt-0.5">
-                    Academy Roster · <span className="text-lime-400">{currentMonthLabel}</span>
+                    📅 Active Turf Bookings <span className="text-neutral-500 text-xs font-mono ml-2">({filteredBookings.length})</span>
                   </h2>
                 </div>
                 <input
                   type="text"
-                  placeholder="Search name / phone / email"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full sm:w-64 p-2.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors text-white"
+                  placeholder="Search name / phone / date"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full sm:w-72 p-2.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors text-white"
                 />
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[720px]">
+                <table className="w-full text-left border-collapse min-w-[820px]">
                   <thead>
                     <tr className="border-b border-neutral-900 text-[10px] font-mono uppercase tracking-widest text-neutral-500 bg-neutral-950/40">
-                      <th className="p-4">Student Info</th>
-                      <th className="p-4">Contact Details</th>
-                      <th className="p-4">Academy Fee</th>
-                      <th className="p-4 text-center">Payment Status</th>
+                      <th className="p-4">Client</th>
+                      <th className="p-4">Schedule</th>
+                      <th className="p-4">Duration</th>
+                      <th className="p-4">Court</th>
+                      <th className="p-4">Total</th>
+                      <th className="p-4">Advance</th>
+                      <th className="p-4">Due Balance</th>
+                      <th className="p-4 text-center">Payment Options</th>
                     </tr>
                   </thead>
-                  <motion.tbody
-                    variants={stagger}
-                    initial="hidden"
-                    animate="show"
-                    className="divide-y divide-neutral-900 text-sm font-medium"
-                  >
+                  <motion.tbody variants={stagger} initial="hidden" animate="show" className="divide-y divide-neutral-900 text-sm font-medium text-neutral-300">
                     <AnimatePresence>
-                      {filteredStudents.length === 0 ? (
-                        <motion.tr
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                        >
-                          <td colSpan={4} className="p-8 text-center text-xs font-mono text-neutral-600">
-                            No students match your search.
+                      {filteredBookings.length === 0 ? (
+                        <motion.tr initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                          <td colSpan={8} className="p-8 text-center text-xs font-mono text-neutral-600">
+                            No bookings match your search.
                           </td>
                         </motion.tr>
                       ) : (
-                        filteredStudents.map((student) => {
-                          const joinDate = new Date(student.created_at);
-                          const isNew =
-                            joinDate.getMonth() === new Date().getMonth() &&
-                            joinDate.getFullYear() === new Date().getFullYear();
-                          const isUnpaid = student.payment_status !== "settled";
+                        filteredBookings.map((booking) => {
+                          const bookingDate = booking.booking_date?.split("T")[0];
+                          const isToday = bookingDate === today;
+                          const isTomorrow = bookingDate === tomorrow;
+                          const duration = booking.duration_minutes || 60;
 
                           return (
                             <motion.tr
-                              key={student.id}
+                              key={booking.id}
                               variants={rowItem}
                               layout
                               className={`transition-colors ${
-                                isUnpaid
-                                  ? "bg-red-500/[0.05] hover:bg-red-500/[0.10]"
-                                  : "hover:bg-lime-400/[0.03]"
-                              }`}
+                                isToday ? "bg-lime-400/[0.04]" : isTomorrow ? "bg-amber-500/[0.03]" : ""
+                              } hover:bg-lime-400/[0.03]`}
                             >
                               <td className="p-4">
-                                <div className={`font-bold flex items-center gap-2 ${
-                                  isUnpaid ? "text-red-300" : "text-white"
-                                }`}>
-                                  {student.name}
-                                  {isNew && (
-                                    <motion.span
-                                      initial={{ scale: 0 }}
-                                      animate={{ scale: 1 }}
-                                      className="px-2 py-0.5 text-[9px] bg-lime-400/15 border border-lime-400/30 text-lime-400 tracking-wider font-black uppercase"
-                                    >
-                                      New
-                                    </motion.span>
+                                <div className="font-bold text-white">{booking.customer_name}</div>
+                                <div className="font-mono text-[10px] text-neutral-500 mt-0.5">{booking.phone}</div>
+                              </td>
+                              <td className="p-4 font-mono text-xs whitespace-nowrap">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-neutral-200">{new Date(bookingDate).toLocaleDateString("en-GB")}</span>
+                                  {isToday && (
+                                    <span className="px-2 py-0.5 bg-lime-400/15 border border-lime-400/30 text-lime-400 text-[9px] font-black uppercase tracking-widest">Today</span>
+                                  )}
+                                  {isTomorrow && (
+                                    <span className="px-2 py-0.5 bg-amber-400/10 border border-amber-400/30 text-amber-400 text-[9px] font-black uppercase tracking-widest">Tomorrow</span>
                                   )}
                                 </div>
-                                <div className="text-[11px] text-neutral-500 font-mono mt-0.5">
-                                  DOB:{" "}
-                                  {student.dob
-                                    ? new Date(student.dob).toLocaleDateString("en-GB")
-                                    : "-"}
-                                </div>
+                                <div className="text-lime-400 mt-1 font-black">{getTimeRangeLabel(booking.start_time, duration)}</div>
                               </td>
-                              <td className="p-4 space-y-0.5">
-                                <div className="font-mono text-neutral-300 text-xs">
-                                  {student.phone}
-                                </div>
-                                <div className="text-xs text-neutral-500 truncate max-w-[200px]">
-                                  {student.email || "-"}
-                                </div>
-                              </td>
-                              <td className="p-4 font-mono text-white">
-                                ₹{student.monthly_fee || FIXED_COACHING_FEE}
-                              </td>
-                              <td className="p-4 text-center">
-                                {student.payment_status === "settled" ? (
-                                  <span className="px-3 py-1 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 whitespace-nowrap inline-flex items-center gap-1 justify-center">
-                                    ✅ Paid
+                              <td className="p-4 font-mono text-xs text-neutral-300 whitespace-nowrap">{duration} Mins</td>
+                              <td className="p-4 font-mono text-xs whitespace-nowrap">
+                                <div className="mb-1">
+                                  <span className={`px-2 py-0.5 text-[10px] font-mono uppercase tracking-widest ${
+                                    booking.booking_type === "Half Court"
+                                      ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-400"
+                                      : "bg-lime-400/10 border border-lime-400/30 text-lime-400"
+                                  }`}>
+                                    {booking.booking_type || "Full Court"}
                                   </span>
+                                </div>
+                                <div className="text-neutral-500 mt-0.5">{booking.court_number}</div>
+                              </td>
+                              <td className="p-4 text-white font-mono whitespace-nowrap">₹{booking.total_amount}</td>
+                              <td className="p-4 text-emerald-400 font-mono whitespace-nowrap">₹{booking.advance_amount || 0}</td>
+                              <td className="p-4 font-mono whitespace-nowrap">
+                                {booking.balance_amount > 0 ? (
+                                  <span className="text-red-400 font-black">₹{booking.balance_amount}</span>
                                 ) : (
-                                  <motion.span
-                                    animate={{ opacity: [1, 0.5, 1] }}
-                                    transition={{ duration: 2, repeat: Infinity }}
-                                    className="px-3 py-1 text-[10px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black whitespace-nowrap inline-flex items-center gap-1 justify-center"
-                                  >
-                                    ⚠️ Unpaid
-                                  </motion.span>
+                                  <span className="px-3 py-1 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400">Paid</span>
                                 )}
+                              </td>
+                              <td className="p-4 text-center whitespace-nowrap">
+                                <div className="flex items-center justify-center gap-2">
+                                  {booking.balance_amount > 0 ? (
+                                    <motion.button
+                                      whileHover={{ y: -2 }}
+                                      whileTap={{ scale: 0.95 }}
+                                      onClick={() => { setSelectedBooking(booking); setShowPaymentModal(true); }}
+                                      className="bg-lime-400 hover:bg-lime-300 text-black text-xs font-mono uppercase font-black px-4 py-2 transition-colors tracking-widest"
+                                    >
+                                      💰 Collect
+                                    </motion.button>
+                                  ) : (
+                                    booking.customer_name !== "Offline Booking" && (
+                                      <button
+                                        onClick={() => resetPayment(booking)}
+                                        className="bg-neutral-900 border border-neutral-800 hover:border-amber-500/40 text-amber-400 text-xs font-mono uppercase px-4 py-2 transition-colors tracking-widest"
+                                      >
+                                        🔄 Reset
+                                      </button>
+                                    )
+                                  )}
+                                </div>
                               </td>
                             </motion.tr>
                           );
@@ -591,156 +965,231 @@ export default function CoachPage() {
                 </table>
               </div>
             </motion.section>
-          </div>
-
-          {/* -------- Right Column: Live Feeds -------- */}
-          <div className="space-y-6 lg:space-y-8 lg:col-span-1">
-
-            {/* Tab pill (visual) */}
-            <LayoutGroup>
-              <div className="grid grid-cols-2 gap-2 p-1.5 border border-neutral-900 bg-neutral-900/30 backdrop-blur">
-                {[
-                  { id: "bookings", label: "Live Bookings" },
-                  { id: "blocks", label: "Field Blocks" },
-                ].map((t) => (
-                  <motion.button
-                    key={t.id}
-                    whileTap={{ scale: 0.97 }}
-                    onClick={() => setTab(t.id as any)}
-                    className={`relative py-2.5 text-[10px] font-mono uppercase tracking-widest transition-colors ${
-                      tab === t.id
-                        ? "text-black font-black"
-                        : "text-neutral-500 hover:text-white"
-                    }`}
-                  >
-                    {tab === t.id && (
-                      <motion.span
-                        layoutId="tab-highlight"
-                        className="absolute inset-0 bg-lime-400 -z-0"
-                        transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                      />
-                    )}
-                    <span className="relative z-10">{t.label}</span>
-                  </motion.button>
-                ))}
-              </div>
-            </LayoutGroup>
-
-            {/* Bookings Feed */}
-            <AnimatePresence mode="wait">
-              {tab === "bookings" ? (
-                <motion.section
-                  key="bookings"
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -12 }}
-                  transition={{ duration: 0.3, ease: easeOut }}
-                  className="border border-neutral-900 bg-neutral-900/30 backdrop-blur overflow-hidden"
-                >
-                  <div className="p-4 border-b border-neutral-900">
-                    <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">
-                      Feed // Read-only
-                    </span>
-                    <h2 className="text-sm font-black uppercase text-white mt-0.5">
-                      📅 Active Turf Bookings
-                    </h2>
-                  </div>
-                  <motion.div
-                    variants={stagger}
-                    initial="hidden"
-                    animate="show"
-                    className="max-h-[420px] overflow-y-auto p-3 space-y-2"
-                  >
-                    {bookings.length === 0 ? (
-                      <p className="text-xs text-neutral-600 p-4 font-mono text-center">
-                        No live match bookings.
-                      </p>
-                    ) : (
-                      bookings.map((b) => (
-                        <motion.div
-                          key={b.id}
-                          variants={rowItem}
-                          whileHover={{ x: 4, borderColor: "rgba(163,230,53,0.4)" }}
-                          className="p-3 bg-neutral-950/60 border border-neutral-900 font-mono text-xs transition-colors"
-                        >
-                          <div className="font-bold text-neutral-200">
-                            {new Date(b.booking_date?.split("T")[0]).toLocaleDateString("en-GB")}
-                          </div>
-                          <div className="text-lime-400 font-black mt-1">
-                            {getTimeRangeLabel(b.start_time, b.duration_minutes || 60)}
-                          </div>
-                          <div className="text-neutral-500 text-[10px] mt-0.5">
-                            {b.court_number} • {b.booking_type}
-                          </div>
-                        </motion.div>
-                      ))
-                    )}
-                  </motion.div>
-                </motion.section>
-              ) : (
-                <motion.section
-                  key="blocks"
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -12 }}
-                  transition={{ duration: 0.3, ease: easeOut }}
-                  className="border border-neutral-900 bg-neutral-900/30 backdrop-blur overflow-hidden"
-                >
-                  <div className="p-4 border-b border-neutral-900">
-                    <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">
-                      Feed // Read-only
-                    </span>
-                    <h2 className="text-sm font-black uppercase text-white mt-0.5">
-                      🚫 Excluded Field Blocks
-                    </h2>
-                  </div>
-                  <motion.div
-                    variants={stagger}
-                    initial="hidden"
-                    animate="show"
-                    className="max-h-[420px] overflow-y-auto p-3 space-y-2"
-                  >
-                    {blockedSlots.length === 0 ? (
-                      <p className="text-xs text-neutral-600 p-4 font-mono text-center">
-                        No field block restrictions.
-                      </p>
-                    ) : (
-                      blockedSlots.map((s) => (
-                        <motion.div
-                          key={s.id}
-                          variants={rowItem}
-                          whileHover={{ x: 4, borderColor: "rgba(239,68,68,0.4)" }}
-                          className="p-3 bg-neutral-950/60 border border-red-500/10 font-mono text-xs transition-colors"
-                        >
-                          <div className="font-bold text-neutral-400">
-                            {new Date(s.booking_date?.split("T")[0]).toLocaleDateString("en-GB")}
-                          </div>
-                          <div className="text-red-400 font-black mt-1">
-                            {getTimeRangeLabel(s.start_time, s.duration_minutes || 60)}
-                          </div>
-                          <div className="text-neutral-500 text-[10px] mt-0.5 uppercase">
-                            {s.reason} • {s.court_number}
-                          </div>
-                        </motion.div>
-                      ))
-                    )}
-                  </motion.div>
-                </motion.section>
-              )}
-            </AnimatePresence>
-
-            {/* Small footer note */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              whileInView={{ opacity: 1 }}
-              viewport={{ once: true }}
-              className="text-[10px] font-mono text-neutral-600 uppercase tracking-widest text-center pt-2"
+          ) : (
+            <motion.section
+              key="blocks-feed"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.3, ease: easeOut }}
+              className="border border-neutral-900 bg-neutral-900/30 backdrop-blur overflow-hidden"
             >
-              // SMES Sports Academy · Live Sync Enabled
-            </motion.div>
-          </div>
-        </div>
+              <div className="p-4 sm:p-5 border-b border-neutral-900">
+                <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block">04 — Blocks</span>
+                <h2 className="text-base sm:text-lg font-black uppercase text-white mt-0.5">🚫 Admin Field Blocks</h2>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[600px]">
+                  <thead>
+                    <tr className="border-b border-neutral-900 text-[10px] font-mono uppercase tracking-widest text-neutral-500 bg-neutral-950/40">
+                      <th className="p-4">Date</th>
+                      <th className="p-4">Schedule</th>
+                      <th className="p-4">Duration</th>
+                      <th className="p-4">Court</th>
+                      <th className="p-4">Reason</th>
+                    </tr>
+                  </thead>
+                  <motion.tbody variants={stagger} initial="hidden" animate="show" className="divide-y divide-neutral-900 text-sm font-medium text-neutral-300">
+                    {blockedSlots.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="p-8 text-center text-xs font-mono text-neutral-600">No field block restrictions.</td>
+                      </tr>
+                    ) : (
+                      blockedSlots.map((slot) => {
+                        if (!slot.start_time) return null;
+                        const bookingDate = slot.booking_date?.split("T")[0];
+                        const blockDuration = slot.duration_minutes || 60;
+                        return (
+                          <motion.tr key={slot.id} variants={rowItem} className="hover:bg-red-500/[0.05] transition-colors">
+                            <td className="p-4 font-mono text-xs text-neutral-400">{new Date(bookingDate).toLocaleDateString("en-GB")}</td>
+                            <td className="p-4 font-mono text-xs text-red-400 font-black whitespace-nowrap">{getTimeRangeLabel(slot.start_time, blockDuration)}</td>
+                            <td className="p-4 text-xs font-mono">{blockDuration} mins</td>
+                            <td className="p-4 font-mono text-xs font-bold text-neutral-200">{slot.court_number}</td>
+                            <td className="p-4 font-mono text-xs text-neutral-500 uppercase">{slot.reason}</td>
+                          </motion.tr>
+                        );
+                      })
+                    )}
+                  </motion.tbody>
+                </table>
+              </div>
+            </motion.section>
+          )}
+        </AnimatePresence>
+
+        {/* Small footer note */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          className="text-[10px] font-mono text-neutral-600 uppercase tracking-widest text-center pt-8"
+        >
+          // SMES Sports Academy · Live Sync Enabled
+        </motion.div>
       </div>
+
+      {/* ---------- Walk-in Booking Modal ---------- */}
+      <AnimatePresence>
+        {showManageSlots && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-neutral-950/85 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.96 }}
+              transition={{ duration: 0.3, ease: easeOut }}
+              className="bg-neutral-950 border border-neutral-800 p-5 sm:p-6 w-full max-w-md shadow-2xl space-y-5"
+            >
+              <div>
+                <span className="text-[11px] font-mono uppercase tracking-widest text-lime-400 block mb-1">// Walk-in Registration</span>
+                <h2 className="text-xl font-black uppercase text-white">Register Walk-in</h2>
+                <p className="text-neutral-400 text-xs mt-1">Log a manual offline booking into the system.</p>
+              </div>
+
+              <div className="space-y-3.5">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400">Target Date</label>
+                  <input type="date" min={new Date().toISOString().split("T")[0]} value={slotDate} onChange={(e) => { setSlotDate(e.target.value); loadAvailableAdminSlots(e.target.value); }} className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors text-white" style={{ colorScheme: "dark" }} />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400">Launch Time</label>
+                  <select value={slotTime} onChange={(e) => { setSlotTime(e.target.value); if (slotDate) loadAvailableCourts(slotDate, e.target.value); }} className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors text-white">
+                    <option value="">Select Time</option>
+                    {availableAdminSlots.map((slot) => (<option key={slot} value={slot}>{slot}</option>))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono uppercase text-neutral-400">Duration</label>
+                    <select value={slotDuration} onChange={(e) => setSlotDuration(Number(e.target.value))} className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors text-white">
+                      <option value={60}>60 Minutes</option>
+                      <option value={90}>90 Minutes</option>
+                      <option value={120}>120 Minutes</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono uppercase text-neutral-400">Court</label>
+                    <select value={slotCourt} onChange={(e) => setSlotCourt(e.target.value)} className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors text-white">
+                      {availableCourts.map((c) => (<option key={c} value={c}>{c}</option>))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-neutral-900/60 border border-neutral-800 space-y-3">
+                  <label className="block text-[10px] font-mono uppercase tracking-widest text-lime-400">Payment Collection</label>
+
+                  {offlinePaymentMethod !== "Cash + UPI" && (
+                    <input type="number" placeholder="Total Received (₹)" value={offlineAmount} onChange={(e) => setOfflineAmount(e.target.value)} className="w-full p-3 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors text-white" />
+                  )}
+
+                  <select value={offlinePaymentMethod} onChange={(e) => setOfflinePaymentMethod(e.target.value)} className="w-full p-3 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors text-white">
+                    <option value="Cash">Cash</option>
+                    <option value="UPI">UPI</option>
+                    <option value="Cash + UPI">Cash + UPI Split</option>
+                  </select>
+
+                  {offlinePaymentMethod === "Cash + UPI" && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <input type="number" placeholder="Cash Split" value={offlineCashAmount} onChange={(e) => setOfflineCashAmount(e.target.value)} className="w-full p-3 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm text-white" />
+                      <input type="number" placeholder="UPI Split" value={offlineUpiAmount} onChange={(e) => setOfflineUpiAmount(e.target.value)} className="w-full p-3 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm text-white" />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <motion.button
+                  whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.3)" }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={saveOfflineBooking}
+                  className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-4 font-black transition-colors"
+                >
+                  Save Booking
+                </motion.button>
+                <button onClick={() => setShowManageSlots(false)} className="w-full bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white font-mono text-xs uppercase tracking-widest py-4 transition-colors">
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------- Payment Modal ---------- */}
+      <AnimatePresence>
+        {showPaymentModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-neutral-950/85 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.96 }}
+              transition={{ duration: 0.3, ease: easeOut }}
+              className="bg-neutral-950 border border-neutral-800 p-5 sm:p-6 w-full max-w-sm shadow-2xl space-y-5"
+            >
+              <div>
+                <span className="text-[11px] font-mono uppercase tracking-widest text-lime-400 block mb-1">// Balance Settlement</span>
+                <h2 className="text-xl font-black uppercase text-white">💰 Balance Clearing</h2>
+                <p className="text-neutral-400 text-xs mt-1">Collect the remaining match dues below.</p>
+              </div>
+
+              <div className="p-4 bg-neutral-900/60 border border-neutral-800 flex justify-between items-center">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">Outstanding Balance</span>
+                <span className="text-lg font-black text-red-400">₹{selectedBooking?.balance_amount || 0}</span>
+              </div>
+
+              <div className="space-y-3.5">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400">Payment Route</label>
+                  <div className="relative">
+                    <select value={paymentType} onChange={(e) => setPaymentType(e.target.value)} className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none appearance-none text-sm font-medium transition-colors text-white">
+                      <option value="Full Cash">Full Cash</option>
+                      <option value="Full UPI">Full UPI</option>
+                      <option value="Cash + UPI">Cash + UPI</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
+                  </div>
+                </div>
+
+                {paymentType === "Cash + UPI" && (
+                  <div className="grid grid-cols-2 gap-2 p-3 bg-neutral-900/60 border border-neutral-800">
+                    <input type="number" placeholder="Cash Amount" value={cashAmount} onChange={(e) => setCashAmount(e.target.value)} className="w-full p-3 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors text-white" />
+                    <input type="number" placeholder="UPI Amount" value={upiAmount} onChange={(e) => setUpiAmount(e.target.value)} className="w-full p-3 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors text-white" />
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <motion.button
+                  whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.3)" }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={savePayment}
+                  className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-4 font-black transition-colors"
+                >
+                  Save Payment
+                </motion.button>
+                <button
+                  onClick={() => { setShowPaymentModal(false); setSelectedBooking(null); }}
+                  className="w-full bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white font-mono text-xs uppercase tracking-widest py-4 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }
