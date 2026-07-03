@@ -21,6 +21,22 @@ export default function AdminPage() {
   const [todayTotalCollection, setTodayTotalCollection] = useState(0);
   const [showManageSlots, setShowManageSlots] = useState(false);
 
+  // 🏆 Added Academy Coating Toggled State Parameters - Updated default view state to "existing"
+  const [showCoachingPanel, setShowCoachingPanel] = useState(false);
+  const [academyStudents, setAcademyStudents] = useState<any[]>([]);
+  const [academyTab, setAcademyTab] = useState<"new" | "existing">("existing");
+  const [adminNewStudentName, setAdminNewStudentName] = useState("");
+  const [adminNewStudentPhone, setAdminNewStudentPhone] = useState("");
+  const [adminNewStudentDOB, setAdminNewStudentDOB] = useState("");
+  const [adminNewStudentEmail, setAdminNewStudentEmail] = useState("");
+  const [adminNewStudentMethod, setAdminNewStudentMethod] = useState("UPI");
+  const [adminSelectedStudentId, setAdminSelectedStudentId] = useState("");
+  const [adminExistingMethod, setAdminExistingMethod] = useState("UPI");
+
+  const FIXED_COACHING_FEE = 3500;
+  const currentMonthYear = new Date().toISOString().slice(0, 7); // Format: YYYY-MM
+  const currentMonthLabel = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
+
   // Global Time Conversion Helper
   const convertToMins = (t: string) => {
     if (!t) return 0;
@@ -96,7 +112,6 @@ export default function AdminPage() {
       "Court 1",
       "Court 2",
     ];
-
     const selectedMinutes = convertToMins(time);
 
     [...(bookings || []), ...(blocked || [])].forEach((b: any) => {
@@ -148,40 +163,34 @@ export default function AdminPage() {
     }
 
     loadBookings();
+    loadAcademyData();
 
     const bookingsChannel = supabase
       .channel("bookings-realtime")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "bookings",
-        },
-        () => {
-          loadBookings();
-        }
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, () => { loadBookings(); })
       .subscribe();
 
     const blockedChannel = supabase
       .channel("blocked-slots-realtime")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "blocked_slots",
-        },
-        () => {
-          loadBookings();
-        }
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "blocked_slots" }, () => { loadBookings(); })
+      .subscribe();
+
+    // Realtime Hooks for coaching sync components
+    const studentsChannel = supabase
+      .channel("students-realtime-admin")
+      .on("postgres_changes", { event: "*", schema: "public", table: "students" }, () => loadAcademyData())
+      .subscribe();
+
+    const paymentsChannel = supabase
+      .channel("payments-realtime-admin")
+      .on("postgres_changes", { event: "*", schema: "public", table: "student_payments" }, () => loadAcademyData())
       .subscribe();
 
     return () => {
       supabase.removeChannel(bookingsChannel);
       supabase.removeChannel(blockedChannel);
+      supabase.removeChannel(studentsChannel);
+      supabase.removeChannel(paymentsChannel);
     };
   }, [router]);
 
@@ -197,7 +206,7 @@ export default function AdminPage() {
 
         alert("Session Expired. Please authorize via the Staff Node on the Home Page.");
         router.push("/"); 
-      }, 12 * 60 * 60 * 1000);
+      }, 12 * 60 * 1000 * 60);
     };
 
     window.addEventListener("mousemove", resetTimer);
@@ -214,6 +223,91 @@ export default function AdminPage() {
       window.removeEventListener("click", resetTimer);
     };
   }, [router]);
+
+  const loadAcademyData = async () => {
+    const { data: stData } = await supabase
+      .from("students")
+      .select(`*, student_payments(*)`)
+      .order("name", { ascending: true });
+    
+    if (stData) {
+      setAcademyStudents(stData.map((student: any) => {
+        const currentMonthRecord = student.student_payments?.find((p: any) => p.month_year === currentMonthYear);
+        return {
+          ...student,
+          payment_status: currentMonthRecord ? currentMonthRecord.status : "pending",
+          amount_paid: currentMonthRecord ? currentMonthRecord.amount_paid : 0,
+          payment_method: currentMonthRecord ? currentMonthRecord.payment_method : "-",
+          payment_record_id: currentMonthRecord ? currentMonthRecord.id : null,
+        };
+      }));
+    }
+  };
+
+  const handleAdminEnrollStudent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminNewStudentName || !adminNewStudentPhone) { alert("Please complete name and phone fields"); return; }
+    if (adminNewStudentPhone.length !== 10) { alert("Phone number must be exactly 10 digits"); return; }
+
+    const { data: student, error: stError } = await supabase
+      .from("students")
+      .insert([{ name: adminNewStudentName, phone: adminNewStudentPhone, dob: adminNewStudentDOB || null, email: adminNewStudentEmail || null, monthly_fee: FIXED_COACHING_FEE }])
+      .select().single();
+
+    if (stError || !student) { alert(stError?.message || "Enrollment failure"); return; }
+
+    const { error: pmError } = await supabase
+      .from("student_payments")
+      .insert([{
+        student_id: student.id,
+        month_year: currentMonthYear,
+        status: "settled",
+        amount_paid: FIXED_COACHING_FEE,
+        payment_method: adminNewStudentMethod
+      }]);
+
+    if (pmError) { alert(pmError.message); return; }
+
+    alert(`✅ ${adminNewStudentName} Enrolled & Marked as Paid via ${adminNewStudentMethod}`);
+    setAdminNewStudentName(""); setAdminNewStudentPhone(""); setAdminNewStudentDOB(""); setAdminNewStudentEmail("");
+    loadAcademyData();
+  };
+
+  const handleAdminOldPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminSelectedStudentId) { alert("Please select a student name first"); return; }
+    const target = academyStudents.find(s => s.id === adminSelectedStudentId);
+    if (!target) return;
+
+    if (target.payment_record_id) {
+      await supabase
+        .from("student_payments")
+        .update({ status: "settled", amount_paid: FIXED_COACHING_FEE, payment_method: adminExistingMethod, updated_at: new Date().toISOString() })
+        .eq("id", target.payment_record_id);
+    } else {
+      await supabase
+        .from("student_payments")
+        .insert([{ student_id: adminSelectedStudentId, month_year: currentMonthYear, status: "settled", amount_paid: FIXED_COACHING_FEE, payment_method: adminExistingMethod }]);
+    }
+    alert("💸 Monthly Payment Logged Successfully");
+    setAdminSelectedStudentId("");
+    loadAcademyData();
+  };
+
+  const clearStudentFeeInline = async (student: any, method: string) => {
+    if (student.payment_record_id) {
+      await supabase
+        .from("student_payments")
+        .update({ status: "settled", amount_paid: FIXED_COACHING_FEE, payment_method: method, updated_at: new Date().toISOString() })
+        .eq("id", student.payment_record_id);
+    } else {
+      await supabase
+        .from("student_payments")
+        .insert([{ student_id: student.id, month_year: currentMonthYear, status: "settled", amount_paid: FIXED_COACHING_FEE, payment_method: method }]);
+    }
+    alert("✅ Balance Ledger Cleared");
+    loadAcademyData();
+  };
 
   const loadBookings = async () => {
     const { data, error } = await supabase
@@ -235,7 +329,6 @@ export default function AdminPage() {
     const thisMonthBookings =
       data?.filter((booking) => {
         const d = new Date(booking.booking_date);
-
         return (
           d.getMonth() + 1 === currentMonth &&
           d.getFullYear() === currentYear
@@ -247,14 +340,12 @@ export default function AdminPage() {
     setMonthlyRevenue(
       thisMonthBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0)
     );
-
     setMonthlyAdvance(
       thisMonthBookings.reduce((sum, b) => sum + (b.advance_amount || 0), 0)
     );
-
     setMonthlyBalance(
       thisMonthBookings.reduce((sum, b) => sum + (b.balance_amount || 0), 0)
-    );   
+    );
     const { data: blockedData } = await supabase
       .from("blocked_slots")
       .select("*")
@@ -265,7 +356,6 @@ export default function AdminPage() {
     setBlockedSlots(blockedData || []);
     const todaysBookings =
       data?.filter((booking) => booking.booking_date?.split("T")[0] === today) || [];
-
     const tomorrowsBookings =
       data?.filter((booking) => booking.booking_date?.split("T")[0] === tomorrow) || [];
 
@@ -275,12 +365,10 @@ export default function AdminPage() {
       (sum, booking) => sum + Number(booking.cash_received || 0),
       0
     );
-
     const upiCollectedToday = todaysBookings.reduce(
       (sum, booking) => sum + Number(booking.upi_received || 0),
       0
     );
-
     setTodayCashCollection(cashCollectedToday);
     setTodayUpiCollection(upiCollectedToday);
     setTodayTotalCollection(
@@ -293,12 +381,10 @@ export default function AdminPage() {
       .from("bookings")
       .select("start_time,duration_minutes,booking_type,court_number")
       .eq("booking_date", date);
-
     const { data: blocked } = await supabase
       .from("blocked_slots")
       .select("start_time,duration_minutes,court_number")
       .eq("booking_date", date);
-
     const availableTimes: string[] = [];
 
     adminTimeSlots.forEach((slot) => {
@@ -310,7 +396,6 @@ export default function AdminPage() {
       [...(bookings || []), ...(blocked || [])].forEach((b: any) => {
         const startMinutes = convertToMins(b.start_time);
         const endMinutes = startMinutes + (b.duration_minutes || 60);
-
         const overlaps = selectedMinutes >= startMinutes && selectedMinutes < endMinutes;
 
         if (!overlaps) return;
@@ -329,7 +414,6 @@ export default function AdminPage() {
         availableTimes.push(slot);
       }
     });
-
     setAvailableAdminSlots(availableTimes);
   };
 
@@ -343,15 +427,12 @@ export default function AdminPage() {
       .from("bookings")
       .select("*")
       .eq("booking_date", slotDate);
-
     const { data: existingBlocks } = await supabase
       .from("blocked_slots")
       .select("*")
       .eq("booking_date", slotDate);
-
     const selectedStart = convertToMins(slotTime);
     let selectedEnd = selectedStart + Number(slotDuration);
-
     if (slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE") {
       if (!slotEndTime) {
         alert("Please select an End Time for the block");
@@ -375,10 +456,10 @@ export default function AdminPage() {
       if (!overlaps) return false;
 
       if (slotCourt === "Full Court" || slotCourt === "Both Courts") return true;
-      if (item.booking_type === "Full Court" || item.court_number === "Full Court" || item.court_number === "Both Courts") return true;
+      if (item.booking_type === "Full Court" || item.court_number === "Full Court" || 
+          item.court_number === "Both Courts") return true;
       return item.court_number === slotCourt;
     });
-
     if (isOverlapping) {
       alert("⚠️ This court is already booked or blocked during the selected time period.");
       return;
@@ -432,7 +513,6 @@ export default function AdminPage() {
             payment_completed: true,
           },
         ]);
-
       if (error) {
         alert(error.message);
         return;
@@ -492,12 +572,10 @@ export default function AdminPage() {
   const deleteBooking = async (id: number) => {
     const confirmed = confirm("Cancel this booking?");
     if (!confirmed) return;
-
     const { error } = await supabase
       .from("bookings")
       .delete()
       .eq("id", id);
-
     if (error) {
       alert(error.message);
       return;
@@ -509,14 +587,13 @@ export default function AdminPage() {
   const todaysAdvance = bookings
     .filter((booking) => booking.created_at?.split("T")[0] === today)
     .reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
-
   const todaysBalance = bookings
     .filter((booking) => booking.booking_date?.split("T")[0] === today)
     .reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
 
-  // 📦 UPDATED: Excel Library is now imported dynamically inline to pass Vercel compilation limits
+  // 🚀 Fixed pre-render build failure via dynamic package loading architecture
   const exportToExcel = async () => {
-    const XLSX = await import("xlsx"); // 👈 Dynamically loads module here, bypasses SSR pre-render build crash
+    const XLSX = await import("xlsx"); // 👈 Inline dynamic loader avoids global SSR compilation failures
 
     const exportData = bookings.map((booking) => ({
       Name: booking.customer_name,
@@ -540,9 +617,7 @@ export default function AdminPage() {
     const currentMonthYear = new Date().toISOString().slice(0, 7);
     const currentMonthNum = new Date().getMonth();
     const currentYearNum = new Date().getFullYear();
-
     const { data: dbStudents } = await supabase.from("students").select(`*, student_payments(*)`).order("name", { ascending: true });
-    
     const academyWorksheetData = (dbStudents || []).map((s: any) => {
       const joinDate = new Date(s.created_at);
       const isNew = joinDate.getMonth() === currentMonthNum && joinDate.getFullYear() === currentYearNum;
@@ -551,6 +626,8 @@ export default function AdminPage() {
       return {
         "Student Name": s.name + (isNew ? " (NEW)" : ""),
         "Phone Number": s.phone,
+        "Date of Birth": s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-",
+        "Email ID": s.email || "-",
         "Monthly Fee (₹)": s.monthly_fee,
         "Amount Cleared (₹)": currentMonthRecord ? currentMonthRecord.amount_paid : 0,
         "Route Method": currentMonthRecord?.payment_method || "-",
@@ -558,7 +635,6 @@ export default function AdminPage() {
         "Type": isNew ? "NEW REGISTRATION" : "EXISTING"
       };
     });
-
     const totalRevenue = bookings.reduce((sum, booking) => sum + (booking.total_amount || 0), 0);
     const totalAdvance = bookings.reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
     const totalBalance = bookings.reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
@@ -569,7 +645,6 @@ export default function AdminPage() {
 
     const workbook = XLSX.utils.book_new();
     const todayStr = new Date().toISOString().split("T")[0];
-
     const worksheet = XLSX.utils.aoa_to_sheet([
       ["SMES TURF BOOKING REPORT"],
       [`Export Date: ${new Date().toLocaleString("en-IN")}`],
@@ -585,7 +660,6 @@ export default function AdminPage() {
       [],
       [],
     ]);
-
     XLSX.utils.sheet_add_json(worksheet, exportData, { origin: "A14" });
     worksheet["!cols"] = [
       { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 15 },
@@ -614,7 +688,7 @@ export default function AdminPage() {
       ["UPI Collected (₹)", todayUpi],
       ["Total Collected (Cash + UPI) (₹)", todayCollection],
       ["Actual Money In Hand (Adv + Cash + UPI) (₹)", todayMoneyInHand],
-      ["Settlement Status", todayBalance > 0 ? `⚠️ ₹${todayBalance} DUE` : "✅ SETTLED"],
+      ["Setlement Status", todayBalance > 0 ? `⚠️ ₹${todayBalance} DUE` : "✅ SETTLED"],
     ]);
     XLSX.utils.book_append_sheet(workbook, todaySheet, "Today");
 
@@ -674,7 +748,6 @@ export default function AdminPage() {
       ...stat,
       "Settlement Status": stat["Pending Balance (₹)"] > 0 ? `⚠️ ₹${stat["Pending Balance (₹)"]} DUE` : `✅ SETTLED`
     })).sort((a: any, b: any) => a.Date.localeCompare(b.Date));
-
     const dailySheet = XLSX.utils.json_to_sheet(dailySummaryArray);
     dailySheet["!cols"] = [
       { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 28 }, { wch: 38 }, { wch: 20 }
@@ -682,7 +755,7 @@ export default function AdminPage() {
     XLSX.utils.book_append_sheet(workbook, dailySheet, "Daily Summary");
 
     const academySheet = XLSX.utils.json_to_sheet(academyWorksheetData);
-    academySheet["!cols"] = [{ wch: 25 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 15 }, { wch: 15 }];
+    academySheet["!cols"] = [{ wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
     XLSX.utils.book_append_sheet(workbook, academySheet, "Football Coaching");
 
     XLSX.writeFile(workbook, `SMES_Master_Report_${todayStr}.xlsx`);
@@ -729,7 +802,6 @@ export default function AdminPage() {
         balance_amount: 0,
       })
       .eq("id", selectedBooking.id);
-
     if (error) {
       alert(error.message);
       return;
@@ -748,7 +820,6 @@ export default function AdminPage() {
     if (!confirmed) return;
 
     const originalBalance = (booking.total_amount || 0) - (booking.advance_amount || 0);
-
     const { error } = await supabase
       .from("bookings")
       .update({
@@ -759,7 +830,6 @@ export default function AdminPage() {
         balance_amount: originalBalance,
       })
       .eq("id", booking.id);
-
     if (error) {
       alert(error.message);
       return;
@@ -777,7 +847,6 @@ export default function AdminPage() {
       .from("blocked_slots")
       .delete()
       .eq("id", id);
-
     if (error) {
       alert(error.message);
       return;
@@ -789,6 +858,7 @@ export default function AdminPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased selection:bg-lime-400 selection:text-slate-950 p-4 sm:p-6 md:p-8 relative overflow-x-hidden">
+      
       <div className="absolute top-0 inset-x-0 h-48 bg-gradient-to-b from-lime-500/10 via-transparent to-transparent pointer-events-none" />
 
       <div className="relative flex flex-col sm:flex-row items-center justify-between gap-4 pb-6 mb-8 border-b border-white/10 z-10">
@@ -799,7 +869,10 @@ export default function AdminPage() {
           </h1>
         </div>
 
-        <button onClick={handleLogout} className="w-full sm:w-auto bg-neutral-900 hover:bg-red-950 border border-neutral-800 hover:border-red-900 text-slate-300 hover:text-white px-5 py-3 rounded-xl font-mono text-xs uppercase tracking-wider transition-all min-h-[48px] flex items-center justify-center gap-2">
+        <button
+          onClick={handleLogout}
+          className="w-full sm:w-auto bg-neutral-900 hover:bg-red-950 border border-neutral-800 hover:border-red-900 text-slate-300 hover:text-white px-5 py-3 rounded-xl font-mono text-xs uppercase tracking-wider transition-all min-h-[48px] flex items-center justify-center gap-2"
+        >
           🚪 End Session
         </button>
       </div>
@@ -809,30 +882,37 @@ export default function AdminPage() {
           <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Gross Orders</h3>
           <p className="text-2xl font-black text-white mt-2">{bookings.length}</p>
         </div>
+
         <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
           <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Today Slots</h3>
           <p className="text-2xl font-black text-lime-400 mt-2">{todaySlots}</p>
         </div>
+
         <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
           <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Tomorrow Slots</h3>
           <p className="text-2xl font-black text-slate-300 mt-2">{tomorrowSlots}</p>
         </div>
+
         <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
           <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Today Advance</h3>
           <p className="text-2xl font-black text-emerald-400 mt-2">₹{todaysAdvance}</p>
         </div>
+
         <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
           <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Today Balance</h3>
           <p className="text-2xl font-black text-red-400 mt-2">₹{todaysBalance}</p>
         </div>
+
         <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
           <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Cash Vault</h3>
           <p className="text-2xl font-black text-amber-400 mt-2">₹{todayCashCollection}</p>
         </div>
+
         <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px]">
           <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">UPI Nodes</h3>
           <p className="text-2xl font-black text-cyan-400 mt-2">₹{todayUpiCollection}</p>
         </div>
+
         <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl flex flex-col justify-between min-h-[100px] col-span-2 sm:col-span-1">
           <h3 className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Total Collected</h3>
           <p className="text-2xl font-black text-purple-400 mt-2">₹{todayTotalCollection}</p>
@@ -851,110 +931,167 @@ export default function AdminPage() {
         </div>
 
         <div className="grid grid-cols-2 gap-3 md:flex md:items-center">
-          <button className="bg-purple-600 hover:bg-purple-500 text-white font-mono text-xs uppercase tracking-wider px-5 py-4 rounded-xl transition-all font-bold min-h-[52px]" onClick={() => setShowManageSlots(true)}>⚙️ Manage Slots</button>
-          <button onClick={exportToExcel} className="bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs uppercase tracking-wider px-5 py-4 rounded-xl transition-all font-bold min-h-[52px]">📊 Export Excel</button>
+          <button
+            className="bg-purple-600 hover:bg-purple-500 text-white font-mono text-xs uppercase tracking-wider px-5 py-4 rounded-xl transition-all font-bold min-h-[52px]"
+            onClick={() => setShowManageSlots(true)}
+          >
+            ⚙️ Manage Slots
+          </button>
+
+          {/* ⚽ ACADEMY PANEL TOGGLE CONTROL KEY - Enforces default Tab switch to 'existing' on launch */}
+          <button
+            className={`font-mono text-xs uppercase tracking-wider px-5 py-4 rounded-xl transition-all font-bold min-h-[52px] ${showCoachingPanel ? 'bg-lime-400 text-slate-950 font-black' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}
+            onClick={() => {
+              const nextState = !showCoachingPanel;
+              setShowCoachingPanel(nextState);
+              if (nextState) setAcademyTab("existing");
+            }}
+          >
+            ⚽ Football Coaching
+          </button>
+
+          <button
+            onClick={exportToExcel}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs uppercase tracking-wider px-5 py-4 rounded-xl transition-all font-bold min-h-[52px]"
+          >
+            📊 Export Excel
+          </button>
         </div>
       </div>
 
-      {showManageSlots && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]">
-          <div className="bg-slate-900 border border-white/10 p-5 sm:p-6 rounded-2xl w-full max-w-md shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
-            <div>
-              <h2 className="text-xl font-black uppercase tracking-wide text-white">Slot Management</h2>
-              <p className="text-slate-400 text-xs mt-0.5">Toggle field lock schedules or insert localized manual offline metrics.</p>
+      {/* 🏆 Expanded Football Coaching Workspace Panel (Kept collapsed until clicked) */}
+      {showCoachingPanel && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-4 mb-8 p-6 bg-slate-900/40 border border-white/10 rounded-2xl relative z-10 backdrop-blur-xl transition-all">
+          <div className="lg:col-span-1 bg-slate-900/60 border border-white/5 p-5 rounded-xl space-y-4 h-fit">
+            <div className="flex gap-2 border-b border-white/5 pb-3">
+              <button 
+                onClick={() => setAcademyTab("new")} 
+                className={`px-3 py-1.5 text-[11px] font-mono uppercase rounded transition-all ${academyTab === "new" ? "bg-lime-400 text-slate-950 font-black" : "bg-slate-950 text-slate-400"}`}
+              >
+                👶 Enroll Student
+              </button>
+              <button 
+                onClick={() => setAcademyTab("existing")} 
+                className={`px-3 py-1.5 text-[11px] font-mono uppercase rounded transition-all ${academyTab === "existing" ? "bg-lime-400 text-slate-950 font-black" : "bg-slate-950 text-slate-400"}`}
+              >
+                🔄 Log Old Fee
+              </button>
             </div>
-            <div className="space-y-3.5">
-              <div>
-                <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Reason Profile</label>
-                <div className="relative">
-                  <select value={slotReason} onChange={(e) => setSlotReason(e.target.value)} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 outline-none appearance-none text-base md:text-sm font-medium">
-                    <option value="OFFLINE BOOKING">Offline Booking</option>
-                    <option value="TOURNAMENT">Tournament</option>
-                    <option value="MAINTENANCE">Maintenance</option>
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
-                </div>
-              </div>
-              <div>
-                <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Target Date</label>
-                <input type="date" min={new Date().toISOString().split("T")[0]} value={slotDate} onChange={(e) => { setSlotDate(e.target.value); loadAvailableAdminSlots(e.target.value); }} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 outline-none text-base md:text-sm font-medium" style={{ colorScheme: "dark" }} />
-              </div>
-              <div>
-                <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Launch Time (From)</label>
-                <div className="relative">
-                  <select value={slotTime} onChange={(e) => { setSlotTime(e.target.value); setSlotEndTime(""); if (slotDate) { loadAvailableCourts(slotDate, e.target.value); } }} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 outline-none appearance-none text-base md:text-sm font-medium">
-                    <option value="">Select Start Time</option>
-                    {availableAdminSlots.map((slot) => (<option key={slot} value={slot}>{slot}</option>))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
-                </div>
-              </div>
-              {slotReason === "OFFLINE BOOKING" ? (
+
+            {academyTab === "new" ? (
+              <form onSubmit={handleAdminEnrollStudent} className="space-y-3">
+                <input type="text" placeholder="Student Name" value={adminNewStudentName} onChange={(e) => setAdminNewStudentName(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-xs text-white outline-none focus:border-lime-400 font-medium" />
+                <input 
+                  type="text" 
+                  placeholder="Phone Number (10 Digits)" 
+                  value={adminNewStudentPhone} 
+                  onChange={(e) => {
+                    const numericValue = e.target.value.replace(/\D/g, "");
+                    if (numericValue.length <= 10) setAdminNewStudentPhone(numericValue);
+                  }} 
+                  maxLength={10} 
+                  className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-xs text-white outline-none focus:border-lime-400 font-mono font-medium" 
+                />
+                
                 <div>
-                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Duration Segment</label>
-                  <div className="relative">
-                    <select value={slotDuration} onChange={(e) => setSlotDuration(Number(e.target.value))} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 outline-none appearance-none text-base md:text-sm font-medium">
-                      <option value={60}>60 Minutes</option>
-                      <option value={90}>90 Minutes</option>
-                      <option value={120}>120 Minutes</option>
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
-                  </div>
+                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Date of Birth</label>
+                  <input type="date" value={adminNewStudentDOB} onChange={(e) => setAdminNewStudentDOB(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-xs text-white outline-none focus:border-lime-400 font-medium" style={{ colorScheme: "dark" }} />
                 </div>
-              ) : (
+                
                 <div>
-                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">End Time (To)</label>
-                  <div className="relative">
-                    <select value={slotEndTime} onChange={(e) => setSlotEndTime(e.target.value)} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 outline-none appearance-none text-base md:text-sm font-medium">
-                      <option value="">Select End Time</option>
-                      {adminTimeSlots.filter((slot) => convertToMins(slot) > convertToMins(slotTime)).map((slot) => (<option key={slot} value={slot}>{slot}</option>))}
-                      <option value="11:59 PM">11:59 PM (End of Day)</option>
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
-                  </div>
+                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Email ID</label>
+                  <input type="email" placeholder="example@email.com" value={adminNewStudentEmail} onChange={(e) => setAdminNewStudentEmail(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-xs text-white outline-none focus:border-lime-400 font-medium" />
                 </div>
-              )}
-              <div>
-                <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Allocated Court</label>
-                <div className="relative">
-                  <select value={slotCourt} onChange={(e) => setSlotCourt(e.target.value)} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 outline-none appearance-none text-base md:text-sm font-medium">
-                    {availableCourts.length === 0 ? (<option value="">No Courts Available</option>) : (availableCourts.map((court) => (<option key={court} value={court}>{court}</option>)))}
+
+                <div>
+                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Payment Method</label>
+                  <select value={adminNewStudentMethod} onChange={(e) => setAdminNewStudentMethod(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-xs text-slate-300 outline-none focus:border-lime-400 font-medium">
+                    <option value="UPI">UPI</option>
+                    <option value="Cash">Cash</option>
                   </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
                 </div>
-              </div>
-              {slotReason === "OFFLINE BOOKING" && (
-                <div className="p-3 bg-slate-950 border border-white/5 rounded-xl space-y-3 mt-2">
-                  {offlinePaymentMethod !== "Cash + UPI" && (
-                    <input type="number" placeholder="Amount Received (₹)" value={offlineAmount} onChange={(e) => setOfflineAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-lime-400 outline-none text-base md:text-sm font-medium" />
-                  )}
-                  <div className="relative">
-                    <select value={offlinePaymentMethod} onChange={(e) => setOfflinePaymentMethod(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-lime-400 outline-none appearance-none text-base md:text-sm font-medium">
-                      <option value="Cash">Cash</option>
-                      <option value="UPI">UPI</option>
-                      <option value="Cash + UPI">Cash + UPI</option>
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
-                  </div>
-                  {offlinePaymentMethod === "Cash + UPI" && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <input type="number" placeholder="Cash Split" value={offlineCashAmount} onChange={(e) => setOfflineCashAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-lime-400 outline-none text-base md:text-sm font-medium" />
-                      <input type="number" placeholder="UPI Split" value={offlineUpiAmount} onChange={(e) => setOfflineUpiAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-lime-400 outline-none text-base md:text-sm font-medium" />
-                    </div>
-                  )}
+                <div className="p-3 bg-slate-950 rounded-xl border border-white/5 text-xs font-mono font-bold text-lime-400">Fixed Fee Rate: ₹3,500</div>
+                <button type="submit" className="w-full bg-lime-400 text-slate-950 font-mono font-black text-xs py-3.5 rounded-xl uppercase tracking-wider shadow-md hover:bg-lime-300 transition-all">Enroll & Mark Paid</button>
+              </form>
+            ) : (
+              <form onSubmit={handleAdminOldPayment} className="space-y-3">
+                <div>
+                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Select Due Student</label>
+                  <select value={adminSelectedStudentId} onChange={(e) => setAdminSelectedStudentId(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-xs text-slate-200 outline-none focus:border-lime-400 font-medium">
+                    <option value="">-- Select Due Student --</option>
+                    {academyStudents.filter(s => s.payment_status !== "settled").map(s => (
+                      <option key={s.id} value={s.id}>{s.name} ({s.phone})</option>
+                    ))}
+                  </select>
                 </div>
-              )}
+                <div>
+                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Payment Method</label>
+                  <select value={adminExistingMethod} onChange={(e) => setAdminExistingMethod(e.target.value)} className="w-full p-3.5 bg-slate-950 rounded-xl border border-white/5 text-xs text-slate-300 outline-none focus:border-lime-400 font-medium">
+                    <option value="UPI">UPI</option>
+                    <option value="Cash">Cash</option>
+                  </select>
+                </div>
+                <div className="p-3 bg-slate-950 rounded-xl border border-white/5 text-xs font-mono font-bold text-lime-400">Enforced Rate: ₹3,500</div>
+                <button type="submit" className="w-full bg-purple-600 text-white font-mono font-black text-xs py-3.5 rounded-xl uppercase tracking-wider shadow-md hover:bg-purple-500 transition-all">Settle Selected Student</button>
+              </form>
+            )}
+          </div>
+
+          {/* 🛠️ UPDATED GRID MATRIX TABLE: Adjusted layout to match reference file 77267279-5623-4882-863f-2814b68a5ea9 */}
+          <div className="lg:col-span-2 bg-slate-900/20 border border-white/10 rounded-xl overflow-hidden shadow-inner">
+            <div className="p-4 bg-slate-900/80 border-b border-white/10 flex items-center justify-between">
+              <h2 className="text-sm font-black uppercase text-white">🏆 Master Academy Coaching Roster — {currentMonthLabel}</h2>
             </div>
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <button onClick={saveBlockedSlot} className="w-full bg-lime-400 hover:bg-lime-300 text-slate-950 font-mono text-xs uppercase tracking-wider py-3 font-black transition-all min-h-[44px]">Save</button>
-              <button onClick={() => setShowManageSlots(false)} className="w-full bg-neutral-800 hover:bg-neutral-700 text-slate-300 font-mono text-xs uppercase tracking-wider py-3 transition-all min-h-[44px]">Cancel</button>
+            <div className="overflow-x-auto max-h-[350px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-white/10 text-[10px] font-mono uppercase tracking-widest text-slate-400 bg-slate-950/40">
+                    <th className="p-4">Student Profile</th>
+                    <th className="p-4">Contact Detail Logs</th>
+                    <th className="p-4 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5 text-xs font-medium">
+                  {academyStudents.map(s => {
+                    const isUnpaid = s.payment_status !== "settled";
+                    return (
+                      <tr key={s.id} className={`transition-colors ${isUnpaid ? 'bg-red-500/[0.08] hover:bg-red-500/[0.12]' : 'hover:bg-white/[0.01]'}`}>
+                        <td className="p-4">
+                          <div className="font-bold text-white">{s.name}</div>
+                          <div className="text-[10px] font-mono text-slate-400 mt-0.5">DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}</div>
+                        </td>
+                        <td className="p-4 space-y-0.5">
+                          <div className="font-mono text-slate-300">{s.phone}</div>
+                          <div className="text-[11px] text-slate-400 truncate max-w-[180px]">{s.email || "-"}</div>
+                        </td>
+                        <td className="p-4 text-center">
+                          {isUnpaid ? (
+                            <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-red-500/20 border border-red-500/40 text-red-400 font-bold rounded animate-pulse">⚠️ Unpaid</span>
+                          ) : (
+                            <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded">✅ Paid ({s.payment_method})</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
       )}
 
       <p className="mb-3 text-xs font-mono text-slate-400 tracking-wide uppercase px-1">
-        Showing {bookings.filter((b) => { const search = searchTerm.toLowerCase(); return b.customer_name?.toLowerCase().includes(search) || b.phone?.toLowerCase().includes(search) || b.booking_date?.toLowerCase().includes(search); }).length} booking(s) active
+        Showing {
+          bookings.filter((booking) => {
+            const search = searchTerm.toLowerCase();
+            return (
+              booking.customer_name?.toLowerCase().includes(search) ||
+              booking.phone?.toLowerCase().includes(search) ||
+              booking.booking_date?.toLowerCase().includes(search)
+            );
+          }).length
+        } booking(s) active
       </p>
 
       <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden shadow-2xl relative z-10 backdrop-blur-xl">
@@ -976,47 +1113,120 @@ export default function AdminPage() {
                 <th className="p-4 font-bold text-center">Operations</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5 text-sm font-medium">
-              {bookings.filter((b) => { const search = searchTerm.toLowerCase(); return b.customer_name?.toLowerCase().includes(search) || b.phone?.toLowerCase().includes(search) || b.booking_date?.toLowerCase().includes(search); }).map((booking) => {
-                const bookingDate = booking.booking_date?.split("T")[0];
-                let rowColor = "bg-transparent";
-                if (bookingDate === today) rowColor = "bg-lime-500/[0.04]";
-                else if (bookingDate === tomorrow) rowColor = "bg-amber-500/[0.03]";
 
-                return (
-                  <tr key={booking.id} className={`${rowColor} hover:bg-white/[0.02] transition-colors text-slate-300`}>
-                    <td className="p-4 font-bold text-white whitespace-nowrap">{booking.customer_name}</td>
-                    <td className="p-4 font-mono text-xs whitespace-nowrap text-slate-400">{booking.phone}</td>
-                    <td className="p-4 font-mono text-xs whitespace-nowrap">
-                      <span className="text-slate-200">{new Date(bookingDate).toLocaleDateString("en-GB")}</span>
-                      {bookingDate === today && (<span className="ml-2 px-2 py-0.5 rounded-full bg-lime-400/10 border border-lime-400/30 text-lime-400 text-[9px] font-black uppercase tracking-wide">Today</span>)}
-                      {bookingDate === tomorrow && (<span className="ml-2 px-2 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-400 text-[9px] font-black uppercase tracking-wide">Tomorrow</span>)}
-                    </td>
-                    <td className="p-4 font-mono text-xs text-white font-bold whitespace-nowrap">{getTimeRangeLabel(booking.start_time, booking.duration_minutes || 60)}</td>
-                    <td className="p-4 text-xs whitespace-nowrap">{booking.duration_minutes || 60} mins</td>
-                    <td className="p-4 text-xs uppercase tracking-wider font-semibold text-slate-400 whitespace-nowrap">{booking.sport}</td>
-                    <td className="p-4 whitespace-nowrap">
-                      <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-mono uppercase tracking-wider ${booking.booking_type === "Half Court" ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400" : "bg-purple-500/10 border border-purple-500/20 text-purple-400"}`}>{booking.booking_type || "Full Court"}</span>
-                    </td>
-                    <td className="p-4 font-mono text-xs text-slate-400 whitespace-nowrap">{booking.court_number || "-"}</td>
-                    <td className="p-4 text-slate-200 font-mono whitespace-nowrap">₹{booking.total_amount}</td>
-                    <td className="p-4 text-emerald-400 font-mono whitespace-nowrap">₹{booking.advance_amount || 0}</td>
-                    <td className="p-4 font-mono whitespace-nowrap">
-                      {booking.balance_amount > 0 ? (<span className="text-red-400 font-bold">₹{booking.balance_amount}</span>) : (<span className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono uppercase tracking-widest">Paid</span>)}
-                    </td>
-                    <td className="p-4 whitespace-nowrap text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        {booking.balance_amount > 0 ? (
-                          <button onClick={() => { setSelectedBooking(booking); setShowPaymentModal(true); }} className="bg-lime-400 hover:bg-lime-300 text-slate-950 text-xs font-mono uppercase font-black px-2.5 py-1.5 transition-all">💰 Collect</button>
-                        ) : (
-                          booking.customer_name !== "Offline Booking" && (<button onClick={() => resetPayment(booking)} className="bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-amber-400 text-xs font-mono uppercase px-2.5 py-1.5 transition-all">🔄 Reset</button>)
+            <tbody className="divide-y divide-white/5 text-sm font-medium">
+              {bookings
+                .filter((booking) => {
+                  const search = searchTerm.toLowerCase();
+                  return (
+                    booking.customer_name?.toLowerCase().includes(search) ||
+                    booking.phone?.toLowerCase().includes(search) ||
+                    booking.booking_date?.toLowerCase().includes(search)
+                  );
+                })
+                .map((booking) => {
+                  const bookingDate = booking.booking_date?.split("T")[0];
+
+                  let rowColor = "bg-transparent";
+                  if (bookingDate === today) {
+                    rowColor = "bg-lime-500/[0.04]";
+                  } else if (bookingDate === tomorrow) {
+                    rowColor = "bg-amber-500/[0.03]";
+                  }
+
+                  return (
+                    <tr key={booking.id} className={`${rowColor} hover:bg-white/[0.02] transition-colors text-slate-300`}>
+                      <td className="p-4 font-bold text-white whitespace-nowrap">
+                        {booking.customer_name}
+                      </td>
+
+                      <td className="p-4 font-mono text-xs whitespace-nowrap text-slate-400">{booking.phone}</td>
+
+                      <td className="p-4 font-mono text-xs whitespace-nowrap">
+                        <span className="text-slate-200">{new Date(bookingDate).toLocaleDateString("en-GB")}</span>
+                        {bookingDate === today && (
+                          <span className="ml-2 px-2 py-0.5 rounded-full bg-lime-400/10 border border-lime-400/30 text-lime-400 text-[9px] font-black uppercase tracking-wide">
+                            Today
+                          </span>
                         )}
-                        <button onClick={() => deleteBooking(booking.id)} className="bg-neutral-800 hover:bg-red-950 border border-neutral-700 hover:border-red-900 text-red-400 hover:text-white text-xs font-mono uppercase px-2.5 py-1.5 transition-all">❌ Cancel</button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                        {bookingDate === tomorrow && (
+                          <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-400 text-[9px] font-black uppercase tracking-wide">
+                            Tomorrow
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="p-4 font-mono text-xs text-white whitespace-nowrap">
+                        {getTimeRangeLabel(booking.start_time, booking.duration_minutes || 60)}
+                      </td>
+
+                      <td className="p-4 text-xs whitespace-nowrap">{booking.duration_minutes || 60} mins</td>
+
+                      <td className="p-4 text-xs uppercase tracking-wider font-semibold text-slate-400 whitespace-nowrap">
+                        {booking.sport}
+                      </td>
+
+                      <td className="p-4 whitespace-nowrap">
+                        <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-mono uppercase tracking-wider ${
+                          booking.booking_type === "Half Court"
+                            ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400"
+                            : "bg-purple-500/10 border border-purple-500/20 text-purple-400"
+                        }`}>
+                          {booking.booking_type || "Full Court"}
+                        </span>
+                      </td>
+
+                      <td className="p-4 font-mono text-xs text-slate-400 whitespace-nowrap">{booking.court_number || "-"}</td>
+                      
+                      <td className="p-4 text-slate-200 font-mono whitespace-nowrap">₹{booking.total_amount}</td>
+
+                      <td className="p-4 text-emerald-400 font-mono whitespace-nowrap">₹{booking.advance_amount || 0}</td>
+
+                      <td className="p-4 font-mono whitespace-nowrap">
+                        {booking.balance_amount > 0 ? (
+                          <span className="text-red-400 font-bold">₹{booking.balance_amount}</span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono uppercase tracking-widest">
+                            Paid
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="p-4 whitespace-nowrap text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          
+                          {booking.balance_amount > 0 ? (
+                            <button
+                              onClick={() => {
+                                setSelectedBooking(booking);
+                                setShowPaymentModal(true);
+                              }}
+                              className="bg-lime-400 hover:bg-lime-300 text-slate-950 text-xs font-mono uppercase font-black px-2.5 py-1.5 transition-all"
+                            >
+                              💰 Collect
+                            </button>
+                          ) : (
+                            booking.customer_name !== "Offline Booking" && (
+                              <button
+                                onClick={() => resetPayment(booking)}
+                                className="bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-amber-400 text-xs font-mono uppercase px-2.5 py-1.5 transition-all"
+                              >
+                                🔄 Reset
+                              </button>
+                            )
+                          )}
+
+                          <button
+                            onClick={() => deleteBooking(booking.id)}
+                            className="bg-neutral-800 hover:bg-red-950 border border-neutral-700 hover:border-red-900 text-red-400 hover:text-white text-xs font-mono uppercase px-2.5 py-1.5 transition-all"
+                          >
+                            ❌ Cancel
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
         </div>
@@ -1024,8 +1234,11 @@ export default function AdminPage() {
 
       <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden shadow-2xl mt-8 relative z-10 backdrop-blur-xl">
         <div className="p-4 bg-slate-900/80 border-b border-white/10 flex items-center justify-between">
-          <h2 className="text-lg font-black uppercase tracking-wide text-white">🚫 Excluded Field Blocks</h2>
+          <h2 className="text-lg font-black uppercase tracking-wide text-white">
+            🚫 Excluded Field Blocks
+          </h2>
         </div>
+
         <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-white/10">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -1038,16 +1251,35 @@ export default function AdminPage() {
                 <th className="p-4 font-bold text-center">Operations</th>
               </tr>
             </thead>
+
             <tbody className="divide-y divide-white/5 text-sm font-medium text-slate-300">
               {blockedSlots.map((slot) => (
                 <tr key={slot.id} className="hover:bg-white/[0.01] transition-colors">
-                  <td className="p-4 font-mono text-xs text-slate-200">{new Date(slot.booking_date).toLocaleDateString("en-GB")}</td>
-                  <td className="p-4 font-mono text-xs text-white font-bold whitespace-nowrap">{getTimeRangeLabel(slot.start_time, slot.duration_minutes || 60)}</td>
+                  <td className="p-4 font-mono text-xs text-slate-200">
+                    {new Date(slot.booking_date).toLocaleDateString("en-GB")}
+                  </td>
+
+                  <td className="p-4 font-mono text-xs text-white font-bold whitespace-nowrap">
+                    {getTimeRangeLabel(slot.start_time, slot.duration_minutes || 60)}
+                  </td>
+
                   <td className="p-4 text-xs font-mono">{slot.duration_minutes} mins</td>
-                  <td className="p-4 font-mono text-xs font-bold text-cyan-400">{slot.court_number}</td>
-                  <td className="p-4 font-mono text-xs text-slate-400 uppercase">{slot.reason}</td>
+
+                  <td className="p-4 font-mono text-xs font-bold text-cyan-400">
+                    {slot.court_number}
+                  </td>
+
+                  <td className="p-4 font-mono text-xs text-slate-400 uppercase">
+                    {slot.reason}
+                  </td>
+
                   <td className="p-4 text-center whitespace-nowrap">
-                    <button onClick={() => deleteBlockedSlot(slot.id)} className="bg-neutral-800 hover:bg-red-950 border border-neutral-700 hover:border-red-900 text-red-400 hover:text-white text-xs font-mono uppercase px-3 py-1.5 transition-all">🗑️ Release</button>
+                    <button
+                      onClick={() => deleteBlockedSlot(slot.id)}
+                      className="bg-neutral-800 hover:bg-red-950 border border-neutral-700 hover:border-red-900 text-red-400 hover:text-white text-xs font-mono uppercase px-3 py-1.5 transition-all"
+                    >
+                      🗑️ Release
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -1060,18 +1292,26 @@ export default function AdminPage() {
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]">
           <div className="bg-slate-900 border border-white/10 p-5 sm:p-6 rounded-2xl w-full max-w-sm shadow-2xl space-y-4">
             <div>
-              <h2 className="text-xl font-black uppercase tracking-wide text-white">💰 Balance Clearing</h2>
+              <h2 className="text-xl font-black uppercase tracking-wide text-white">
+                💰 Balance Clearing
+              </h2>
               <p className="text-slate-400 text-xs mt-0.5">Collect the remaining match dues directly below.</p>
             </div>
+
             <div className="p-4 bg-slate-950 border border-white/5 rounded-xl flex justify-between items-center">
               <span className="text-xs font-mono uppercase tracking-wider text-slate-400">Outstanding Balance</span>
               <span className="text-lg font-black text-red-400">₹{selectedBooking?.balance_amount || 0}</span>
             </div>
+
             <div className="space-y-3.5">
               <div>
                 <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Payment Route</label>
                 <div className="relative">
-                  <select value={paymentType} onChange={(e) => setPaymentType(e.target.value)} className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 outline-none appearance-none text-base md:text-sm font-medium">
+                  <select
+                    value={paymentType}
+                    onChange={(e) => setPaymentType(e.target.value)}
+                    className="w-full p-3.5 rounded-xl bg-slate-950 text-white border border-white/5 focus:border-lime-400 outline-none appearance-none text-base md:text-sm font-medium"
+                  >
                     <option value="Full Cash">Full Cash</option>
                     <option value="Full UPI">Full UPI</option>
                     <option value="Cash + UPI">Cash + UPI</option>
@@ -1079,16 +1319,43 @@ export default function AdminPage() {
                   <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
                 </div>
               </div>
+
               {paymentType === "Cash + UPI" && (
                 <div className="grid grid-cols-2 gap-2 p-3 bg-slate-950 border border-white/5 rounded-xl">
-                  <input type="number" placeholder="Cash Amount" value={cashAmount} onChange={(e) => setCashAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-lime-400 outline-none text-base md:text-sm font-medium" />
-                  <input type="number" placeholder="UPI Amount" value={upiAmount} onChange={(e) => setUpiAmount(e.target.value)} className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-lime-400 outline-none text-base md:text-sm font-medium" />
+                  <input
+                    type="number"
+                    placeholder="Cash Amount"
+                    value={cashAmount}
+                    onChange={(e) => setCashAmount(e.target.value)}
+                    className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-lime-400 outline-none text-base md:text-sm font-medium"
+                  />
+                  <input
+                    type="number"
+                    placeholder="UPI Amount"
+                    value={upiAmount}
+                    onChange={(e) => setUpiAmount(e.target.value)}
+                    className="w-full p-3 rounded-lg bg-slate-900 text-white border border-white/5 focus:border-lime-400 outline-none text-base md:text-sm font-medium"
+                  />
                 </div>
               )}
             </div>
+
             <div className="grid grid-cols-2 gap-3 pt-2">
-              <button onClick={savePayment} className="w-full bg-lime-400 hover:bg-lime-300 text-slate-950 font-mono text-xs uppercase tracking-wider py-3 font-black transition-all min-h-[44px]">Save Payment</button>
-              <button onClick={() => { setShowPaymentModal(false); setSelectedBooking(null); }} className="w-full bg-neutral-800 hover:bg-neutral-700 text-slate-300 font-mono text-xs uppercase tracking-wider py-3 transition-all min-h-[44px]">Cancel</button>
+              <button
+                onClick={savePayment}
+                className="w-full bg-lime-400 hover:bg-lime-300 text-slate-950 font-mono text-xs uppercase tracking-wider py-3 font-black transition-all min-h-[44px]"
+              >
+                Save Payment
+              </button>
+              <button
+                onClick={() => {
+                  setShowPaymentModal(false);
+                  setSelectedBooking(null);
+                }}
+                className="w-full bg-neutral-800 hover:bg-neutral-700 text-slate-300 font-mono text-xs uppercase tracking-wider py-3 transition-all min-h-[44px]"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
