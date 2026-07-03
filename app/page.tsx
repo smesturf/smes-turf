@@ -378,7 +378,7 @@ export default function Home() {
       } else {
         alert("❌ Invalid Admin Password");
       }
-    } else {
+    } else if (staffRole === "Sub-Admin") {
       if (staffPassword === "1234") { 
         localStorage.setItem("subadminLoggedIn", "true");
         router.push("/subadmin"); 
@@ -386,6 +386,15 @@ export default function Home() {
         setStaffPassword("");
       } else {
         alert("❌ Invalid Sub-Admin Password");
+      }
+    } else if (staffRole === "Coach") {
+      if (staffPassword === "2468") {
+        localStorage.setItem("coachLoggedIn", "true");
+        router.push("/coach"); // Fixed: Now correctly pushes to /coach
+        setShowStaffModal(false);
+        setStaffPassword("");
+      } else {
+        alert("❌ Invalid Coach Password");
       }
     }
   };
@@ -400,7 +409,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden">
       
-      {/* NEW: Top Right Hamburger Menu for Staff Login */}
+      {/* Top Right Hamburger Menu for Staff Login */}
       <div className="absolute top-6 right-4 sm:top-8 sm:right-6 z-[100]">
         <button
           onClick={() => setShowStaffModal(true)}
@@ -746,7 +755,7 @@ export default function Home() {
         </div>
       </footer>
 
-      {/* NEW: Floating "Book Now" Button */}
+      {/* Floating "Book Now" Button */}
       <button
         onClick={scrollToBooking}
         className="fixed bottom-6 right-4 md:bottom-8 md:right-8 z-[9000] bg-lime-400 hover:bg-lime-300 text-black px-6 py-3.5 rounded-full transition-all shadow-[0_0_20px_rgba(163,230,53,0.3)] cursor-pointer flex items-center gap-2 text-[12px] font-mono font-black uppercase tracking-widest"
@@ -772,11 +781,11 @@ export default function Home() {
             <form onSubmit={handleStaffLogin} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="block text-[10px] font-mono uppercase tracking-wider text-neutral-400">Target Role</label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => setStaffRole("Admin")}
-                    className={`py-2.5 text-xs font-mono uppercase tracking-wider transition-all border ${
+                    className={`py-2.5 text-[11px] font-mono uppercase tracking-wider transition-all border ${
                       staffRole === "Admin"
                         ? "bg-lime-400 border-lime-400 text-black font-black"
                         : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white"
@@ -787,13 +796,24 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => setStaffRole("Sub-Admin")}
-                    className={`py-2.5 text-xs font-mono uppercase tracking-wider transition-all border ${
+                    className={`py-2.5 text-[11px] font-mono uppercase tracking-wider transition-all border ${
                       staffRole === "Sub-Admin"
                         ? "bg-lime-400 border-lime-400 text-black font-black"
                         : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white"
                     }`}
                   >
                     Sub-Admin
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStaffRole("Coach")}
+                    className={`py-2.5 text-[11px] font-mono uppercase tracking-wider transition-all border ${
+                      staffRole === "Coach"
+                        ? "bg-lime-400 border-lime-400 text-black font-black"
+                        : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white"
+                    }`}
+                  >
+                    Coach
                   </button>
                 </div>
               </div>
