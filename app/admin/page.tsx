@@ -1217,139 +1217,89 @@ export default function AdminPage() {
         } booking(s) active
       </p>
 
-      <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden shadow-2xl relative z-10 backdrop-blur-xl">
-        <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-white/10">
+      {/* 🛠️ HORIZONTAL SCROLLABLE MASTER ROSTER CONTAINER */}
+      <div className="bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden">
+        {/* Card Header matching 1000130856.jpg */}
+        <div className="p-4 bg-slate-900/80 border-b border-white/10">
+          <h2 className="text-base font-black uppercase text-white">
+            🏆 Master Academy Coaching Roster — <span className="text-emerald-400">{currentMonthLabel}</span>
+          </h2>
+        </div>
+
+        {/* Horizontal Scroll Wrapper matching 1000130857.jpg */}
+        <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-white/10 bg-slate-900/80 text-[10px] font-mono uppercase tracking-widest text-slate-400">
-                <th className="p-4 font-bold">Client</th>
-                <th className="p-4 font-bold">Phone</th>
-                <th className="p-4 font-bold">Schedule</th>
-                <th className="p-4 font-bold">Time Range</th>
-                <th className="p-4 font-bold">Length</th>
-                <th className="p-4 font-bold">Sport</th>
-                <th className="p-4 font-bold">Scale</th>
-                <th className="p-4 font-bold">Court</th>
-                <th className="p-4 font-bold">Total</th>
-                <th className="p-4 font-bold">Advance</th>
-                <th className="p-4 font-bold">Due Balance</th>
-                <th className="p-4 font-bold text-center">Operations</th>
+              <tr className="border-b border-white/10 text-[10px] font-mono uppercase tracking-widest text-slate-400 bg-slate-950/20">
+                <th className="p-4">Student Info</th>
+                <th className="p-4">Contact Details</th>
+                <th className="p-4">Academy Fee</th>
+                <th className="p-4 text-center">Payment Status</th>
+                <th className="p-4 text-center">Actions</th>
               </tr>
             </thead>
-
-            <tbody className="divide-y divide-white/5 text-sm font-medium text-slate-300">
-              {bookings
-                .filter((booking) => {
-                  const search = searchTerm.toLowerCase();
-                  return (
-                    booking.customer_name?.toLowerCase().includes(search) ||
-                    booking.phone?.toLowerCase().includes(search) ||
-                    booking.booking_date?.toLowerCase().includes(search)
-                  );
-                })
-                .map((booking) => {
-                  const bookingDate = booking.booking_date?.split("T")[0];
-
-                  let rowColor = "bg-transparent";
-                  if (bookingDate === today) {
-                    rowColor = "bg-lime-500/[0.04]";
-                  } else if (bookingDate === tomorrow) {
-                    rowColor = "bg-amber-500/[0.03]";
-                  }
-
-                  return (
-                    <tr key={booking.id} className={`${rowColor} hover:bg-white/[0.02] transition-colors text-slate-300`}>
-                      <td className="p-4 font-bold text-white whitespace-nowrap">
-                        {booking.customer_name}
-                      </td>
-
-                      <td className="p-4 font-mono text-xs whitespace-nowrap text-slate-400">{booking.phone}</td>
-
-                      <td className="p-4 font-mono text-xs whitespace-nowrap">
-                        <span className="text-slate-200">{new Date(bookingDate).toLocaleDateString("en-GB")}</span>
-                        {bookingDate === today && (
-                          <span className="ml-2 px-2 py-0.5 rounded-full bg-lime-400/10 border border-lime-400/30 text-lime-400 text-[9px] font-black uppercase tracking-wide">
-                            Today
+            <tbody className="divide-y divide-white/5 text-sm font-medium">
+              {/* 💸 FIXED: Patched from 'students.map' to target page context state hooks */}
+              {academyStudents.map((student) => {
+                const joinDate = new Date(student.created_at);
+                const isNew = joinDate.getMonth() === new Date().getMonth() && joinDate.getFullYear() === new Date().getFullYear();
+                const isUnpaid = student.payment_status !== "settled";
+                
+                return (
+                  <tr key={student.id} className={`transition-colors ${isUnpaid ? 'bg-red-500/[0.08] hover:bg-red-500/[0.12]' : 'hover:bg-white/[0.01]'}`}>
+                    
+                    {/* Column 1: Student Name & DOB */}
+                    <td className="p-4">
+                      <div className={`font-bold flex items-center gap-2 ${isUnpaid ? 'text-red-300' : 'text-white'}`}>
+                        {student.name}
+                        {isNew && (
+                          <span className="px-2 py-0.5 rounded text-[9px] bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 tracking-wider font-black uppercase">
+                            New
                           </span>
                         )}
-                        {bookingDate === tomorrow && (
-                          <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-400 text-[9px] font-black uppercase tracking-wide">
-                            Tomorrow
-                          </span>
-                        )}
-                      </td>
+                      </div>
+                      <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                        DOB: {student.dob ? new Date(student.dob).toLocaleDateString("en-GB") : "-"}
+                      </div>
+                    </td>
 
-                      <td className="p-4 font-mono text-xs text-white whitespace-nowrap">
-                        {getTimeRangeLabel(booking.start_time, booking.duration_minutes || 60)}
-                      </td>
+                    {/* Column 2: Contact & Email Details */}
+                    <td className="p-4 space-y-0.5">
+                      <div className="font-mono text-slate-300 text-xs">{student.phone}</div>
+                      <div className="text-xs text-slate-400 truncate max-w-[180px]">{student.email || "-"}</div>
+                    </td>
 
-                      <td className="p-4 text-xs whitespace-nowrap">{booking.duration_minutes || 60} mins</td>
+                    {/* Column 3: Fixed Fee Display */}
+                    <td className="p-4 font-mono text-white">
+                      ₹{student.monthly_fee || FIXED_COACHING_FEE}
+                    </td>
 
-                      <td className="p-4 text-xs uppercase tracking-wider font-semibold text-slate-400 whitespace-nowrap">
-                        {booking.sport}
-                      </td>
-
-                      <td className="p-4 whitespace-nowrap">
-                        <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-mono uppercase tracking-wider ${
-                          booking.booking_type === "Half Court"
-                            ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400"
-                            : "bg-purple-500/10 border border-purple-500/20 text-purple-400"
-                        }`}>
-                          {booking.booking_type || "Full Court"}
+                    {/* Column 4: Payment Badges preserving cash/UPI methods from 1000130856.jpg */}
+                    <td className="p-4 text-center">
+                      {student.payment_status === "settled" ? (
+                        <span className="px-2 py-1 text-[10px] font-mono uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded whitespace-nowrap inline-flex items-center gap-1 justify-center">
+                          ✅ Paid ({student.payment_method || "UPI"})
                         </span>
-                      </td>
+                      ) : (
+                        <span className="px-2 py-1 text-[10px] font-mono uppercase bg-red-500/20 border border-red-500/40 text-red-400 rounded font-black animate-pulse whitespace-nowrap inline-flex items-center gap-1 justify-center">
+                          ⚠️ Unpaid
+                        </span>
+                      )}
+                    </td>
 
-                      <td className="p-4 font-mono text-xs text-slate-400 whitespace-nowrap">{booking.court_number || "-"}</td>
-                      
-                      <td className="p-4 text-slate-200 font-mono whitespace-nowrap">₹{booking.total_amount}</td>
+                    {/* Column 5: Clean Row Deletion Action */}
+                    <td className="p-4 text-center">
+                      <button
+                        onClick={() => deleteStudent(student.id, student.name)}
+                        className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider bg-red-950/40 hover:bg-red-600 border border-red-500/30 hover:border-red-500 text-red-400 hover:text-white rounded-md transition-all duration-200 whitespace-nowrap"
+                      >
+                        🗑️ Delete
+                      </button>
+                    </td>
 
-                      <td className="p-4 text-emerald-400 font-mono whitespace-nowrap">₹{booking.advance_amount || 0}</td>
-
-                      <td className="p-4 font-mono whitespace-nowrap">
-                        {booking.balance_amount > 0 ? (
-                          <span className="text-red-400 font-bold">₹{booking.balance_amount}</span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono uppercase tracking-widest">
-                            Paid
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="p-4 whitespace-nowrap text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          
-                          {booking.balance_amount > 0 ? (
-                            <button
-                              onClick={() => {
-                                setSelectedBooking(booking);
-                                setShowPaymentModal(true);
-                              }}
-                              className="bg-lime-400 hover:bg-lime-300 text-slate-950 text-xs font-mono uppercase font-black px-2.5 py-1.5 transition-all"
-                            >
-                              💰 Collect
-                            </button>
-                          ) : (
-                            booking.customer_name !== "Offline Booking" && (
-                              <button
-                                onClick={() => resetPayment(booking)}
-                                className="bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-amber-400 text-xs font-mono uppercase px-2.5 py-1.5 transition-all"
-                              >
-                                🔄 Reset
-                              </button>
-                            )
-                          )}
-
-                          <button
-                            onClick={() => deleteBooking(booking.id)}
-                            className="bg-neutral-800 hover:bg-red-950 border border-neutral-700 hover:border-red-900 text-red-400 hover:text-white text-xs font-mono uppercase px-2.5 py-1.5 transition-all"
-                          >
-                            ❌ Cancel
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
