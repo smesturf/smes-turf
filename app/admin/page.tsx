@@ -689,7 +689,7 @@ export default function AdminPage() {
     })).sort((a: any, b: any) => a.Date.localeCompare(b.Date));
     const dailySheet = XLSX.utils.json_to_sheet(dailySummaryArray);
     dailySheet["!cols"] = [
-      { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { w8: 28 }, { wch: 38 }, { wch: 20 }
+      { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 28 }, { wch: 38 }, { wch: 20 }
     ];
     XLSX.utils.book_append_sheet(workbook, dailySheet, "Daily Summary");
 
