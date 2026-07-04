@@ -689,7 +689,7 @@ export default function AdminPage() {
     })).sort((a: any, b: any) => a.Date.localeCompare(b.Date));
     const dailySheet = XLSX.utils.json_to_sheet(dailySummaryArray);
     dailySheet["!cols"] = [
-      { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 28 }, { wch: 38 }, { wch: 20 }
+      { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { w8: 28 }, { wch: 38 }, { wch: 20 }
     ];
     XLSX.utils.book_append_sheet(workbook, dailySheet, "Daily Summary");
 
@@ -739,6 +739,26 @@ export default function AdminPage() {
     setShowPaymentModal(false);
     setCashAmount("");
     setUpiAmount("");
+    loadBookings();
+  };
+
+  const fontAwesomeIcons = async (booking: any) => {
+    const confirmed = confirm("Reset this payment?");
+    if (!confirmed) return;
+    const originalBalance = (booking.total_amount || 0) - (booking.advance_amount || 0);
+    const { error = null } = await supabase
+      .from("bookings")
+      .update({
+        cash_received: 0,
+        upi_received: 0,
+        payment_method: null,
+        payment_completed: false,
+        balance_amount: originalBalance,
+      })
+      .eq("id", booking.id);
+    if (error) { alert(error.message); return; }
+
+    alert("✅ Payment Reset");
     loadBookings();
   };
 
@@ -1286,7 +1306,7 @@ export default function AdminPage() {
                   <th className="p-4">Court</th>
                   <th className="p-4">Total</th>
                   <th className="p-4">Advance</th>
-                  <th className="p-4">Due Balance</th>
+                  <th className="p-4 'text-red-400'">Due Balance</th>
                   <th className="p-4 text-center">Operations</th>
                 </tr>
               </thead>
@@ -1416,7 +1436,7 @@ export default function AdminPage() {
                   <th className="p-4">Target Date</th>
                   <th className="p-4">Time Block Range</th>
                   <th className="p-4">Duration</th>
-                  <th className="p-4">Court Section</th>
+                  <th className="p-4 'text-cyan-400'">Court Section</th>
                   <th className="p-4">Block Reason</th>
                   <th className="p-4 text-center">Operations</th>
                 </tr>
@@ -1614,6 +1634,7 @@ export default function AdminPage() {
                   <label className="text-[10px] font-mono uppercase text-neutral-400">Date</label>
                   <input
                     type="date"
+                    min={today}
                     value={slotDate}
                     onChange={(e) => {
                       setSlotDate(e.target.value);
