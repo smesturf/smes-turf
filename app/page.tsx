@@ -396,7 +396,6 @@ export default function Home() {
       } else alert("❌ Invalid Sub-Admin Password");
     } else if (staffRole === "Coach") {
       if (staffPassword === "2468") {
-        // FIXED: Changed 'coachLoggedIn' to 'subAdminLoggedIn' to match the coach page guard.
         localStorage.setItem("subAdminLoggedIn", "true");
         router.push("/coach");
         setShowStaffModal(false);
@@ -448,6 +447,7 @@ export default function Home() {
         className="absolute top-6 right-4 sm:top-8 sm:right-6 z-[100]"
       >
         <motion.button
+          suppressHydrationWarning={true}
           whileHover={{ scale: 1.1, rotate: 90 }}
           whileTap={{ scale: 0.95 }}
           transition={{ type: "spring", stiffness: 300, damping: 20 }}
@@ -501,6 +501,7 @@ export default function Home() {
             className="grid grid-cols-1 gap-2 w-full max-w-md mx-auto lg:max-w-none lg:mx-0 lg:flex lg:w-auto lg:gap-3"
           >
             <motion.button
+              suppressHydrationWarning={true}
               whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.35)" }}
               whileTap={{ scale: 0.97 }}
               onClick={scrollToBooking}
@@ -621,6 +622,7 @@ export default function Home() {
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400">Full Name</label>
                   <input
+                    suppressHydrationWarning={true}
                     type="text"
                     placeholder="Enter athlete name"
                     value={name}
@@ -631,6 +633,7 @@ export default function Home() {
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400">Phone Number</label>
                   <input
+                    suppressHydrationWarning={true}
                     type="tel"
                     placeholder="Active phone contact"
                     value={phone}
@@ -649,6 +652,7 @@ export default function Home() {
                   <label className="text-xs font-mono uppercase text-neutral-400">Sport</label>
                   <div className="relative">
                     <select
+                      suppressHydrationWarning={true}
                       value={sport}
                       onChange={(e) => setSport(e.target.value)}
                       className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm"
@@ -664,6 +668,7 @@ export default function Home() {
                   <label className="text-xs font-mono uppercase text-neutral-400">Pitch Scale</label>
                   <div className="relative">
                     <select
+                      suppressHydrationWarning={true}
                       value={bookingType}
                       onChange={(e) => setBookingType(e.target.value)}
                       className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm"
@@ -680,6 +685,7 @@ export default function Home() {
               <motion.div variants={fadeUp} className="space-y-2">
                 <label className="text-xs font-mono uppercase text-neutral-400">Calendar Date</label>
                 <input
+                  suppressHydrationWarning={true}
                   type="date"
                   min={getLocalDateString()}
                   value={bookingDate}
@@ -692,97 +698,76 @@ export default function Home() {
                 />
               </motion.div>
 
-              {/* Duration */}
-              <motion.div variants={fadeUp} className="space-y-2 relative">
-                <label className="text-xs font-mono uppercase text-neutral-400">Session Length</label>
-                <div className="relative">
-                  {!bookingDate && (
-                    <div
-                      className="absolute inset-0 z-20 cursor-pointer"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        alert("⚠️ Please select a Calendar Date first!");
-                      }}
-                    />
-                  )}
-                  <select
-                    value={duration}
-                    onChange={(e) => setDuration(e.target.value)}
-                    className={`w-full p-4 bg-neutral-900 text-white border outline-none rounded-none appearance-none font-medium text-base md:text-sm transition-all ${
-                      !bookingDate ? "border-neutral-800/50 opacity-40" : "border-neutral-800 focus:border-lime-400"
-                    }`}
-                    tabIndex={!bookingDate ? -1 : 0}
-                  >
-                    <option value="60">60 Minutes (- ₹{bookingType === "Half Court" ? 750 : 1250})</option>
-                    <option value="90">90 Minutes (- ₹{bookingType === "Half Court" ? 1100 : 1850})</option>
-                    <option value="120">120 Minutes (- ₹{bookingType === "Half Court" ? 1500 : 2500})</option>
-                  </select>
-                  <div className={`pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-xs transition-all ${
-                    !bookingDate ? "text-neutral-700 opacity-40" : "text-neutral-500"
-                  }`}>▼</div>
-                </div>
-              </motion.div>
-
-              {/* Slot Grid */}
-              <motion.div variants={fadeUp} className="space-y-2 relative">
-                <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Slot</label>
-                <div className="relative">
-                  {!bookingDate && (
-                    <div
-                      className="absolute inset-0 z-20 cursor-pointer"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        alert("⚠️ Please select a Calendar Date first!");
-                      }}
-                    />
-                  )}
-                  <LayoutGroup>
-                    <motion.div
-                      variants={stagger}
-                      initial="hidden"
-                      animate="show"
-                      className={`grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 p-3 sm:p-4 bg-neutral-900/30 border border-neutral-800 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-700 transition-all ${
-                        !bookingDate ? "opacity-40" : ""
-                      }`}
+              {/* Duration - ⚡ STEP-BY-STEP FLOW CHECK: Hidden until calendar selection exists */}
+              {bookingDate && (
+                <motion.div initial="hidden" animate="show" variants={fadeUp} className="space-y-2 relative">
+                  <label className="text-xs font-mono uppercase text-neutral-400">Session Length</label>
+                  <div className="relative">
+                    <select
+                      suppressHydrationWarning={true}
+                      value={duration}
+                      onChange={(e) => setDuration(e.target.value)}
+                      className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm transition-all"
                     >
-                      {allSlots.map((slot) => {
-                        const available = isSlotAvailable(slot);
-                        const selected = startTime === slot;
+                      <option value="60">60 Minutes (- ₹{bookingType === "Half Court" ? 750 : 1250})</option>
+                      <option value="90">90 Minutes (- ₹{bookingType === "Half Court" ? 1100 : 1850})</option>
+                      <option value="120">120 Minutes (- ₹{bookingType === "Half Court" ? 1500 : 2500})</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
+                  </div>
+                </motion.div>
+              )}
 
-                        return (
-                          <motion.button
-                            key={slot}
-                            variants={slotItem}
-                            whileHover={available && !selected ? { scale: 1.06 } : {}}
-                            whileTap={available ? { scale: 0.94 } : {}}
-                            type="button"
-                            disabled={!available}
-                            onClick={() => setStartTime(slot)}
-                            className={`relative py-3 px-1 text-[11px] sm:text-xs font-mono font-bold uppercase transition-colors border ${
-                              selected
-                                ? "bg-red-600 border-red-500 text-white"
-                                : available
-                                ? "bg-lime-500/10 border-lime-500/30 text-lime-400 hover:bg-lime-500 hover:text-black cursor-pointer"
-                                : "bg-neutral-950 border-neutral-900 text-neutral-600 opacity-50 cursor-not-allowed"
-                            }`}
-                          >
-                            {selected && (
-                              <motion.span
-                                layoutId="slot-selected-glow"
-                                className="absolute inset-0 bg-red-600 -z-0 shadow-[0_0_18px_rgba(220,38,38,0.55)]"
-                                transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                              />
-                            )}
-                            <span className="relative z-10">{slot}</span>
-                          </motion.button>
-                        );
-                      })}
-                    </motion.div>
-                  </LayoutGroup>
-                </div>
-              </motion.div>
+              {/* Slot Grid - ⚡ STEP-BY-STEP FLOW CHECK: Hidden until calendar selection exists */}
+              {bookingDate && (
+                <motion.div initial="hidden" animate="show" variants={fadeUp} className="space-y-2 relative">
+                  <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Slot</label>
+                  <div className="relative">
+                    <LayoutGroup>
+                      <motion.div
+                        variants={stagger}
+                        initial="hidden"
+                        animate="show"
+                        className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 p-3 sm:p-4 bg-neutral-900/30 border border-neutral-800 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-700 transition-all"
+                      >
+                        {allSlots.map((slot) => {
+                          const available = isSlotAvailable(slot);
+                          const selected = startTime === slot;
+
+                          return (
+                            <motion.button
+                              suppressHydrationWarning={true}
+                              key={slot}
+                              variants={slotItem}
+                              whileHover={available && !selected ? { scale: 1.06 } : {}}
+                              whileTap={available ? { scale: 0.94 } : {}}
+                              type="button"
+                              disabled={!available}
+                              onClick={() => setStartTime(slot)}
+                              className={`relative py-3 px-1 text-[11px] sm:text-xs font-mono font-bold uppercase transition-colors border ${
+                                selected
+                                  ? "bg-red-600 border-red-500 text-white"
+                                  : available
+                                  ? "bg-lime-500/10 border-lime-500/30 text-lime-400 hover:bg-lime-500 hover:text-black cursor-pointer"
+                                  : "bg-neutral-950 border-neutral-900 text-neutral-600 opacity-50 cursor-not-allowed"
+                              }`}
+                            >
+                              {selected && (
+                                <motion.span
+                                  layoutId="slot-selected-glow"
+                                  className="absolute inset-0 bg-red-600 -z-0 shadow-[0_0_18px_rgba(220,38,38,0.55)]"
+                                  transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                                />
+                              )}
+                              <span className="relative z-10">{slot}</span>
+                            </motion.button>
+                          );
+                        })}
+                      </motion.div>
+                    </LayoutGroup>
+                  </div>
+                </motion.div>
+              )}
             </div>
           </motion.div>
 
@@ -827,19 +812,12 @@ export default function Home() {
               ))}
             </div>
 
-            <div className="black bg-black p-4 border border-neutral-800 space-y-2">
-              <div className="flex justify-between items-center text-xs font-mono gap-2">
-                <span className="text-neutral-400">LOCKDOWN RESERVATION FEE:</span>
-                <span className="text-lime-400 font-bold whitespace-nowrap">
-                  ₹200 + Convenience Fee
-                </span>
-              </div>
-              <p className="text-[10px] text-neutral-600 leading-normal font-mono">
-                An advance lock deposit reserves the stadium slot uniquely for your team line.
-              </p>
-              <div className="h-px bg-neutral-800 my-2" />
-              <div className="flex justify-between items-center gap-2">
-                <span className="text-xs font-mono text-white font-bold">GROSS FIELD VALUE:</span>
+            {/* 🛠️ UPDATED PITCH BILL RECEIPT: Swapped Positions, Applied 50px Font Scaling & Color Dual Contrast */}
+            <div className="black bg-black p-4 border border-neutral-800 space-y-4">
+              
+              {/* Row 1: Gross Field Value (Positioned Above) */}
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
+                <span className="text-xs font-mono text-white font-black tracking-wider">GROSS FIELD VALUE:</span>
                 <AnimatePresence mode="wait">
                   <motion.span
                     key={totalAmount}
@@ -847,15 +825,30 @@ export default function Home() {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 6, scale: 0.9 }}
                     transition={{ duration: 0.25, ease: easeOut }}
-                    className="text-xl font-black text-lime-400 whitespace-nowrap"
+                    className="text-[20px] leading-none font-black text-white whitespace-nowrap"
                   >
                     ₹{totalAmount}
                   </motion.span>
                 </AnimatePresence>
               </div>
+
+              <div className="h-px bg-neutral-800 my-2" />
+
+              {/* Row 2: Lockdown Reservation Fee (Positioned Below) */}
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
+                <span className="text-[10px] font-mono text-neutral-400 font-bold tracking-wider">LOCKDOWN RESERVATION FEE:</span>
+                <span className="text-[17.7px] leading-none font-black text-lime-400 whitespace-nowrap">
+                  ₹200 + Convenience Fee
+                </span>
+              </div>
+
+              <p className="text-[10px] text-neutral-600 leading-normal font-mono pt-1 border-t border-neutral-900/60">
+                An advance lock deposit reserves the stadium slot uniquely for your team line.
+              </p>
             </div>
 
             <motion.button
+              suppressHydrationWarning={true}
               whileHover={startTime ? { y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.35)" } : {}}
               whileTap={startTime ? { scale: 0.97 } : {}}
               type="button"
@@ -900,6 +893,7 @@ export default function Home() {
 
       {/* ---------- Floating CTA ---------- */}
       <motion.button
+        suppressHydrationWarning={true}
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 1.2, duration: 0.5, ease: easeOut }}
@@ -953,6 +947,7 @@ export default function Home() {
                     <div className="grid grid-cols-3 gap-2">
                       {["Admin", "Sub-Admin", "Coach"].map((role) => (
                         <motion.button
+                          suppressHydrationWarning={true}
                           key={role}
                           type="button"
                           whileTap={{ scale: 0.95 }}
@@ -982,6 +977,7 @@ export default function Home() {
                     Access Keycode
                   </label>
                   <input
+                    suppressHydrationWarning={true}
                     type="password"
                     placeholder="Enter password"
                     value={staffPassword}
@@ -993,6 +989,7 @@ export default function Home() {
 
                 <div className="grid grid-cols-2 gap-3 pt-2">
                   <motion.button
+                    suppressHydrationWarning={true}
                     whileHover={{ y: -1 }}
                     whileTap={{ scale: 0.97 }}
                     type="submit"
@@ -1001,6 +998,7 @@ export default function Home() {
                     Authorize
                   </motion.button>
                   <motion.button
+                    suppressHydrationWarning={true}
                     whileHover={{ y: -1 }}
                     whileTap={{ scale: 0.97 }}
                     type="button"
