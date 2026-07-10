@@ -6,7 +6,7 @@ import { supabase } from "./lib/supabase";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 
 /* ------------------------------------------------------------------ */
-/*  Motion Presets                                                    */
+/* Motion Presets                                                    */
 /* ------------------------------------------------------------------ */
 const easeOut = [0.22, 1, 0.36, 1] as const;
 
@@ -31,7 +31,7 @@ const slotItem = {
 };
 
 /* ------------------------------------------------------------------ */
-/*  Main Component                                                    */
+/* Main Component                                                    */
 /* ------------------------------------------------------------------ */
 export default function Home() {
   const router = useRouter();
@@ -40,7 +40,7 @@ export default function Home() {
   const [sport, setSport] = useState("Football");
   const [bookingDate, setBookingDate] = useState("");
   const [startTime, setStartTime] = useState("");
-  const [duration, setDuration] = useState("60");
+  const [duration, setDuration] = useState(""); // 🔒 Default cleared state value
   const [bookingType, setBookingType] = useState("Full Court");
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
 
@@ -66,6 +66,7 @@ export default function Home() {
 
   /* -------- Pricing -------- */
   const totalAmount = useMemo(() => {
+    if (!duration) return 0; // 🔒 Guard condition fallback structure
     if (bookingType === "Half Court") {
       return duration === "60" ? 750 : duration === "90" ? 1100 : 1500;
     }
@@ -95,7 +96,7 @@ export default function Home() {
   };
 
   const isSlotAvailable = (slot: string) => {
-    if (!bookingDate) return false;
+    if (!bookingDate || !duration) return false; // 🔒 Locked guard parameter validation boundary
     const segmentsNeeded = Number(duration) / 30;
     const slotIndex = allSlots.indexOf(slot);
     for (let i = 0; i < segmentsNeeded; i++) {
@@ -132,7 +133,7 @@ export default function Home() {
 
   /* -------- Supabase Load Booked Slots -------- */
   const loadBookedSlots = async (date: string) => {
-    const { data, error } = await supabase
+    const { data: bookingsData, error } = await supabase
       .from("bookings")
       .select("start_time, duration_minutes, booking_type, court_number")
       .eq("booking_date", date);
@@ -150,8 +151,8 @@ export default function Home() {
     const blocked: string[] = [];
     const slotCounts: Record<string, number> = {};
 
-    if (data) {
-      data.forEach((booking: any) => {
+    if (bookingsData) {
+      bookingsData.forEach((booking: any) => {
         if (!booking.start_time) return;
         const time = booking.start_time.substring(0, 5);
         const [h, m] = time.split(":");
@@ -373,7 +374,7 @@ export default function Home() {
     setPhone("");
     setBookingDate("");
     setStartTime("");
-    setDuration("60");
+    setDuration("");
   };
 
   /* -------- Staff Login -------- */
@@ -410,7 +411,7 @@ export default function Home() {
   };
 
   /* ================================================================ */
-  /*  RENDER                                                          */
+  /* RENDER                                                          */
   /* ================================================================ */
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden">
@@ -491,7 +492,7 @@ export default function Home() {
               className="text-base sm:text-lg md:text-xl font-medium tracking-normal text-neutral-400 mt-3 sm:mt-4 max-w-xl mx-auto lg:mx-0"
             >
               Premium multisport arena built for high-performance{" "}
-              <span className="text-lime-400">Football</span> &amp;{" "}
+              <span className="text-lime-400">Football</span> &{" "}
               <span className="text-lime-400">Cricket</span> action.
             </motion.p>
           </div>
@@ -660,7 +661,7 @@ export default function Home() {
                       <option value="Football">Football</option>
                       <option value="Cricket">Cricket</option>
                     </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
                   </div>
                 </div>
 
@@ -676,7 +677,7 @@ export default function Home() {
                       <option value="Half Court">Half Court</option>
                       <option value="Full Court">Full Court</option>
                     </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
                   </div>
                 </div>
               </motion.div>
@@ -698,76 +699,80 @@ export default function Home() {
                 />
               </motion.div>
 
-              {/* Duration - ⚡ STEP-BY-STEP FLOW CHECK: Hidden until calendar selection exists */}
-              {bookingDate && (
-                <motion.div initial="hidden" animate="show" variants={fadeUp} className="space-y-2 relative">
-                  <label className="text-xs font-mono uppercase text-neutral-400">Session Length</label>
-                  <div className="relative">
-                    <select
-                      suppressHydrationWarning={true}
-                      value={duration}
-                      onChange={(e) => setDuration(e.target.value)}
-                      className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm transition-all"
+              {/* Duration - 🛠️ Always Visible but Select Interactivity Locked until Date Input Registers */}
+              <motion.div variants={fadeUp} className="space-y-2 relative">
+                <label className="text-xs font-mono uppercase text-neutral-400">Session Length</label>
+                <div className="relative">
+                  <select
+                    disabled={!bookingDate} // 🔒 Dependency constraint handler hook
+                    suppressHydrationWarning={true}
+                    value={duration}
+                    onChange={(e) => setDuration(e.target.value)}
+                    className={`w-full p-4 bg-neutral-900 text-white border outline-none rounded-none appearance-none font-medium text-base md:text-sm transition-all ${
+                      !bookingDate ? "border-neutral-800/50 opacity-40 cursor-not-allowed text-neutral-500" : "border-neutral-800 focus:border-lime-400"
+                    }`}
+                  >
+                    <option value="" disabled hidden>-- Select Session Length --</option> {/* 🔒 Initial custom row index indicator block */}
+                    <option value="60">60 Minutes (- ₹{bookingType === "Half Court" ? 750 : 1250})</option>
+                    <option value="90">90 Minutes (- ₹{bookingType === "Half Court" ? 1100 : 1850})</option>
+                    <option value="120">120 Minutes (- ₹{bookingType === "Half Court" ? 1500 : 2500})</option>
+                  </select>
+                  <div className={`pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-xs transition-all ${
+                    !bookingDate ? "text-neutral-700 opacity-40" : "text-neutral-500"
+                  }`}>▼</div>
+                </div>
+              </motion.div>
+
+              {/* Slot Grid - 🛠️ Always Visible but Block Click Overrides until Date and Duration are populated */}
+              <motion.div variants={fadeUp} className="space-y-2 relative">
+                <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Slot</label>
+                <div className="relative">
+                  <LayoutGroup>
+                    <motion.div
+                      variants={stagger}
+                      initial="hidden"
+                      animate="show"
+                      className={`grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 p-3 sm:p-4 bg-neutral-900/30 border border-neutral-800 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-700 transition-all ${
+                        !bookingDate || !duration ? "opacity-40 pointer-events-none select-none" : ""
+                      }`}
                     >
-                      <option value="60">60 Minutes (- ₹{bookingType === "Half Court" ? 750 : 1250})</option>
-                      <option value="90">90 Minutes (- ₹{bookingType === "Half Court" ? 1100 : 1850})</option>
-                      <option value="120">120 Minutes (- ₹{bookingType === "Half Court" ? 1500 : 2500})</option>
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-neutral-500 text-xs">▼</div>
-                  </div>
-                </motion.div>
-              )}
+                      {allSlots.map((slot) => {
+                        const available = isSlotAvailable(slot);
+                        const selected = startTime === slot;
 
-              {/* Slot Grid - ⚡ STEP-BY-STEP FLOW CHECK: Hidden until calendar selection exists */}
-              {bookingDate && (
-                <motion.div initial="hidden" animate="show" variants={fadeUp} className="space-y-2 relative">
-                  <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Slot</label>
-                  <div className="relative">
-                    <LayoutGroup>
-                      <motion.div
-                        variants={stagger}
-                        initial="hidden"
-                        animate="show"
-                        className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 p-3 sm:p-4 bg-neutral-900/30 border border-neutral-800 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-700 transition-all"
-                      >
-                        {allSlots.map((slot) => {
-                          const available = isSlotAvailable(slot);
-                          const selected = startTime === slot;
-
-                          return (
-                            <motion.button
-                              suppressHydrationWarning={true}
-                              key={slot}
-                              variants={slotItem}
-                              whileHover={available && !selected ? { scale: 1.06 } : {}}
-                              whileTap={available ? { scale: 0.94 } : {}}
-                              type="button"
-                              disabled={!available}
-                              onClick={() => setStartTime(slot)}
-                              className={`relative py-3 px-1 text-[11px] sm:text-xs font-mono font-bold uppercase transition-colors border ${
-                                selected
-                                  ? "bg-red-600 border-red-500 text-white"
-                                  : available
-                                  ? "bg-lime-500/10 border-lime-500/30 text-lime-400 hover:bg-lime-500 hover:text-black cursor-pointer"
-                                  : "bg-neutral-950 border-neutral-900 text-neutral-600 opacity-50 cursor-not-allowed"
-                              }`}
-                            >
-                              {selected && (
-                                <motion.span
-                                  layoutId="slot-selected-glow"
-                                  className="absolute inset-0 bg-red-600 -z-0 shadow-[0_0_18px_rgba(220,38,38,0.55)]"
-                                  transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                                />
-                              )}
-                              <span className="relative z-10">{slot}</span>
-                            </motion.button>
-                          );
-                        })}
-                      </motion.div>
-                    </LayoutGroup>
-                  </div>
-                </motion.div>
-              )}
+                        return (
+                          <motion.button
+                            suppressHydrationWarning={true}
+                            key={slot}
+                            variants={slotItem}
+                            whileHover={available && !selected && bookingDate && duration ? { scale: 1.06 } : {}}
+                            whileTap={available && bookingDate && duration ? { scale: 0.94 } : {}}
+                            type="button"
+                            disabled={!available || !bookingDate || !duration} // 🔒 Consolidated dependency locks
+                            onClick={() => setStartTime(slot)}
+                            className={`relative py-3 px-1 text-[11px] sm:text-xs font-mono font-bold uppercase transition-colors border ${
+                              selected
+                                ? "bg-red-600 border-red-500 text-white"
+                                : available && bookingDate && duration
+                                ? "bg-lime-500/10 border-lime-500/30 text-lime-400 hover:bg-lime-500 hover:text-black cursor-pointer"
+                                : "bg-neutral-950 border-neutral-900 text-neutral-600 opacity-50 cursor-not-allowed"
+                            }`}
+                          >
+                            {selected && (
+                              <motion.span
+                                layoutId="slot-selected-glow"
+                                className="absolute inset-0 bg-red-600 -z-0 shadow-[0_0_18px_rgba(220,38,38,0.55)]"
+                                transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                              />
+                            )}
+                            <span className="relative z-10">{slot}</span>
+                          </motion.button>
+                        );
+                      })}
+                    </motion.div>
+                  </LayoutGroup>
+                </div>
+              </motion.div>
             </div>
           </motion.div>
 
@@ -792,7 +797,7 @@ export default function Home() {
                 { k: "ARENA SCALE", v: bookingType, cls: "text-white" },
                 { k: "TARGET DATE", v: bookingDate || "Unselected", cls: "text-lime-400" },
                 { k: "KICKOFF TIME", v: startTime || "None", cls: "text-white" },
-                { k: "DURATION TIMEFRAME", v: `${duration} Minutes`, cls: "text-white" },
+                { k: "DURATION TIMEFRAME", v: `${duration ? duration + ' Minutes' : 'Unselected'}`, cls: "text-white" },
               ].map((row) => (
                 <div key={row.k} className="flex justify-between gap-4">
                   <span className="text-neutral-500 flex-shrink-0">{row.k}:</span>
@@ -812,10 +817,10 @@ export default function Home() {
               ))}
             </div>
 
-            {/* 🛠️ UPDATED PITCH BILL RECEIPT: Swapped Positions, Applied 50px Font Scaling & Color Dual Contrast */}
+            {/* 🧾 PITCH BILL RECEIPT: Gross value on top downscaled to 20px, lockdown fee below downscaled to 17.7px */}
             <div className="black bg-black p-4 border border-neutral-800 space-y-4">
               
-              {/* Row 1: Gross Field Value (Positioned Above) */}
+              {/* Row 1: Gross Field Value (Positioned Above - Fixed to 20px White) */}
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
                 <span className="text-xs font-mono text-white font-black tracking-wider">GROSS FIELD VALUE:</span>
                 <AnimatePresence mode="wait">
@@ -834,10 +839,10 @@ export default function Home() {
 
               <div className="h-px bg-neutral-800 my-2" />
 
-              {/* Row 2: Lockdown Reservation Fee (Positioned Below) */}
+              {/* Row 2: Lockdown Reservation Fee (Positioned Below - Fixed to 17.7px Lime Green) */}
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
                 <span className="text-[10px] font-mono text-neutral-400 font-bold tracking-wider">LOCKDOWN RESERVATION FEE:</span>
-                <span className="text-[17.7px] leading-none font-black text-lime-400 whitespace-nowrap">
+                <span className="text-[17.5px] leading-none font-black text-lime-400 whitespace-nowrap">
                   ₹200 + Convenience Fee
                 </span>
               </div>
