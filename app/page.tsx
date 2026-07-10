@@ -509,7 +509,7 @@ export default function Home() {
               type="button"
               className="bg-lime-400 hover:bg-lime-300 text-black text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-colors font-black text-center shadow-lg shadow-lime-400/10 cursor-pointer flex items-center justify-center gap-2"
             >
-              📅 BOOK NOW
+              ⚽ BOOK NOW
             </motion.button>
             {[
               { href: "https://wa.me/918453095258", label: "WhatsApp" },
