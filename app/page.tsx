@@ -637,7 +637,7 @@ export default function Home() {
                     placeholder="Enter athlete name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full p-4 bg-neutral-900/50 text-lime-400 font-bold font-mono border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all text-base md:text-sm"
+                    className="w-full p-4 bg-neutral-900/50 text-lime-400 font-bold border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all text-base md:text-sm"
                   />
                 </div>
                 <div className="space-y-2">
@@ -651,7 +651,7 @@ export default function Home() {
                       const sanitized = e.target.value.replace(/\D/g, "");
                       if (sanitized.length <= 10) setPhone(sanitized);
                     }}
-                    className="w-full p-4 bg-neutral-900/50 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all text-base md:text-sm"
+                    className="w-full p-4 bg-neutral-900/50 text-white font-mono border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all text-base md:text-sm"
                   />
                 </div>
               </motion.div>
@@ -665,7 +665,7 @@ export default function Home() {
                       suppressHydrationWarning={true}
                       value={sport}
                       onChange={(e) => setSport(e.target.value)}
-                      className="w-full p-4 bg-neutral-900 text-lime-400 font-bold font-mono border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none text-base md:text-sm"
+                      className="w-full p-4 bg-neutral-900 text-lime-400 font-bold border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none text-base md:text-sm"
                     >
                       <option value="Football">Football</option>
                       <option value="Cricket">Cricket</option>
@@ -1003,7 +1003,7 @@ export default function Home() {
 
                 <div className="grid grid-cols-2 gap-3 pt-2">
                   <motion.button
-                    suppressHydrationWarning={true}
+                    supprationHydrationWarning={true}
                     whileHover={{ y: -1 }}
                     whileTap={{ scale: 0.97 }}
                     type="submit"
