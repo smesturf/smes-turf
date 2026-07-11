@@ -360,7 +360,7 @@ export default function Home() {
 
     const clientText = `🏟️ *SMES Sports Academy Booking Confirmed*\n\nHello ${name},\n\nYour booking has been successfully confirmed.\n\n📅 *Date:* ${bookingDate}\n🕒 *Time:* ${startTime}\n⏱ *Duration:* ${duration} Minutes\n🏏 *Sport:* ${sport}\n🏟 *Court:* ${bookingType}\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200\n💳 *Balance Due:* ₹${balanceAmount}\n\n📍 *Location:*\nSMES Sports Academy, Mysuru\n\n⚠️ Please arrive 10 minutes before your slot.\n⚠️ Balance payment must be completed before play starts.\n\nThank you for choosing SMES Sports Academy.\n\n📞 *Support:* 8453095258`;
 
-    const adminText = `🔔 *NEW BOOKING RECEIVED*\n\n🏟️ *SMES Sports Academy*\n\n👤 *Customer:* ${name}\n📞 *Phone:* ${phone}\n\n📅 *Date:* ${bookingDate}\n🕒 *Time:* ${startTime}\n⏱ *Duration:* ${duration} Minutes\n\n🏟 *Court:* ${courtNumber}\n🏏 *Sport:* ${sport}\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200\n💳 *Balance:* ₹${balanceAmount}\n\n💳 *Payment Status:* PAID\n\n*Booking ID:* ${bookingId}`;
+    const adminText = `🔔 *NEW BOOKING RECEIVED*\n\nGRID *SMES Sports Academy*\n\n👤 *Customer:* ${name}\n📞 *Phone:* ${phone}\n\n📅 *Date:* ${bookingDate}\n🕒 *Time:* ${startTime}\n⏱ *Duration:* ${duration} Minutes\n\n🏟 *Court:* ${courtNumber}\n🏏 *Sport:* ${sport}\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200\n💳 *Balance:* ₹${balanceAmount}\n\n💳 *Payment Status:* PAID\n\n*Booking ID:* ${bookingId}`;
 
     try {
       await fetch("/api/whatsapp", {
@@ -505,7 +505,6 @@ export default function Home() {
             </motion.p>
           </div>
 
-          {/* 🛠️ ACTION CONTROLS BUTTON GROUP ROW */}
           <motion.div
             variants={fadeUp}
             className="grid grid-cols-1 gap-2 w-full max-w-md mx-auto lg:max-w-none lg:mx-0 lg:flex lg:w-auto lg:gap-3"
@@ -522,7 +521,7 @@ export default function Home() {
             </motion.button>
             {[
               { href: "https://wa.me/918453095258", label: "WhatsApp" },
-              { href: "https://instagram.com/smesturf", label: "Instagram" }, // 📸 NEW INSTAGRAM LINK COMPONENT
+              { href: "https://instagram.com/smesturf", label: "Instagram" }, 
               { href: "https://maps.google.com/?q=12.329329,76.612008", label: "Find Arena" },
               { href: "tel:+918453095258", label: "Call Desk" },
             ].map((btn) => (
@@ -638,7 +637,7 @@ export default function Home() {
                     placeholder="Enter athlete name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full p-4 bg-neutral-900/50 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all font-medium text-base md:text-sm"
+                    className="w-full p-4 bg-neutral-900/50 text-lime-400 font-bold font-mono border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all text-base md:text-sm"
                   />
                 </div>
                 <div className="space-y-2">
@@ -652,7 +651,7 @@ export default function Home() {
                       const sanitized = e.target.value.replace(/\D/g, "");
                       if (sanitized.length <= 10) setPhone(sanitized);
                     }}
-                    className="w-full p-4 bg-neutral-900/50 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all font-medium text-base md:text-sm"
+                    className="w-full p-4 bg-neutral-900/50 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all text-base md:text-sm"
                   />
                 </div>
               </motion.div>
@@ -666,7 +665,7 @@ export default function Home() {
                       suppressHydrationWarning={true}
                       value={sport}
                       onChange={(e) => setSport(e.target.value)}
-                      className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm"
+                      className="w-full p-4 bg-neutral-900 text-lime-400 font-bold font-mono border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none text-base md:text-sm"
                     >
                       <option value="Football">Football</option>
                       <option value="Cricket">Cricket</option>
@@ -682,7 +681,7 @@ export default function Home() {
                       suppressHydrationWarning={true}
                       value={bookingType}
                       onChange={(e) => setBookingType(e.target.value)}
-                      className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none font-medium text-base md:text-sm"
+                      className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none text-base md:text-sm"
                     >
                       <option value="Half Court">Half Court</option>
                       <option value="Full Court">Full Court</option>
@@ -698,13 +697,13 @@ export default function Home() {
                 <input
                   suppressHydrationWarning={true}
                   type="date"
-                  min={minDate} 
+                  min={minDate}
                   value={bookingDate}
                   onChange={(e) => {
                     setBookingDate(e.target.value);
                     loadBookedSlots(e.target.value);
                   }}
-                  className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none font-medium text-base md:text-sm"
+                  className="w-full p-4 bg-neutral-900 text-lime-400 font-bold font-mono border border-neutral-800 focus:border-lime-400 outline-none rounded-none text-base md:text-sm"
                   style={{ colorScheme: "dark" }}
                 />
               </motion.div>
@@ -718,7 +717,7 @@ export default function Home() {
                     suppressHydrationWarning={true}
                     value={duration}
                     onChange={(e) => setDuration(e.target.value)}
-                    className={`w-full p-4 bg-neutral-900 text-white border outline-none rounded-none appearance-none font-medium text-base md:text-sm transition-all ${
+                    className={`w-full p-4 bg-neutral-900 text-white border outline-none rounded-none appearance-none text-base md:text-sm transition-all ${
                       !bookingDate ? "border-neutral-800/50 opacity-40 cursor-not-allowed text-neutral-500" : "border-neutral-800 focus:border-lime-400"
                     }`}
                   >
