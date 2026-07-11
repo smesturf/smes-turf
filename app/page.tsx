@@ -1003,7 +1003,7 @@ export default function Home() {
 
                 <div className="grid grid-cols-2 gap-3 pt-2">
                   <motion.button
-                    supprationHydrationWarning={true}
+                    suppressHydrationWarning={true}
                     whileHover={{ y: -1 }}
                     whileTap={{ scale: 0.97 }}
                     type="submit"
