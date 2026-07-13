@@ -385,31 +385,44 @@ export default function Home() {
     setDuration("");
   };
 
-  /* -------- Staff Login -------- */
-  const handleStaffLogin = (e: React.FormEvent) => {
+  /* -------- Staff Login (Real Cryptographic Auth with Shared Email) -------- */
+  const handleStaffLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (staffRole === "Admin") {
-      if (staffPassword === "SMES@2026") {
+    
+    // Automatically map roles to unique Supabase sub-addresses using your main email
+    let staffEmail = "";
+    if (staffRole === "Admin") staffEmail = "sports+admin@smestuff.com";
+    if (staffRole === "Sub-Admin") staffEmail = "sports+subadmin@smestuff.com";
+    if (staffRole === "Coach") staffEmail = "sports+coach@smestuff.com";
+
+    if (!staffEmail) return;
+
+    // Send the authentication request to Supabase
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: staffEmail,
+      password: staffPassword,
+    });
+
+    if (error) {
+      alert(`❌ Authorization Refused: ${error.message}`);
+      return;
+    }
+
+    // Handle routing based on successful session generation
+    if (data.session) {
+      if (staffRole === "Admin") {
         localStorage.setItem("adminLoggedIn", "true");
         localStorage.setItem("adminLoginTime", Date.now().toString());
         router.push("/admin");
-        setShowStaffModal(false);
-        setStaffPassword("");
-      } else alert("❌ Invalid Admin Password");
-    } else if (staffRole === "Sub-Admin") {
-      if (staffPassword === "1234") {
+      } else if (staffRole === "Sub-Admin") {
         localStorage.setItem("subadminLoggedIn", "true");
         router.push("/subadmin");
-        setShowStaffModal(false);
-        setStaffPassword("");
-      } else alert("❌ Invalid Sub-Admin Password");
-    } else if (staffRole === "Coach") {
-      if (staffPassword === "2468") {
+      } else if (staffRole === "Coach") {
         localStorage.setItem("subAdminLoggedIn", "true");
         router.push("/coach");
-        setShowStaffModal(false);
-        setStaffPassword("");
-      } else alert("❌ Invalid Coach Password");
+      }
+      setShowStaffModal(false);
+      setStaffPassword("");
     }
   };
 
