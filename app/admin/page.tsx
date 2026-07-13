@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 
 /* ------------------------------------------------------------------ */
-/*  Motion Presets                                                    */
+/* Motion Presets                                                    */
 /* ------------------------------------------------------------------ */
 const easeOut = [0.22, 1, 0.36, 1] as const;
 
@@ -341,7 +341,7 @@ export default function AdminPage() {
     const { data, error } = await supabase
       .from("bookings")
       .select("*")
-      .or(`booking_date.gte.${today},balance_amount.gt.0`)
+      .or(`booking_date.gte.${today},balance_amount.gt.0,payment_date.eq.${today}`)
       .order("booking_date", { ascending: true })
       .order("start_time", { ascending: true });
 
@@ -375,11 +375,40 @@ export default function AdminPage() {
 
     setTodaySlots(todaysBookings.length);
     setTomorrowSlots(tomorrowsBookings.length);
-    const cashCollectedToday = todaysBookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
-    const upiCollectedToday = todaysBookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
-    setTodayCashCollection(cashCollectedToday);
-    setTodayUpiCollection(upiCollectedToday);
-    setTodayTotalCollection(Number(cashCollectedToday) + Number(upiCollectedToday));
+
+    let cashVault = 0;
+    let upiNodes = 0;
+
+    data?.forEach((booking) => {
+      const createdToday = booking.created_at?.split("T")[0] === today;
+      const paidToday = booking.payment_date === today;
+
+      if (paidToday) {
+        if (booking.payment_method === "Full Cash") {
+          cashVault += Number(booking.cash_received || 0);
+        } else if (booking.payment_method === "Full UPI") {
+          upiNodes += Number(booking.upi_received || 0);
+        } else if (booking.payment_method === "Cash + UPI") {
+          cashVault += Number(booking.cash_received || 0);
+          upiNodes += Number(booking.upi_received || 0);
+        }
+      }
+
+      if (createdToday && booking.customer_name === "Offline Booking") {
+        if (!paidToday) {
+          cashVault += Number(booking.cash_received || 0);
+          upiNodes += Number(booking.upi_received || 0);
+        }
+      }
+
+      if (createdToday && booking.customer_name !== "Offline Booking") {
+        upiNodes += Number(booking.advance_amount || 0);
+      }
+    });
+
+    setTodayCashCollection(cashVault);
+    setTodayUpiCollection(upiNodes);
+    setTodayTotalCollection(cashVault + upiNodes);
   };
 
   const loadAvailableAdminSlots = async (date: string) => {
@@ -474,6 +503,7 @@ export default function AdminPage() {
         cash_received: cashReceived,
         upi_received: upiReceived,
         payment_completed: true,
+        payment_date: today,
       }]);
       if (error) { alert(error.message); return; }
 
@@ -731,6 +761,7 @@ export default function AdminPage() {
         payment_method: paymentType,
         payment_completed: true,
         balance_amount: 0,
+        payment_date: today,
       })
       .eq("id", selectedBooking.id);
     if (error) { alert(error.message); return; }
@@ -754,6 +785,7 @@ export default function AdminPage() {
         payment_method: null,
         payment_completed: false,
         balance_amount: originalBalance,
+        payment_date: null,
       })
       .eq("id", booking.id);
     if (error) { alert(error.message); return; }
@@ -774,6 +806,7 @@ export default function AdminPage() {
         payment_method: null,
         payment_completed: false,
         balance_amount: originalBalance,
+        payment_date: null,
       })
       .eq("id", booking.id);
     if (error) { alert(error.message); return; }
@@ -800,7 +833,7 @@ export default function AdminPage() {
     );
   });
 
-  const statCards = [
+  const statCards = useMemo(() => [
     { label: "Gross Orders", value: bookings.length, accent: "text-white", tag: "01" },
     { label: "Today Slots", value: todaySlots, accent: "text-lime-400", tag: "02" },
     { label: "Tomorrow Slots", value: tomorrowSlots, accent: "text-neutral-300", tag: "03" },
@@ -809,7 +842,7 @@ export default function AdminPage() {
     { label: "Cash Vault", value: `₹${todayCashCollection}`, accent: "text-amber-400", tag: "06" },
     { label: "UPI Nodes", value: `₹${todayUpiCollection}`, accent: "text-cyan-400", tag: "07" },
     { label: "Total Collected", value: `₹${todayTotalCollection}`, accent: "text-fuchsia-400", tag: "08" },
-  ];
+  ], [bookings.length, todaySlots, tomorrowSlots, todaysAdvance, todaysBalance, todayCashCollection, todayUpiCollection, todayTotalCollection]);
 
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden selection:bg-lime-400 selection:text-black">
@@ -1436,7 +1469,7 @@ export default function AdminPage() {
                   <th className="p-4">Target Date</th>
                   <th className="p-4">Time Block Range</th>
                   <th className="p-4">Duration</th>
-                  <th className="p-4 'text-cyan-400'">Court Section</th>
+                  <th className="p-4">Court Section</th>
                   <th className="p-4">Block Reason</th>
                   <th className="p-4 text-center">Operations</th>
                 </tr>
@@ -1783,4 +1816,3 @@ export default function AdminPage() {
     </main>
   );
 }
-
