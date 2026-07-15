@@ -59,8 +59,8 @@ export default function Home() {
   useEffect(() => {
     const fetchWeather = async () => {
       try {
-        // Hitting live free coordinates exactly mapped to your SMES Turf location
-        const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=12.329329&longitude=76.612008&current_weather=true");
+        // Hitting live free coordinates for Vijayanagar 2nd Stage, Mysuru
+        const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=12.3400&longitude=76.6100&current_weather=true");
         const data = await res.json();
         
         if (data?.current_weather) {
@@ -586,26 +586,18 @@ export default function Home() {
           </motion.div>
         </div>
 
-        {/* 🌤️ DYNAMIC WEATHER + PRICING PROMO NODE */}
+        {/* ⚡ PRICING PROMO NODE */}
         <motion.div
           variants={fadeUp}
-          className="mt-8 sm:mt-12 flex flex-col sm:flex-row items-center gap-4 bg-neutral-900/70 backdrop-blur border border-neutral-800 p-4 rounded-none w-full sm:w-auto divide-y sm:divide-y-0 sm:divide-x divide-neutral-800"
+          className="mt-8 sm:mt-12 inline-flex items-center gap-3 sm:gap-4 bg-neutral-900/70 backdrop-blur border border-neutral-800 px-4 py-3 rounded-none w-full sm:w-auto"
         >
-          <div className="flex items-center gap-3 w-full sm:w-auto justify-center sm:justify-start">
-            <span className="flex h-2 w-2 relative flex-shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500" />
-            </span>
-            <p className="text-[11px] sm:text-xs font-mono uppercase tracking-wide text-neutral-300">
-              ⚡ Launch Offer: <span className="text-neutral-500 line-through mr-1 font-medium">₹2400</span> <span className="text-lime-400 font-bold">₹1200 / Hr</span>
-            </p>
-          </div>
-          
-          {weather && (
-            <div className="flex items-center gap-2 pt-3 sm:pt-0 sm:pl-4 text-[11px] sm:text-xs font-mono uppercase tracking-wide text-neutral-400 w-full sm:w-auto justify-center sm:justify-start">
-              🌤️ Mysuru Conditions: <span className="text-white font-bold">{weather.temp}°C</span> — <span className="text-lime-400">{weather.condition}</span>
-            </div>
-          )}
+          <span className="flex h-2 w-2 relative flex-shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500" />
+          </span>
+          <p className="text-[11px] sm:text-xs font-mono uppercase tracking-wide text-neutral-300">
+            ⚡ Launch Offer: <span className="text-neutral-500 line-through mr-1 font-medium">₹2400</span> <span className="text-lime-400 font-bold">₹1200 / Hr</span>
+          </p>
         </motion.div>
 
       </motion.header>
@@ -674,13 +666,30 @@ export default function Home() {
             viewport={{ once: true, amount: 0.15 }}
             className="lg:col-span-7 space-y-6 sm:space-y-8"
           >
-            <motion.div variants={fadeUp}>
-              <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-2">
-                02 — Reservation
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">
-                Select and Secure Pitch
-              </h2>
+            <motion.div variants={fadeUp} className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+              <div>
+                <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-2">
+                  02 — Reservation
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">
+                  Select and Secure Pitch
+                </h2>
+              </div>
+              
+              {/* 🌤️ NEW WEATHER WIDGET PLACEMENT */}
+              {weather && (
+                <div className="bg-neutral-900/40 border border-neutral-800 px-4 py-2.5 inline-flex items-center gap-3">
+                  <span className="text-xl">🌤️</span>
+                  <div>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500">
+                      Vijayanagar 2nd Stage
+                    </span>
+                    <span className="text-xs font-mono text-white font-bold">
+                      {weather.temp}°C — <span className="text-lime-400">{weather.condition}</span>
+                    </span>
+                  </div>
+                </div>
+              )}
             </motion.div>
 
             <div className="space-y-4 sm:space-y-6">
