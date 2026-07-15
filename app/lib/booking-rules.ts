@@ -45,35 +45,37 @@ export const findCourtAvailability = (
   selectedStartTime12h: string,
   durationMinutes: number,
   bookingType: string,
-  existingBookings: BookingData[], // Bookings for current day
-  nextDayBookings: BookingData[],  // Bookings for next day (new!)
-  blockedSlots: BookingData[] = []
+  existingBookings: BookingData[],
+  nextDayBookings: BookingData[],
+  blockedSlots: BookingData[] = [],
+  previousDayBookings: BookingData[] = [],
+  previousDayBlockedSlots: BookingData[] = [],
+  nextDayBlockedSlots: BookingData[] = []
 ) => {
   const selectedStart = timeToMinutes(selectedStartTime12h);
   const selectedEnd = selectedStart + Number(durationMinutes);
 
-  // Helper: Returns true if the session spans into the next day
-  const isCrossDay = selectedEnd > (24 * 60);
-
-  const isOverlapping = (item: BookingData, isNextDay: boolean) => {
+  // Use one continuous timeline for prior, current, and next dates.
+  const isOverlapping = (item: BookingData, dayOffsetMinutes: number) => {
     if (!item.start_time) return false;
     const [hours, minutes] = item.start_time.substring(0, 5).split(":").map(Number);
-    const itemStart = hours * 60 + minutes;
+    const itemStart = hours * 60 + minutes + dayOffsetMinutes;
     const itemEnd = itemStart + (item.duration_minutes || 60);
-    
-    // If checking next day bookings, we ignore time wrap-around logic for the check itself
-    // because we have already determined it's a cross-day slot.
     return selectedStart < itemEnd && selectedEnd > itemStart;
   };
 
-  // Logic: Split checks based on whether it is cross-day
-  const overlaps = isCrossDay 
-    ? [...existingBookings.filter(b => isOverlapping(b, false)), ...nextDayBookings.filter(b => isOverlapping(b, true))]
-    : existingBookings.filter(b => isOverlapping(b, false));
-    
-  const blockedOverlaps = blockedSlots.filter(b => isOverlapping(b, false));
+  const overlaps = [
+    ...previousDayBookings.filter((booking) => isOverlapping(booking, -24 * 60)),
+    ...existingBookings.filter((booking) => isOverlapping(booking, 0)),
+    ...nextDayBookings.filter((booking) => isOverlapping(booking, 24 * 60)),
+  ];
 
-  // ... (Keep the rest of your existing overlap enforcement logic exactly the same) ...
+  const blockedOverlaps = [
+    ...previousDayBlockedSlots.filter((slot) => isOverlapping(slot, -24 * 60)),
+    ...blockedSlots.filter((slot) => isOverlapping(slot, 0)),
+    ...nextDayBlockedSlots.filter((slot) => isOverlapping(slot, 24 * 60)),
+  ];
+
   if (bookingType === "Full Court") {
     if (overlaps.length > 0 || blockedOverlaps.length > 0) {
       return { isAvailable: false, error: "Full Court is not available for this slot.", court: null };
@@ -81,6 +83,21 @@ export const findCourtAvailability = (
     return { isAvailable: true, error: null, court: "Both Courts" };
   }
 
-  // ... (Half Court logic remains identical) ...
-  // ...
+  const occupiedHalves = [...overlaps, ...blockedOverlaps];
+
+  if (occupiedHalves.some((booking) =>
+    booking.booking_type === "Full Court" ||
+    booking.court_number === "Full Court" ||
+    booking.court_number === "Both Courts"
+  )) {
+    return { isAvailable: false, error: "Half Court is not available for this slot.", court: null };
+  }
+
+  const court1Taken = occupiedHalves.some((booking) => booking.court_number === "Court 1");
+  const court2Taken = occupiedHalves.some((booking) => booking.court_number === "Court 2");
+
+  if (!court1Taken) return { isAvailable: true, error: null, court: "Court 1" };
+  if (!court2Taken) return { isAvailable: true, error: null, court: "Court 2" };
+
+  return { isAvailable: false, error: "Half Court is not available for this slot.", court: null };
 };

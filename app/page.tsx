@@ -160,20 +160,35 @@ export default function Home() {
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`;
   };
 
-  /* -------- Visual Availability Checker -------- */
-  // We perform the real, strict check on the server.
-  // This function just ensures the UI grid logic remains stable.
   const isSlotAvailable = (slot: string) => {
-    if (!bookingDate || !duration) return false;
-    
-    // We keep the "Past Midnight" protection for the UI grid to prevent
-    // selecting impossible slots, but the server API is the final judge.
-    const slotIndex = allSlots.indexOf(slot);
-    const segmentsNeeded = Number(duration) / 30;
-    if (slotIndex + segmentsNeeded > allSlots.length) return false;
-    
-    // The server handles the real overlap logic, so for the UI:
-    return true; 
+  if (!bookingDate || !duration) return false;
+  const segmentsNeeded = Number(duration) / 30;
+  const slotIndex = allSlots.indexOf(slot);
+  
+  for (let i = 0; i < segmentsNeeded; i++) {
+    // ✅ THE FIX: Wrap the index around back to 0 (midnight) using modulo
+    const targetIndex = (slotIndex + i) % allSlots.length; 
+    const nextSlot = allSlots[targetIndex];
+    if (bookedSlots.includes(nextSlot)) return false;
+  }
+    const today = getLocalDateString();
+    if (bookingDate && bookingDate < today) return false;
+    if (bookingDate !== today) return true;
+
+    const now = new Date();
+    const istTimeStr = now.toLocaleTimeString("en-US", {
+      timeZone: "Asia/Kolkata",
+      hour12: false,
+    });
+    const [currentHours, currentMins] = istTimeStr.split(":").map(Number);
+    const currentMinutes = currentHours * 60 + currentMins;
+
+    const [time, ampm] = slot.split(" ");
+    let [hours, minutes] = time.split(":").map(Number);
+    if (ampm === "PM" && hours !== 12) hours += 12;
+    if (ampm === "AM" && hours === 12) hours = 0;
+    const slotMinutes = hours * 60 + minutes;
+    return slotMinutes > currentMinutes;
   };
 
   useEffect(() => {
@@ -181,80 +196,99 @@ export default function Home() {
   }, [bookingDate, bookedSlots, duration]);
 
   /* -------- Supabase Load Booked Slots -------- */
-  const loadBookedSlots = async (date: string) => {
+  const loadBookedSlots = async (dateStr: string) => {
+    // 1. Calculate today and yesterday to catch cross-day midnight bookings
+    const selectedDate = new Date(dateStr);
+    const prevDate = new Date(selectedDate);
+    prevDate.setDate(prevDate.getDate() - 1);
+
+    const currentDateStr = dateStr;
+    const prevDateStr = prevDate.toISOString().split("T")[0];
+
+    // 2. Fetch bookings and blocks for BOTH days
     const { data: bookingsData, error } = await supabase
       .from("bookings")
-      .select("start_time, duration_minutes, booking_type, court_number")
-      .eq("booking_date", date);
+      .select("start_time, duration_minutes, booking_type, court_number, booking_date")
+      .in("booking_date", [prevDateStr, currentDateStr]);
 
     const { data: blockedData } = await supabase
       .from("blocked_slots")
-      .select("start_time, duration_minutes")
-      .eq("booking_date", date);
+      .select("start_time, duration_minutes, court_number, booking_date") 
+      .in("booking_date", [prevDateStr, currentDateStr]);
 
     if (error) {
       console.log(error);
       return;
     }
 
-    const blocked: string[] = [];
     const slotCounts: Record<string, number> = {};
 
-    if (bookingsData) {
-      bookingsData.forEach((booking: any) => {
-        if (!booking.start_time) return;
-        const time = booking.start_time.substring(0, 5);
-        const [h, m] = time.split(":");
-        let minutes = Number(h) * 60 + Number(m);
-        const slotsToBlock = booking.duration_minutes / 30;
-
-        for (let i = 0; i < slotsToBlock; i++) {
-          const current = minutes + i * 30;
-          if (current >= 24 * 60) continue;
-          const hour24 = Math.floor(current / 60);
-          const minute = current % 60;
-          const ampm = hour24 >= 12 ? "PM" : "AM";
-          const hour12 = hour24 % 12 || 12;
-     
-          const slotLabel = `${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${ampm}`;
-
-          if (booking.booking_type === "Full Court") {
-            slotCounts[slotLabel] = 999;
-          } else {
-            slotCounts[slotLabel] = (slotCounts[slotLabel] || 0) + 1;
-          }
-        }
-      });
-
-      Object.entries(slotCounts).forEach(([slot, count]) => {
-        if (bookingType === "Full Court") {
-          if (count >= 1) blocked.push(slot);
-        } else {
-          if (count >= 2 || count === 999) blocked.push(slot);
-        }
-      });
-    }
-
-    if (blockedData) {
-      blockedData.forEach((slot: any) => {
+    // Helper function to process slots correctly across midnight and court types
+    const processSlots = (dataArray: any[] | null, isBlock = false) => {
+      if (!dataArray) return;
+      
+      dataArray.forEach((slot: any) => {
         if (!slot.start_time) return;
         const time = slot.start_time.substring(0, 5);
         const [h, m] = time.split(":");
-        let minutes = Number(h) * 60 + Number(m);
+        let startMinutes = Number(h) * 60 + Number(m);
         const slotsToBlock = (slot.duration_minutes || 60) / 30;
 
         for (let i = 0; i < slotsToBlock; i++) {
-          const current = minutes + i * 30;
-          if (current >= 24 * 60) continue;
-          const hour24 = Math.floor(current / 60);
-          const minute = current % 60;
-          const ampm = hour24 >= 12 ? "PM" : "AM";
-          const hour12 = hour24 % 12 || 12;
-     
-          blocked.push(`${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${ampm}`);
+          let currentMinute = startMinutes + i * 30;
+          let isSlotForToday = false;
+
+          // Cross-day logic: Does this 30-min segment fall on the day we are looking at?
+          if (slot.booking_date === currentDateStr) {
+            if (currentMinute < 24 * 60) isSlotForToday = true;
+          } else if (slot.booking_date === prevDateStr) {
+            if (currentMinute >= 24 * 60) {
+              isSlotForToday = true;
+              currentMinute = currentMinute - (24 * 60); // Reset clock to 00:00 for today
+            }
+          }
+
+          if (isSlotForToday) {
+            const hour24 = Math.floor(currentMinute / 60);
+            const minute = currentMinute % 60;
+            const ampm = hour24 >= 12 ? "PM" : "AM";
+            const hour12 = hour24 % 12 || 12;
+            const slotLabel = `${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${ampm}`;
+
+            // Determine if this is a Full Court or Half Court reservation/block
+            let type = slot.booking_type; 
+            if (isBlock) {
+               // Admin blocks usually use court_number. If it's a specific court, it's Half.
+               if (slot.court_number === "Both Courts" || !slot.court_number) {
+                  type = "Full Court";
+               } else {
+                  type = "Half Court";
+               }
+            }
+
+            if (type === "Full Court") {
+              slotCounts[slotLabel] = 999; // 999 means totally blocked
+            } else {
+              slotCounts[slotLabel] = (slotCounts[slotLabel] || 0) + 1; // +1 means one half is taken
+            }
+          }
         }
       });
-    }
+    };
+
+    // Process both regular bookings and admin blocks through the same secure logic
+    processSlots(bookingsData, false);
+    processSlots(blockedData, true);
+
+    // 3. Finalize fully booked slots based on what the user is currently trying to book
+    const blocked: string[] = [];
+    Object.entries(slotCounts).forEach(([slot, count]) => {
+      if (bookingType === "Full Court") {
+        if (count >= 1) blocked.push(slot); // If even one half is taken, full court is blocked
+      } else {
+        if (count >= 2 || count === 999) blocked.push(slot); // Half court only blocked if both halves are taken
+      }
+    });
 
     setBookedSlots(blocked);
   };
@@ -281,7 +315,7 @@ export default function Home() {
           duration,
           bookingType,
           amount: 205 // ₹200 Advance + ₹5 Razorpay Convenience Fee
-        }),
+        })
       });
 
       const orderData = await response.json();

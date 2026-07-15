@@ -34,6 +34,9 @@ export async function POST(req: Request) {
     const nextDate = new Date(bookingDetails.bookingDate);
     nextDate.setDate(nextDate.getDate() + 1);
     const nextDateStr = nextDate.toISOString().split('T')[0];
+    const previousDate = new Date(bookingDetails.bookingDate);
+    previousDate.setDate(previousDate.getDate() - 1);
+    const previousDateStr = previousDate.toISOString().split('T')[0];
 
     // 3. FETCH DATA
     const { data: existingBookings } = await supabase
@@ -45,6 +48,25 @@ export async function POST(req: Request) {
       ? await supabase.from("bookings").select("start_time, duration_minutes, booking_type, court_number").eq("booking_date", nextDateStr)
       : { data: [] };
 
+    const { data: previousDayBookings } = await supabase
+      .from("bookings")
+      .select("start_time, duration_minutes, booking_type, court_number")
+      .eq("booking_date", previousDateStr);
+
+    const { data: blockedSlotsData } = await supabase
+      .from("blocked_slots")
+      .select("start_time, duration_minutes, court_number")
+      .eq("booking_date", bookingDetails.bookingDate);
+
+    const { data: previousDayBlockedSlots } = await supabase
+      .from("blocked_slots")
+      .select("start_time, duration_minutes, court_number")
+      .eq("booking_date", previousDateStr);
+
+    const { data: nextDayBlockedSlots } = isCrossDay
+      ? await supabase.from("blocked_slots").select("start_time, duration_minutes, court_number").eq("booking_date", nextDateStr)
+      : { data: [] };
+
     // 4. ASSIGN COURT SECURELY
     const availability = findCourtAvailability(
       bookingDetails.startTime,
@@ -52,7 +74,10 @@ export async function POST(req: Request) {
       bookingDetails.bookingType,
       existingBookings || [],
       nextDayBookings || [],
-      []
+      blockedSlotsData || [],
+      previousDayBookings || [],
+      previousDayBlockedSlots || [],
+      nextDayBlockedSlots || []
     );
 
     if (!availability || !availability.isAvailable) {
