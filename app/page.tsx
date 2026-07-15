@@ -147,10 +147,11 @@ export default function Home() {
     const slotIndex = allSlots.indexOf(slot);
     for (let i = 0; i < segmentsNeeded; i++) {
       const targetIndex = slotIndex + i;
-      if (targetIndex < allSlots.length) {
-        const nextSlot = allSlots[targetIndex];
-        if (bookedSlots.includes(nextSlot)) return false;
-      }
+      // FIX: Instantly block the slot if the session duration runs past midnight
+      if (targetIndex >= allSlots.length) return false; 
+      
+      const nextSlot = allSlots[targetIndex];
+      if (bookedSlots.includes(nextSlot)) return false;
     }
     const today = getLocalDateString();
     if (bookingDate && bookingDate < today) return false;
@@ -258,7 +259,11 @@ export default function Home() {
   const openRazorpay = async () => {
     try {
       if (!name || !phone || !bookingDate || !startTime) {
-        alert("Please fill all fields and select a valid time slot.");
+        alert("⚠️ Please fill all fields and select a valid time slot.");
+        return;
+      }
+      if (phone.length !== 10) {
+        alert("⚠️ Invalid Phone Number: Please enter exactly 10 digits.");
         return;
       }
       const availabilityCheck = await handleBooking("CHECK_ONLY");
@@ -300,7 +305,11 @@ export default function Home() {
   /* -------- Booking Handler -------- */
   const handleBooking = async (paymentData?: any) => {
     if (!name || !phone || !bookingDate || !startTime) {
-      alert("Please fill all fields and select a valid time slot.");
+      alert("⚠️ Please fill all fields and select a valid time slot.");
+      return;
+    }
+    if (phone.length !== 10) {
+      alert("⚠️ Invalid Phone Number: Please enter exactly 10 digits.");
       return;
     }
 
@@ -722,16 +731,18 @@ export default function Home() {
                 </div>
               </motion.div>
 
-              {/* Sport + Type */}
-              <motion.div variants={fadeUp} className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+              {/* Sport + Pitch Config (Interactive UI Upgrade) */}
+              <motion.div variants={fadeUp} className="space-y-6">
+                
+                {/* Discipline Selector */}
                 <div className="space-y-2">
-                  <label className="text-xs font-mono uppercase text-neutral-400">Sport</label>
+                  <label className="text-xs font-mono uppercase text-neutral-400">Sport Discipline</label>
                   <div className="relative">
                     <select
                       suppressHydrationWarning={true}
                       value={sport}
                       onChange={(e) => setSport(e.target.value)}
-                      className="w-full p-4 bg-neutral-900 text-lime-400 font-bold border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none text-base md:text-sm"
+                      className="w-full p-4 bg-neutral-900 text-lime-400 font-bold border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none text-base md:text-sm transition-colors"
                     >
                       <option value="Football">Football</option>
                       <option value="Cricket">Cricket</option>
@@ -740,19 +751,94 @@ export default function Home() {
                   </div>
                 </div>
 
+                {/* Interactive Field Configurator */}
                 <div className="space-y-2">
-                  <label className="text-xs font-mono uppercase text-neutral-400">Pitch Scale</label>
-                  <div className="relative">
-                    <select
-                      suppressHydrationWarning={true}
-                      value={bookingType}
-                      onChange={(e) => setBookingType(e.target.value)}
-                      className="w-full p-4 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none text-base md:text-sm"
-                    >
-                      <option value="Half Court">Half Court</option>
-                      <option value="Full Court">Full Court</option>
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
+                  <label className="text-xs font-mono uppercase text-neutral-400 flex justify-between items-center">
+                    <span>Interactive Arena Scale</span>
+                    <span className="text-lime-400 tracking-wider font-black">{bookingType.toUpperCase()}</span>
+                  </label>
+                  
+                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 bg-neutral-900/40 p-3 sm:p-4 border border-neutral-800">
+                    
+                    {/* Visual Graphic Pitch */}
+                    <div className="relative w-full sm:w-2/3 h-32 sm:h-40 bg-[#0d2a13] border-2 border-neutral-700 rounded-sm overflow-hidden flex shadow-inner group">
+                      
+                      {/* Field Lines Overlay */}
+                      <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-40 group-hover:opacity-70 transition-opacity duration-300">
+                        <div className="w-0.5 h-full bg-white z-10" />
+                        <div className="absolute w-14 sm:w-20 h-14 sm:h-20 border-2 border-white rounded-full z-10" />
+                        <div className="absolute w-1.5 h-1.5 bg-white rounded-full z-10" /> {/* Center Dot */}
+                        <div className="absolute left-0 w-8 sm:w-12 h-16 sm:h-24 border-2 border-l-0 border-white top-1/2 -translate-y-1/2 z-10" />
+                        <div className="absolute right-0 w-8 sm:w-12 h-16 sm:h-24 border-2 border-r-0 border-white top-1/2 -translate-y-1/2 z-10" />
+                      </div>
+
+                      {/* Left Side (Court 1 / Half Mode Focus) */}
+                      <motion.div 
+                        className="w-1/2 h-full relative z-0 flex flex-col items-center justify-center cursor-pointer border-r border-dashed border-neutral-600/50"
+                        animate={{ 
+                          backgroundColor: bookingType === "Half Court" ? "rgba(163, 230, 53, 0.3)" : bookingType === "Full Court" ? "rgba(163, 230, 53, 0.3)" : "rgba(0, 0, 0, 0.5)"
+                        }}
+                        onClick={() => setBookingType("Half Court")}
+                      >
+                        {bookingType === "Half Court" && (
+                          <motion.span initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="z-20 text-lime-400 text-[10px] sm:text-xs font-black tracking-widest font-mono bg-black/70 px-2.5 py-1 backdrop-blur-sm border border-lime-400/20 shadow-lg">
+                            HALF COURT
+                          </motion.span>
+                        )}
+                      </motion.div>
+
+                      {/* Right Side (Court 2 / Full Mode Anchor) */}
+                      <motion.div 
+                        className="w-1/2 h-full relative z-0 flex flex-col items-center justify-center cursor-pointer"
+                        animate={{ 
+                          backgroundColor: bookingType === "Full Court" ? "rgba(163, 230, 53, 0.3)" : "rgba(0, 0, 0, 0.5)"
+                        }}
+                        onClick={() => setBookingType("Full Court")}
+                      >
+                         {bookingType === "Full Court" ? (
+                           <motion.span initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="absolute z-20 text-lime-400 text-xs sm:text-sm font-black tracking-widest font-mono bg-black/70 px-3 py-1.5 backdrop-blur-sm border border-lime-400/20 shadow-lg whitespace-nowrap">
+                             FULL ARENA MODE
+                           </motion.span>
+                         ) : (
+                           <span className="z-20 text-neutral-500 text-[9px] sm:text-[10px] font-bold tracking-widest font-mono uppercase bg-black/40 px-2 py-0.5">
+                             AVAILABLE
+                           </span>
+                         )}
+                      </motion.div>
+                    </div>
+
+                    {/* Quick Toggle Buttons */}
+                    <div className="flex flex-row sm:flex-col w-full sm:w-1/3 gap-2">
+                      <motion.button
+                        type="button"
+                        whileHover={{ x: 2 }}
+                        whileTap={{ scale: 0.96 }}
+                        onClick={() => setBookingType("Half Court")}
+                        className={`flex-1 flex flex-col items-center justify-center py-2.5 px-3 transition-all border ${
+                          bookingType === "Half Court" 
+                            ? "bg-lime-400 text-black border-lime-400 shadow-[0_0_20px_rgba(163,230,53,0.3)]" 
+                            : "bg-neutral-950 text-neutral-500 border-neutral-800 hover:border-neutral-700 hover:text-white"
+                        }`}
+                      >
+                        <span className="text-[9px] uppercase tracking-widest mb-0.5 opacity-80">Scale</span>
+                        <span className="font-mono font-black text-xs sm:text-sm uppercase tracking-wider">Half Court</span>
+                      </motion.button>
+                      <motion.button
+                        type="button"
+                        whileHover={{ x: 2 }}
+                        whileTap={{ scale: 0.96 }}
+                        onClick={() => setBookingType("Full Court")}
+                        className={`flex-1 flex flex-col items-center justify-center py-2.5 px-3 transition-all border ${
+                          bookingType === "Full Court" 
+                            ? "bg-lime-400 text-black border-lime-400 shadow-[0_0_20px_rgba(163,230,53,0.3)]" 
+                            : "bg-neutral-950 text-neutral-500 border-neutral-800 hover:border-neutral-700 hover:text-white"
+                        }`}
+                      >
+                        <span className="text-[9px] uppercase tracking-widest mb-0.5 opacity-80">Scale</span>
+                        <span className="font-mono font-black text-xs sm:text-sm uppercase tracking-wider">Full Arena</span>
+                      </motion.button>
+                    </div>
+
                   </div>
                 </div>
               </motion.div>
@@ -851,104 +937,173 @@ export default function Home() {
             </div>
           </motion.div>
 
-          {/* -------- Summary Side -------- */}
+          {/* -------- Summary Side (VIP Match Ticket Upgrade) -------- */}
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.15 }}
             transition={{ duration: 0.7, ease: easeOut }}
-            className="lg:col-span-5 bg-neutral-900/50 backdrop-blur border border-neutral-900 p-4 sm:p-6 md:p-8 rounded-none space-y-6 lg:sticky lg:top-6"
+            className="lg:col-span-5 lg:sticky lg:top-6"
           >
-            <div className="border-b border-neutral-800 pb-4">
-              <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">
-                Live Breakdown Summary
-              </span>
-              <h3 className="text-lg font-bold uppercase text-white mt-1">Pitch Bill Receipt</h3>
-            </div>
-
-            <div className="space-y-3 text-xs font-mono">
-              {[
-                { k: "SPORT", v: sport, cls: "text-white uppercase" },
-                { k: "ARENA SCALE", v: bookingType, cls: "text-white" },
-                { k: "TARGET DATE", v: bookingDate || "Unselected", cls: "text-lime-400" },
-                { k: "KICKOFF TIME", v: startTime || "None", cls: "text-white" },
-                { k: "DURATION TIMEFRAME", v: `${duration ? duration + ' Minutes' : 'Unselected'}`, cls: "text-white" },
-              ].map((row) => (
-                <div key={row.k} className="flex justify-between gap-4">
-                  <span className="text-neutral-500 flex-shrink-0">{row.k}:</span>
-                  <AnimatePresence mode="wait">
-                    <motion.span
-                      key={row.v}
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 4 }}
-                      transition={{ duration: 0.2 }}
-                      className={`font-bold text-right break-all ${row.cls}`}
-                    >
-                      {row.v}
-                    </motion.span>
-                  </AnimatePresence>
-                </div>
-              ))}
-            </div>
-
-            {/* 🧾 PITCH BILL RECEIPT */}
-            <div className="black bg-black p-4 border border-neutral-800 space-y-4">
+            {/* 🎟️ TICKET CONTAINER */}
+            <div className="relative bg-[#0a0a0a] border border-neutral-800 flex flex-col shadow-2xl overflow-hidden">
               
-              {/* Row 1: Gross Field Value (With Crossout Promo Visuals) */}
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
-                <span className="text-xs font-mono text-white font-black tracking-wider">GROSS FIELD VALUE:</span>
-                
-                <div className="flex items-center gap-2">
-                  {totalAmount > 0 && (
-                    <span className="text-xs font-mono text-neutral-500 line-through">
-                      ₹{regularAmount}
+              {/* Top Bar Accent */}
+              <div className="h-2 w-full bg-gradient-to-r from-lime-500 to-emerald-400" />
+              
+              {/* Ticket Header (Motion UI Upgraded) */}
+              <div className="p-5 sm:p-6 pb-4 flex justify-between items-start">
+                <div>
+                  <motion.div
+                    animate={{ opacity: [0.6, 1, 0.6] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                    className="flex items-center gap-2 mb-1.5"
+                  >
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-lime-500"></span>
                     </span>
-                  )}
+                    <span className="text-[10px] font-mono text-lime-400 uppercase tracking-[0.2em] drop-shadow-[0_0_8px_rgba(163,230,53,0.5)]">
+                      Official Access Pass
+                    </span>
+                  </motion.div>
+                  <h3 className="text-xl font-black uppercase text-white tracking-tight">SMES Turf Arena</h3>
+                </div>
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-neutral-900 border border-neutral-800 flex items-center justify-center rotate-3 shrink-0 shadow-[0_0_15px_rgba(163,230,53,0.15)]">
+                  <span className="text-lime-400 text-xl sm:text-2xl font-black">{sport === "Cricket" ? "🏏" : "⚽"}</span>
+                </div>
+              </div>
+
+              {/* Match Details Grid (Randomized Accent Colors) */}
+              <div className="px-5 sm:px-6 py-4 grid grid-cols-2 gap-y-5 gap-x-4 bg-neutral-900/30">
+                <div className="col-span-2 sm:col-span-1">
+                  <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Pass Holder</span>
+                  <span className="text-xs sm:text-sm font-bold text-lime-400 uppercase tracking-wider truncate block">
+                    {name || "GUEST"}
+                  </span>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Contact</span>
+                  <span className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">
+                    {phone ? `+91 ${phone}` : "REQUIRED"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Sport</span>
+                  <span className="text-xs sm:text-sm font-bold text-lime-400 uppercase tracking-wider">{sport}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Scale</span>
+                  <span className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">{bookingType}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Date</span>
+                  <span className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">
+                    {bookingDate ? new Date(bookingDate).toLocaleDateString("en-GB") : "TBD"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Kickoff</span>
+                  <span className="text-xs sm:text-sm font-bold text-lime-400 uppercase tracking-wider">{startTime || "TBD"}</span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Timeframe</span>
+                  <span className="text-xs sm:text-sm font-bold text-lime-400 uppercase tracking-wider">
+                    {duration ? `${duration} Minutes` : "TBD"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Perforated Tear Line */}
+              <div className="relative w-full h-8 flex items-center justify-center my-1">
+                <div className="absolute left-[-16px] w-8 h-8 bg-neutral-950 rounded-full border border-neutral-800 z-10" />
+                <div className="absolute left-[-20px] w-10 h-10 bg-neutral-950 z-20" /> 
+                <div className="absolute left-[-16px] w-8 h-8 rounded-full border-r border-neutral-800 z-30" />
+                
+                <div className="w-full border-t-2 border-dashed border-neutral-800 relative z-0 mx-4" />
+                
+                <div className="absolute right-[-16px] w-8 h-8 bg-neutral-950 rounded-full border border-neutral-800 z-10" />
+                <div className="absolute right-[-20px] w-10 h-10 bg-neutral-950 z-20" /> 
+                <div className="absolute right-[-16px] w-8 h-8 rounded-full border-l border-neutral-800 z-30" />
+              </div>
+
+              {/* Pricing Breakdown */}
+              <div className="px-5 sm:px-6 py-2 space-y-4">
+                <div className="flex justify-between items-end">
+                  <div>
+                    <span className="text-[10px] text-neutral-500 font-mono uppercase block">Gross Value</span>
+                    {totalAmount > 0 && (
+                      <span className="text-[11px] text-neutral-600 line-through font-mono tracking-widest block mt-0.5">
+                        ₹{regularAmount}
+                      </span>
+                    )}
+                  </div>
                   <AnimatePresence mode="wait">
                     <motion.span
                       key={totalAmount}
-                      initial={{ opacity: 0, y: -6, scale: 0.9 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 6, scale: 0.9 }}
-                      transition={{ duration: 0.25, ease: easeOut }}
-                      className="text-[20px] leading-none font-black text-lime-400 whitespace-nowrap"
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.2 }}
+                      className="text-2xl font-black text-lime-400 leading-none"
                     >
                       ₹{totalAmount}
                     </motion.span>
                   </AnimatePresence>
                 </div>
+
+                <div className="p-3 bg-lime-400/5 border border-lime-400/20 flex justify-between items-center">
+                  <div>
+                    <span className="text-[10px] font-mono font-bold text-lime-400 uppercase tracking-widest block">Lockdown Advance</span>
+                    <span className="text-[9px] font-mono text-neutral-500 mt-0.5 block hidden sm:block">Reserves slot instantly</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-lg font-black text-white block leading-none">₹200</span>
+                    <span className="text-[8px] font-mono text-neutral-500 uppercase tracking-widest mt-1 block">+ Convenience Fee</span>
+                  </div>
+                </div>
               </div>
 
-              <div className="h-px bg-neutral-800 my-2" />
-
-              {/* Row 2: Lockdown Reservation Fee */}
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
-                <span className="text-[10px] font-mono text-neutral-400 font-bold tracking-wider">LOCKDOWN RESERVATION FEE:</span>
-                <span className="text-[17.5px] leading-none font-black text-lime-400 whitespace-nowrap">
-                  ₹200 + Convenience Fee
+              {/* Digital Barcode */}
+              <div className="px-5 sm:px-6 pt-4 pb-6 flex flex-col items-center opacity-30">
+                <div className="w-full h-8 flex justify-between items-end gap-[2px]">
+                  {Array.from({ length: 35 }).map((_, i) => {
+                    const deterministicWidth = (i % 4) + 1.5; 
+                    const deterministicHeight = 40 + ((i * 29) % 60); 
+                    
+                    return (
+                      <div 
+                        key={i} 
+                        className="bg-white rounded-t-sm" 
+                        style={{ width: `${deterministicWidth}px`, height: `${deterministicHeight}%` }} 
+                      />
+                    );
+                  })}
+                </div>
+                <span className="text-[8px] font-mono text-white tracking-[0.3em] mt-2">
+                  SMES-{bookingDate ? bookingDate.replace(/-/g, "") : "XXXXXX"}-{startTime ? startTime.substring(0,2) : "XX"}
                 </span>
               </div>
-
-              <p className="text-[10px] text-neutral-600 leading-normal font-mono pt-1 border-t border-neutral-900/60">
-                An advance lock deposit reserves the stadium slot uniquely for your team line.
-              </p>
             </div>
 
+            {/* Premium Checkout Button */}
             <motion.button
               suppressHydrationWarning={true}
-              whileHover={startTime ? { y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.35)" } : {}}
-              whileTap={startTime ? { scale: 0.97 } : {}}
+              whileHover={startTime && name && phone.length === 10 ? { y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.35)" } : {}}
+              whileTap={startTime && name && phone.length === 10 ? { scale: 0.97 } : {}}
               type="button"
               onClick={openRazorpay}
-              disabled={!startTime}
-              className={`w-full font-mono text-xs uppercase tracking-widest py-4 rounded-none transition-colors font-black ${
-                !startTime
-                  ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
-                  : "bg-lime-400 hover:bg-lime-300 text-black cursor-pointer"
+              disabled={!startTime || !name || phone.length !== 10}
+              className={`w-full mt-4 font-mono text-xs sm:text-sm uppercase tracking-widest py-4 sm:py-5 transition-all font-black shadow-lg flex items-center justify-center gap-3 ${
+                !startTime || !name || phone.length !== 10
+                  ? "bg-neutral-900 border border-neutral-800 text-neutral-600 cursor-not-allowed"
+                  : "bg-lime-400 hover:bg-lime-300 text-black border border-lime-400 shadow-lime-400/20"
               }`}
             >
-              {!startTime ? "Select Slot" : "Confirm Match Slot"}
+              {!name || phone.length !== 10 
+                ? "Enter Name & 10-Digit Phone" 
+                : !startTime 
+                ? "Select Kickoff Time" 
+                : "⚡ Confirm Match Slot"}
             </motion.button>
           </motion.div>
         </div>
