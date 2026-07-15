@@ -26,58 +26,51 @@ export async function POST(req: Request) {
       }
     }
 
-    // 2. PREPARE CROSS-DAY CHECK
-    const startMins = timeToMinutes(bookingDetails.startTime);
-    const endMins = startMins + Number(bookingDetails.duration);
-    const isCrossDay = endMins > (24 * 60);
+    // 2. CALCULATE ADJACENT DATES (Yesterday, Today, Tomorrow)
+    const bookingDate = bookingDetails.bookingDate;
+    const selectedDate = new Date(bookingDate);
 
-    const nextDate = new Date(bookingDetails.bookingDate);
+    const prevDate = new Date(selectedDate);
+    prevDate.setDate(prevDate.getDate() - 1);
+    const prevDateStr = prevDate.toISOString().split("T")[0];
+
+    const nextDate = new Date(selectedDate);
     nextDate.setDate(nextDate.getDate() + 1);
-    const nextDateStr = nextDate.toISOString().split('T')[0];
-    const previousDate = new Date(bookingDetails.bookingDate);
-    previousDate.setDate(previousDate.getDate() - 1);
-    const previousDateStr = previousDate.toISOString().split('T')[0];
+    const nextDateStr = nextDate.toISOString().split("T")[0];
 
-    // 3. FETCH DATA
-    const { data: existingBookings } = await supabase
+    // 3. FETCH ALL RELEVANT DATA IN ONE SINGLE QUERY (Performance Boost)
+    const { data: allBookings, error: checkError } = await supabase
       .from("bookings")
-      .select("start_time, duration_minutes, booking_type, court_number")
-      .eq("booking_date", bookingDetails.bookingDate);
+      .select("start_time, duration_minutes, booking_type, court_number, booking_date")
+      .in("booking_date", [prevDateStr, bookingDate, nextDateStr]);
 
-    const { data: nextDayBookings } = isCrossDay 
-      ? await supabase.from("bookings").select("start_time, duration_minutes, booking_type, court_number").eq("booking_date", nextDateStr)
-      : { data: [] };
-
-    const { data: previousDayBookings } = await supabase
-      .from("bookings")
-      .select("start_time, duration_minutes, booking_type, court_number")
-      .eq("booking_date", previousDateStr);
-
-    const { data: blockedSlotsData } = await supabase
+    const { data: allBlockedSlots } = await supabase
       .from("blocked_slots")
-      .select("start_time, duration_minutes, court_number")
-      .eq("booking_date", bookingDetails.bookingDate);
+      .select("start_time, duration_minutes, court_number, booking_date")
+      .in("booking_date", [prevDateStr, bookingDate, nextDateStr]);
 
-    const { data: previousDayBlockedSlots } = await supabase
-      .from("blocked_slots")
-      .select("start_time, duration_minutes, court_number")
-      .eq("booking_date", previousDateStr);
+    if (checkError) throw checkError;
 
-    const { data: nextDayBlockedSlots } = isCrossDay
-      ? await supabase.from("blocked_slots").select("start_time, duration_minutes, court_number").eq("booking_date", nextDateStr)
-      : { data: [] };
+    // Filter the single dataset into the separate arrays your booking rules expect
+    const existingBookings = allBookings?.filter(b => b.booking_date === bookingDate) || [];
+    const previousDayBookings = allBookings?.filter(b => b.booking_date === prevDateStr) || [];
+    const nextDayBookings = allBookings?.filter(b => b.booking_date === nextDateStr) || [];
+
+    const blockedSlotsData = allBlockedSlots?.filter(b => b.booking_date === bookingDate) || [];
+    const previousDayBlockedSlots = allBlockedSlots?.filter(b => b.booking_date === prevDateStr) || [];
+    const nextDayBlockedSlots = allBlockedSlots?.filter(b => b.booking_date === nextDateStr) || [];
 
     // 4. ASSIGN COURT SECURELY
     const availability = findCourtAvailability(
       bookingDetails.startTime,
       Number(bookingDetails.duration),
       bookingDetails.bookingType,
-      existingBookings || [],
-      nextDayBookings || [],
-      blockedSlotsData || [],
-      previousDayBookings || [],
-      previousDayBlockedSlots || [],
-      nextDayBlockedSlots || []
+      existingBookings,
+      nextDayBookings,
+      blockedSlotsData,
+      previousDayBookings,
+      previousDayBlockedSlots,
+      nextDayBlockedSlots
     );
 
     if (!availability || !availability.isAvailable) {

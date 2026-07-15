@@ -161,16 +161,17 @@ export default function Home() {
   };
 
   const isSlotAvailable = (slot: string) => {
-  if (!bookingDate || !duration) return false;
-  const segmentsNeeded = Number(duration) / 30;
-  const slotIndex = allSlots.indexOf(slot);
-  
-  for (let i = 0; i < segmentsNeeded; i++) {
-    // ✅ THE FIX: Wrap the index around back to 0 (midnight) using modulo
-    const targetIndex = (slotIndex + i) % allSlots.length; 
-    const nextSlot = allSlots[targetIndex];
-    if (bookedSlots.includes(nextSlot)) return false;
-  }
+    if (!bookingDate || !duration) return false;
+    const segmentsNeeded = Number(duration) / 30;
+    const slotIndex = allSlots.indexOf(slot);
+    
+    for (let i = 0; i < segmentsNeeded; i++) {
+      // ✅ FIX: Use modulo (%) to wrap the index around to the next day
+      const targetIndex = (slotIndex + i) % allSlots.length;
+      const nextSlot = allSlots[targetIndex];
+      if (bookedSlots.includes(nextSlot)) return false;
+    }
+    
     const today = getLocalDateString();
     if (bookingDate && bookingDate < today) return false;
     if (bookingDate !== today) return true;
@@ -188,6 +189,7 @@ export default function Home() {
     if (ampm === "PM" && hours !== 12) hours += 12;
     if (ampm === "AM" && hours === 12) hours = 0;
     const slotMinutes = hours * 60 + minutes;
+    
     return slotMinutes > currentMinutes;
   };
 
