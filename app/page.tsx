@@ -160,35 +160,20 @@ export default function Home() {
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`;
   };
 
+  /* -------- Visual Availability Checker -------- */
+  // We perform the real, strict check on the server.
+  // This function just ensures the UI grid logic remains stable.
   const isSlotAvailable = (slot: string) => {
     if (!bookingDate || !duration) return false;
-    const segmentsNeeded = Number(duration) / 30;
+    
+    // We keep the "Past Midnight" protection for the UI grid to prevent
+    // selecting impossible slots, but the server API is the final judge.
     const slotIndex = allSlots.indexOf(slot);
-    for (let i = 0; i < segmentsNeeded; i++) {
-      const targetIndex = slotIndex + i;
-      // FIX: Instantly block the slot if the session duration runs past midnight
-      if (targetIndex >= allSlots.length) return false;
-      const nextSlot = allSlots[targetIndex];
-      if (bookedSlots.includes(nextSlot)) return false;
-    }
-    const today = getLocalDateString();
-    if (bookingDate && bookingDate < today) return false;
-    if (bookingDate !== today) return true;
-
-    const now = new Date();
-    const istTimeStr = now.toLocaleTimeString("en-US", {
-      timeZone: "Asia/Kolkata",
-      hour12: false,
-    });
-    const [currentHours, currentMins] = istTimeStr.split(":").map(Number);
-    const currentMinutes = currentHours * 60 + currentMins;
-
-    const [time, ampm] = slot.split(" ");
-    let [hours, minutes] = time.split(":").map(Number);
-    if (ampm === "PM" && hours !== 12) hours += 12;
-    if (ampm === "AM" && hours === 12) hours = 0;
-    const slotMinutes = hours * 60 + minutes;
-    return slotMinutes > currentMinutes;
+    const segmentsNeeded = Number(duration) / 30;
+    if (slotIndex + segmentsNeeded > allSlots.length) return false;
+    
+    // The server handles the real overlap logic, so for the UI:
+    return true; 
   };
 
   useEffect(() => {

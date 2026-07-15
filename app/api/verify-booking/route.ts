@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
-import { convert12to24, findCourtAvailability } from "../../lib/booking-rules"; // <-- ADDED THIS
+import { convert12to24, findCourtAvailability, timeToMinutes } from "../../lib/booking-rules";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,7 +13,6 @@ export async function POST(req: Request) {
     const { paymentData, bookingDetails } = await req.json();
 
     // 1. CRYPTOGRAPHIC VERIFICATION (Server-Side)
-    // Make sure this exactly matches what is in your .env.local file!
     const secret = process.env.RAZORPAY_KEY_SECRET!; 
     
     if (paymentData !== "CHECK_ONLY") {
@@ -27,25 +26,40 @@ export async function POST(req: Request) {
       }
     }
 
-    // 2. ASSIGN COURT SECURELY using Pure Functions
+    // 2. PREPARE CROSS-DAY CHECK
+    const startMins = timeToMinutes(bookingDetails.startTime);
+    const endMins = startMins + Number(bookingDetails.duration);
+    const isCrossDay = endMins > (24 * 60);
+
+    const nextDate = new Date(bookingDetails.bookingDate);
+    nextDate.setDate(nextDate.getDate() + 1);
+    const nextDateStr = nextDate.toISOString().split('T')[0];
+
+    // 3. FETCH DATA
     const { data: existingBookings } = await supabase
       .from("bookings")
       .select("start_time, duration_minutes, booking_type, court_number")
       .eq("booking_date", bookingDetails.bookingDate);
 
+    const { data: nextDayBookings } = isCrossDay 
+      ? await supabase.from("bookings").select("start_time, duration_minutes, booking_type, court_number").eq("booking_date", nextDateStr)
+      : { data: [] };
+
+    // 4. ASSIGN COURT SECURELY
     const availability = findCourtAvailability(
       bookingDetails.startTime,
       Number(bookingDetails.duration),
       bookingDetails.bookingType,
       existingBookings || [],
+      nextDayBookings || [],
       []
     );
 
-    if (!availability.isAvailable) {
-       return NextResponse.json({ error: availability.error }, { status: 409 });
+    if (!availability || !availability.isAvailable) {
+       return NextResponse.json({ error: availability?.error || "Court not available" }, { status: 409 });
     }
 
-    // 3. SECURE SERVER-SIDE DATABASE INSERTION
+    // 5. SECURE SERVER-SIDE DATABASE INSERTION
     const { data: insertedData, error } = await supabase.from("bookings").insert([
       {
         customer_name: bookingDetails.name,
@@ -70,6 +84,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, booking: insertedData[0] });
 
   } catch (error: any) {
+    console.error("Verification Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
