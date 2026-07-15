@@ -50,6 +50,32 @@ export default function Home() {
   // 🌤️ DYNAMIC WEATHER WIDGET STATE
   const [weather, setWeather] = useState<{ temp: number; condition: string } | null>(null);
 
+  // 🎨 DYNAMIC UI THEME ENGINE
+  const theme = useMemo(() => {
+    const isRainy = weather?.condition.includes("Rain") || weather?.condition.includes("Drizzle") || weather?.condition.includes("Thunderstorm");
+    const isHot = weather?.temp ? weather.temp >= 28 && !isRainy : false;
+
+    if (isRainy) return {
+      emoji: "🌧️",
+      aurora1: "from-cyan-500/15", aurora2: "bg-blue-500/15", aurora3: "bg-cyan-500/15",
+      ticketBar: "from-cyan-500 to-blue-400", textAccent: "text-cyan-400", 
+      glow: "drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]", pulse: "bg-cyan-400", iconShadow: "shadow-[0_0_15px_rgba(34,211,238,0.15)]"
+    };
+    if (isHot) return {
+      emoji: "☀️",
+      aurora1: "from-orange-500/15", aurora2: "bg-rose-500/15", aurora3: "bg-orange-500/15",
+      ticketBar: "from-orange-500 to-rose-400", textAccent: "text-orange-400",
+      glow: "drop-shadow-[0_0_8px_rgba(251,146,60,0.5)]", pulse: "bg-orange-400", iconShadow: "shadow-[0_0_15px_rgba(251,146,60,0.15)]"
+    };
+    // Default / Perfect Weather (Signature Lime)
+    return {
+      emoji: "🌤️",
+      aurora1: "from-lime-500/10", aurora2: "bg-emerald-500/10", aurora3: "bg-lime-500/10",
+      ticketBar: "from-lime-500 to-emerald-400", textAccent: "text-lime-400",
+      glow: "drop-shadow-[0_0_8px_rgba(163,230,53,0.5)]", pulse: "bg-lime-400", iconShadow: "shadow-[0_0_15px_rgba(163,230,53,0.15)]"
+    };
+  }, [weather]);
+
   // Staff Auth
   const [showStaffModal, setShowStaffModal] = useState(false);
   const [staffRole, setStaffRole] = useState("Admin");
@@ -481,18 +507,18 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden">
 
-      {/* ---------- Animated Aurora Background ---------- */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="absolute top-0 inset-x-0 h-[400px] sm:h-[640px] bg-gradient-to-b from-lime-500/10 via-transparent to-transparent" />
+      {/* ---------- Animated Aurora Background (Dynamic Weather Shift) ---------- */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0 transition-colors duration-1000">
+        <div className={`absolute top-0 inset-x-0 h-[400px] sm:h-[640px] bg-gradient-to-b ${theme.aurora1} via-transparent to-transparent transition-colors duration-1000`} />
         <motion.div
           animate={{ x: [0, 40, 0], y: [0, 30, 0] }}
           transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute top-[-5%] left-[-10%] w-[60%] h-[40%] bg-emerald-500/10 rounded-full blur-[80px] sm:blur-[120px]"
+          className={`absolute top-[-5%] left-[-10%] w-[60%] h-[40%] ${theme.aurora2} rounded-full blur-[80px] sm:blur-[120px] transition-colors duration-1000`}
         />
         <motion.div
           animate={{ x: [0, -50, 0], y: [0, 40, 0] }}
           transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute top-[15%] right-[-10%] w-[50%] h-[50%] bg-lime-500/10 rounded-full blur-[80px] sm:blur-[120px]"
+          className={`absolute top-[15%] right-[-10%] w-[50%] h-[50%] ${theme.aurora3} rounded-full blur-[80px] sm:blur-[120px] transition-colors duration-1000`}
         />
         {/* Subtle grid */}
         <div
@@ -685,16 +711,16 @@ export default function Home() {
                 </h2>
               </div>
               
-              {/* 🌤️ NEW WEATHER WIDGET PLACEMENT */}
+              {/* 🌤️ DYNAMIC WEATHER WIDGET */}
               {weather && (
                 <div className="bg-neutral-900/40 border border-neutral-800 px-4 py-2.5 inline-flex items-center gap-3">
-                  <span className="text-xl">🌤️</span>
+                  <span className="text-xl">{theme.emoji}</span>
                   <div>
                     <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500">
                       Vijayanagar 2nd Stage
                     </span>
-                    <span className="text-xs font-mono text-white font-bold">
-                      {weather.temp}°C — <span className="text-lime-400">{weather.condition}</span>
+                    <span className="text-xs font-mono text-white font-bold transition-colors duration-700">
+                      {weather.temp}°C — <span className={theme.textAccent}>{weather.condition}</span>
                     </span>
                   </div>
                 </div>
@@ -948,8 +974,8 @@ export default function Home() {
             {/* 🎟️ TICKET CONTAINER */}
             <div className="relative bg-[#0a0a0a] border border-neutral-800 flex flex-col shadow-2xl overflow-hidden">
               
-              {/* Top Bar Accent */}
-              <div className="h-2 w-full bg-gradient-to-r from-lime-500 to-emerald-400" />
+              {/* Top Bar Accent (Dynamic Weather Shift) */}
+              <div className={`h-2 w-full bg-gradient-to-r ${theme.ticketBar} transition-colors duration-700`} />
               
               {/* Ticket Header (Motion UI Upgraded) */}
               <div className="p-5 sm:p-6 pb-4 flex justify-between items-start">
@@ -960,17 +986,19 @@ export default function Home() {
                     className="flex items-center gap-2 mb-1.5"
                   >
                     <span className="relative flex h-1.5 w-1.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-lime-500"></span>
+                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${theme.pulse} opacity-75`}></span>
+                      <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${theme.pulse}`}></span>
                     </span>
-                    <span className="text-[10px] font-mono text-lime-400 uppercase tracking-[0.2em] drop-shadow-[0_0_8px_rgba(163,230,53,0.5)]">
+                    <span className={`text-[10px] font-mono ${theme.textAccent} uppercase tracking-[0.2em] ${theme.glow} transition-colors duration-700`}>
                       Official Access Pass
                     </span>
                   </motion.div>
                   <h3 className="text-xl font-black uppercase text-white tracking-tight">SMES Turf Arena</h3>
                 </div>
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-neutral-900 border border-neutral-800 flex items-center justify-center rotate-3 shrink-0 shadow-[0_0_15px_rgba(163,230,53,0.15)]">
-                  <span className="text-lime-400 text-xl sm:text-2xl font-black">{sport === "Cricket" ? "🏏" : "⚽"}</span>
+                <div className={`w-10 h-10 sm:w-12 sm:h-12 bg-neutral-900 border border-neutral-800 flex items-center justify-center rotate-3 shrink-0 ${theme.iconShadow} transition-shadow duration-700`}>
+                  <span className={`${theme.textAccent} text-xl sm:text-2xl font-black transition-colors duration-700`}>
+                    {sport === "Cricket" ? "🏏" : "⚽"}
+                  </span>
                 </div>
               </div>
 
