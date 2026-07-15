@@ -47,10 +47,41 @@ export default function Home() {
   // 🔒 CLIENT DATE STATE: Fixes server-side pre-render hydration leaks completely
   const [minDate, setMinDate] = useState("");
 
+  // 🌤️ DYNAMIC WEATHER WIDGET STATE
+  const [weather, setWeather] = useState<{ temp: number; condition: string } | null>(null);
+
   // Staff Auth
   const [showStaffModal, setShowStaffModal] = useState(false);
   const [staffRole, setStaffRole] = useState("Admin");
   const [staffPassword, setStaffPassword] = useState("");
+
+  /* -------- Fetch Live Mysuru Weather (Open-Meteo API) -------- */
+  useEffect(() => {
+    const fetchWeather = async () => {
+      try {
+        // Hitting live free coordinates exactly mapped to your SMES Turf location
+        const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=12.329329&longitude=76.612008&current_weather=true");
+        const data = await res.json();
+        
+        if (data?.current_weather) {
+          const temp = Math.round(data.current_weather.temperature);
+          const code = data.current_weather.weathercode;
+          
+          let condition = "Clear Conditions";
+          if (code >= 1 && code <= 3) condition = "Partly Cloudy";
+          if (code >= 45 && code <= 48) condition = "Fog Warning";
+          if (code >= 51 && code <= 67) condition = "Light Drizzle";
+          if (code >= 71 && code <= 82) condition = "Heavy Rain";
+          if (code >= 95) condition = "Thunderstorm Warning";
+
+          setWeather({ temp, condition });
+        }
+      } catch (e) {
+        console.log("Weather node sync isolated.");
+      }
+    };
+    fetchWeather();
+  }, []);
 
   /* -------- Load Razorpay -------- */
   useEffect(() => {
@@ -72,14 +103,21 @@ export default function Home() {
     if (bookingDate) loadBookedSlots(bookingDate);
   }, [bookingDate, bookingType]);
 
-  /* -------- Pricing -------- */
+  /* -------- Dynamic Launch Offer Pricing Engine -------- */
   const totalAmount = useMemo(() => {
     if (!duration) return 0; 
     if (bookingType === "Half Court") {
-      return duration === "60" ? 750 : duration === "90" ? 1100 : 1500;
+      // NEW PRICES: 60m = ₹700 | 90m = ₹1050 | 120m = ₹1400
+      return duration === "60" ? 700 : duration === "90" ? 1050 : 1400;
     }
-    return duration === "60" ? 1250 : duration === "90" ? 1850 : 2500;
+    // Full Court Prices remain unchanged
+    return duration === "60" ? 1200 : duration === "90" ? 1800 : 2400;
   }, [bookingType, duration]);
+
+  // Dynamically calculate crossover base pricing rules 
+  const regularAmount = useMemo(() => {
+    return totalAmount * 2; 
+  }, [totalAmount]);
 
   const advanceAmount = 205;
 
@@ -389,7 +427,6 @@ export default function Home() {
   const handleStaffLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Automatically map roles to unique Supabase sub-addresses using your main email
     let staffEmail = "";
     if (staffRole === "Admin") staffEmail = "sports+admin@smestuff.com";
     if (staffRole === "Sub-Admin") staffEmail = "sports+subadmin@smestuff.com";
@@ -397,7 +434,6 @@ export default function Home() {
 
     if (!staffEmail) return;
 
-    // Send the authentication request to Supabase
     const { data, error } = await supabase.auth.signInWithPassword({
       email: staffEmail,
       password: staffPassword,
@@ -408,7 +444,6 @@ export default function Home() {
       return;
     }
 
-    // Handle routing based on successful session generation
     if (data.session) {
       if (staffRole === "Admin") {
         localStorage.setItem("adminLoggedIn", "true");
@@ -551,19 +586,28 @@ export default function Home() {
           </motion.div>
         </div>
 
+        {/* 🌤️ DYNAMIC WEATHER + PRICING PROMO NODE */}
         <motion.div
           variants={fadeUp}
-          className="mt-8 sm:mt-12 inline-flex items-center gap-3 sm:gap-4 bg-neutral-900/70 backdrop-blur border border-neutral-800 px-4 py-3 rounded-none w-full sm:w-auto"
+          className="mt-8 sm:mt-12 flex flex-col sm:flex-row items-center gap-4 bg-neutral-900/70 backdrop-blur border border-neutral-800 p-4 rounded-none w-full sm:w-auto divide-y sm:divide-y-0 sm:divide-x divide-neutral-800"
         >
-          <span className="flex h-2 w-2 relative flex-shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500" />
-          </span>
-          <p className="text-[11px] sm:text-xs font-mono uppercase tracking-wide text-neutral-300">
-            ⚡ Live Promo Offer:{" "}
-            <span className="text-lime-400 font-bold">₹1250 / Hr Only</span>
-          </p>
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-center sm:justify-start">
+            <span className="flex h-2 w-2 relative flex-shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500" />
+            </span>
+            <p className="text-[11px] sm:text-xs font-mono uppercase tracking-wide text-neutral-300">
+              ⚡ Launch Offer: <span className="text-neutral-500 line-through mr-1 font-medium">₹2400</span> <span className="text-lime-400 font-bold">₹1200 / Hr</span>
+            </p>
+          </div>
+          
+          {weather && (
+            <div className="flex items-center gap-2 pt-3 sm:pt-0 sm:pl-4 text-[11px] sm:text-xs font-mono uppercase tracking-wide text-neutral-400 w-full sm:w-auto justify-center sm:justify-start">
+              🌤️ Mysuru Conditions: <span className="text-white font-bold">{weather.temp}°C</span> — <span className="text-lime-400">{weather.condition}</span>
+            </div>
+          )}
         </motion.div>
+
       </motion.header>
 
       {/* ---------- Disciplines ---------- */}
@@ -721,7 +765,7 @@ export default function Home() {
                 />
               </motion.div>
 
-              {/* Duration */}
+              {/* 🕒 DYNAMIC PRICE SCALER */}
               <motion.div variants={fadeUp} className="space-y-2 relative">
                 <label className="text-xs font-mono uppercase text-neutral-400">Session Length</label>
                 <div className="relative">
@@ -735,9 +779,9 @@ export default function Home() {
                     }`}
                   >
                     <option value="" disabled hidden>-- Select Session Length --</option> 
-                    <option value="60">60 Minutes (- ₹{bookingType === "Half Court" ? 750 : 1250})</option>
-                    <option value="90">90 Minutes (- ₹{bookingType === "Half Court" ? 1100 : 1850})</option>
-                    <option value="120">120 Minutes (- ₹{bookingType === "Half Court" ? 1500 : 2500})</option>
+                    <option value="60">60 Minutes (- ₹{bookingType === "Half Court" ? 700 : 1200})</option>
+                    <option value="90">90 Minutes (- ₹{bookingType === "Half Court" ? 1050 : 1800})</option>
+                    <option value="120">120 Minutes (- ₹{bookingType === "Half Court" ? 1400 : 2400})</option>
                   </select>
                   <div className={`pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-xs transition-all ${
                     !bookingDate ? "text-neutral-700 opacity-40" : "text-neutral-500"
@@ -842,21 +886,29 @@ export default function Home() {
             {/* 🧾 PITCH BILL RECEIPT */}
             <div className="black bg-black p-4 border border-neutral-800 space-y-4">
               
-              {/* Row 1: Gross Field Value */}
+              {/* Row 1: Gross Field Value (With Crossout Promo Visuals) */}
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
                 <span className="text-xs font-mono text-white font-black tracking-wider">GROSS FIELD VALUE:</span>
-                <AnimatePresence mode="wait">
-                  <motion.span
-                    key={totalAmount}
-                    initial={{ opacity: 0, y: -6, scale: 0.9 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 6, scale: 0.9 }}
-                    transition={{ duration: 0.25, ease: easeOut }}
-                    className="text-[20px] leading-none font-black text-white whitespace-nowrap"
-                  >
-                    ₹{totalAmount}
-                  </motion.span>
-                </AnimatePresence>
+                
+                <div className="flex items-center gap-2">
+                  {totalAmount > 0 && (
+                    <span className="text-xs font-mono text-neutral-500 line-through">
+                      ₹{regularAmount}
+                    </span>
+                  )}
+                  <AnimatePresence mode="wait">
+                    <motion.span
+                      key={totalAmount}
+                      initial={{ opacity: 0, y: -6, scale: 0.9 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 6, scale: 0.9 }}
+                      transition={{ duration: 0.25, ease: easeOut }}
+                      className="text-[20px] leading-none font-black text-lime-400 whitespace-nowrap"
+                    >
+                      ₹{totalAmount}
+                    </motion.span>
+                  </AnimatePresence>
+                </div>
               </div>
 
               <div className="h-px bg-neutral-800 my-2" />
