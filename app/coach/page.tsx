@@ -44,6 +44,7 @@ export default function CoachPage() {
   // UI state (visual only — does not touch business logic)
   const [tab, setTab] = useState<"bookings" | "blocks">("bookings"); // Set default tab cleanly
   const [search, setSearch] = useState("");
+  const [isSendingEmails, setIsSendingEmails] = useState(false);
 
   const FIXED_COACHING_FEE = 3500;
   const currentMonthYear = new Date().toISOString().slice(0, 7); // YYYY-MM
@@ -214,6 +215,45 @@ export default function CoachPage() {
     ];
     XLSX.writeFile(workbook, `Coach_Report_${currentMonthYear}.xlsx`);
   };
+  /* -------- Automated Email Reminders -------- */
+  const sendEmailReminders = async () => {
+    // 1. Filter students who are unpaid AND have an email address provided
+    const pendingStudents = students.filter(s => s.payment_status !== "settled" && s.email);
+    const noEmailStudents = students.filter(s => s.payment_status !== "settled" && !s.email);
+
+    if (pendingStudents.length === 0) {
+      alert(noEmailStudents.length > 0
+        ? `⚠️ No pending students with valid email addresses. (${noEmailStudents.length} pending students are missing emails).`
+        : "✅ All students have paid! No reminders needed.");
+      return;
+    }
+
+    const confirmed = confirm(`Are you sure you want to send official email reminders to ${pendingStudents.length} student(s) for the month of ${currentMonthLabel}?`);
+    if (!confirmed) return;
+
+    setIsSendingEmails(true);
+    try {
+      // 2. Trigger the secure backend API
+      const response = await fetch("/api/send-reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          students: pendingStudents,
+          month: currentMonthLabel,
+          fee: FIXED_COACHING_FEE
+        })
+      });
+
+      if (!response.ok) throw new Error("Failed to send emails");
+      
+      alert(`✅ Successfully dispatched ${pendingStudents.length} email reminders!`);
+    } catch (error) {
+      console.error(error);
+      alert("❌ Failed to send emails. Please check your internet connection.");
+    } finally {
+      setIsSendingEmails(false);
+    }
+  };
 
   const getTimeRangeLabel = (startTimeStr: string, durationMins: number) => {
     if (!startTimeStr) return "";
@@ -318,19 +358,29 @@ export default function CoachPage() {
             </p>
           </motion.div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap justify-end">
+            <motion.button
+              variants={fadeUp}
+              whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(239,68,68,0.35)" }}
+              whileTap={{ scale: 0.97 }}
+              onClick={sendEmailReminders}
+              disabled={isSendingEmails}
+              className={`bg-neutral-900 border border-neutral-800 text-red-400 hover:bg-red-950 hover:border-red-900 hover:text-white font-mono text-[10px] sm:text-xs uppercase tracking-widest px-5 py-4 font-black transition-colors flex items-center gap-2 ${isSendingEmails ? "opacity-50 cursor-not-allowed" : ""}`}
+            >
+              {isSendingEmails ? "⏳ Dispatching..." : "📧 Email Due Reminders"}
+            </motion.button>
             <motion.button
               variants={fadeUp}
               whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.35)" }}
               whileTap={{ scale: 0.97 }}
               onClick={exportCoachExcel}
-              className="bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest px-6 py-4 font-black transition-colors flex items-center gap-2"
+              className="bg-lime-400 hover:bg-lime-300 text-black font-mono text-[10px] sm:text-xs uppercase tracking-widest px-5 py-4 font-black transition-colors flex items-center gap-2"
             >
-              📊 Download Roster Excel
+              📊 Download Roster
             </motion.button>
             <button 
               onClick={() => { localStorage.removeItem("subAdminLoggedIn"); router.replace("/"); }}
-              className="bg-neutral-900 border border-neutral-800 text-neutral-400 text-xs font-mono py-4 px-5 hover:text-red-400 transition-colors uppercase tracking-wider"
+              className="bg-neutral-900 border border-neutral-800 text-neutral-400 text-[10px] sm:text-xs font-mono py-4 px-4 hover:text-white transition-colors uppercase tracking-wider"
             >
               Exit Terminal
             </button>

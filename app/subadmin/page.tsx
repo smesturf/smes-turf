@@ -53,6 +53,7 @@ export default function AdminPage() {
   const [adminNewStudentMethod, setAdminNewStudentMethod] = useState("UPI");
   const [adminSelectedStudentId, setAdminSelectedStudentId] = useState("");
   const [adminExistingMethod, setAdminExistingMethod] = useState("UPI");
+  const [isSendingEmails, setIsSendingEmails] = useState(false);
 
   const FIXED_COACHING_FEE = 3500;
   const currentMonthYear = new Date().toISOString().slice(0, 7);
@@ -335,7 +336,45 @@ export default function AdminPage() {
       alert(`Database Error: ${error.message || "Failed to remove student record safely."}`);
     }
   };
+/* -------- Automated Email Reminders -------- */
+  const sendEmailReminders = async () => {
+    // 1. Filter students who are unpaid AND have an email address provided
+    const pendingStudents = academyStudents.filter(s => s.payment_status !== "settled" && s.email);
+    const noEmailStudents = academyStudents.filter(s => s.payment_status !== "settled" && !s.email);
 
+    if (pendingStudents.length === 0) {
+      alert(noEmailStudents.length > 0
+        ? `⚠️ No pending students with valid email addresses. (${noEmailStudents.length} pending students are missing emails).`
+        : "✅ All students have paid! No reminders needed.");
+      return;
+    }
+
+    const confirmed = confirm(`Are you sure you want to send official email reminders to ${pendingStudents.length} student(s) for the month of ${currentMonthLabel}?`);
+    if (!confirmed) return;
+
+    setIsSendingEmails(true);
+    try {
+      // 2. Trigger the secure backend API
+      const response = await fetch("/api/send-reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          students: pendingStudents,
+          month: currentMonthLabel,
+          fee: FIXED_COACHING_FEE
+        })
+      });
+
+      if (!response.ok) throw new Error("Failed to send emails");
+      
+      alert(`✅ Successfully dispatched ${pendingStudents.length} email reminders!`);
+    } catch (error) {
+      console.error(error);
+      alert("❌ Failed to send emails. Please check your internet connection.");
+    } finally {
+      setIsSendingEmails(false);
+    }
+  };
   const loadBookings = async () => {
     const { data, error } = await supabase
       .from("bookings")
@@ -1174,13 +1213,25 @@ export default function AdminPage() {
 
                 {/* Roster Column */}
                 <div className="lg:col-span-2 border border-neutral-900 bg-neutral-900/30 overflow-hidden flex flex-col">
-                  <div className="p-4 border-b border-neutral-900">
-                    <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block">
-                      A2 — Master Roster
-                    </span>
-                    <h2 className="text-sm font-black uppercase text-white mt-0.5">
-                      Academy Coaching Roster · <span className="text-lime-400">{currentMonthLabel}</span>
-                    </h2>
+                  <div className="p-4 border-b border-neutral-900 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    <div>
+                      <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block">
+                        A2 — Master Roster
+                      </span>
+                      <h2 className="text-sm font-black uppercase text-white mt-0.5">
+                        Academy Coaching Roster · <span className="text-lime-400">{currentMonthLabel}</span>
+                      </h2>
+                    </div>
+                    
+                    <motion.button
+                      whileHover={{ y: -2, boxShadow: "0 8px 25px rgba(239,68,68,0.25)" }}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={sendEmailReminders}
+                      disabled={isSendingEmails}
+                      className={`bg-neutral-900 border border-neutral-800 text-red-400 hover:bg-red-950 hover:border-red-900 hover:text-white font-mono text-[10px] uppercase tracking-widest px-4 py-2.5 font-black transition-colors flex items-center gap-2 ${isSendingEmails ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      {isSendingEmails ? "⏳ Dispatching..." : "📧 Email Due Reminders"}
+                    </motion.button>
                   </div>
 
                   {/* Mobile View */}
