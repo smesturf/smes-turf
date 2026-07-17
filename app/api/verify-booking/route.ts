@@ -78,8 +78,14 @@ export async function POST(req: Request) {
     }
 
     // 5. SECURE SERVER-SIDE DATABASE INSERTION
+    // Generate the official Barcode / Reference ID
+    const datePart = bookingDetails.bookingDate.replace(/-/g, "");
+    const timePart = bookingDetails.startTime.substring(0, 5).replace(":", "");
+    const bookingReference = `SMES-${datePart}-${timePart}`;
+
     const { data: insertedData, error } = await supabase.from("bookings").insert([
       {
+        booking_reference: bookingReference, // <-- Only the new barcode is added here
         customer_name: bookingDetails.name,
         phone: bookingDetails.phone,
         booking_type: bookingDetails.bookingType,

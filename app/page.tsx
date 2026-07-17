@@ -751,134 +751,109 @@ if (sanitized.length <= 10) setPhone(sanitized);
                     <select
                       suppressHydrationWarning={true}
                       value={sport}
-                   
-      onChange={(e) => setSport(e.target.value)}
+                      onChange={(e) => setSport(e.target.value)}
                       className="w-full p-4 bg-neutral-900 text-lime-400 font-bold border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none text-base md:text-sm transition-colors"
                     >
-                      <option value="Football">Football</option>
-                 
-      <option value="Cricket">Cricket</option>
+                      <option value="Football">⚽ Football</option>
+                      <option value="Cricket">🏏 Cricket</option>
                     </select>
                     <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
                   </div>
                 </div>
 
            
-                {/* Interactive Field Configurator */}
+                {/* Interactive Field Configurator (UX Upgraded) */}
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400 flex justify-between items-center">
-                    <span>Interactive Arena Scale</span>
+                    <span>Arena Scale Configuration</span>
                     <span className="text-lime-400 tracking-wider font-black">{bookingType.toUpperCase()}</span>
-    
                   </label>
                   
                   <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 bg-neutral-900/40 p-3 sm:p-4 border border-neutral-800">
                     
-                    
-{/* Visual Graphic Pitch */}
+                    {/* Visual Graphic Pitch (Purely a Visual Indicator) */}
                     <div className="relative w-full sm:w-2/3 h-32 sm:h-40 bg-[#0d2a13] border-2 border-neutral-700 rounded-sm overflow-hidden flex shadow-inner group">
                       
                       {/* Field Lines Overlay */}
-               
-                       <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-40 group-hover:opacity-70 transition-opacity duration-300">
-                        <div className="w-0.5 h-full bg-white z-10" />
-                        <div className="absolute w-14 sm:w-20 h-14 sm:h-20 border-2 border-white rounded-full z-10" />
-                    
-                        <div className="absolute w-1.5 h-1.5 bg-white rounded-full z-10" /> {/* Center Dot */}
-                        <div className="absolute left-0 w-8 sm:w-12 h-16 sm:h-24 border-2 border-l-0 border-white top-1/2 -translate-y-1/2 z-10" />
-                        <div className="absolute right-0 w-8 sm:w-12 h-16 sm:h-24 border-2 border-r-0 border-white top-1/2 -translate-y-1/2 z-10" />
-           
-                       </div>
+                      <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-40 group-hover:opacity-70 transition-opacity duration-300 z-10">
+                        <div className="w-0.5 h-full bg-white" />
+                        <div className="absolute w-14 sm:w-20 h-14 sm:h-20 border-2 border-white rounded-full" />
+                        <div className="absolute w-1.5 h-1.5 bg-white rounded-full" />
+                        <div className="absolute left-0 w-8 sm:w-12 h-16 sm:h-24 border-2 border-l-0 border-white top-1/2 -translate-y-1/2" />
+                        <div className="absolute right-0 w-8 sm:w-12 h-16 sm:h-24 border-2 border-r-0 border-white top-1/2 -translate-y-1/2" />
+                      </div>
 
-                      {/* Left Side (Court 1 / Half Mode Focus) */}
-                      <motion.div 
-                        className="w-1/2 h-full relative z-0 flex flex-col items-center justify-center cursor-pointer border-r border-dashed 
-border-neutral-600/50"
-                        animate={{ 
-                          backgroundColor: bookingType === "Half Court" ?
-"rgba(163, 230, 53, 0.3)" : bookingType === "Full Court" ?
-"rgba(163, 230, 53, 0.3)" : "rgba(0, 0, 0, 0.5)"
-                        }}
-                        onClick={() => setBookingType("Half Court")}
-                      >
-                   
-                     {bookingType === "Half Court" && (
-                          <motion.span initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="z-20 text-lime-400 text-[10px] sm:text-xs font-black tracking-widest font-mono bg-black/70 px-2.5 py-1 backdrop-blur-sm border border-lime-400/20 shadow-lg">
-                            HALF COURT
-         
-                         </motion.span>
+                      {/* Visual Indicator Overlay */}
+                      <div className="absolute inset-0 z-20 pointer-events-none flex">
+                        {bookingType === "Half Court" ? (
+                          <>
+                            {/* Highlighted Left Half */}
+                            <motion.div 
+                              initial={{ opacity: 0 }} animate={{ opacity: 1 }} 
+                              className="w-1/2 h-full bg-lime-400/30 flex items-center justify-center border-r-2 border-lime-400 border-dashed backdrop-blur-[1px]"
+                            >
+                              <span className="text-lime-400 text-[10px] sm:text-xs font-black tracking-widest font-mono bg-black/80 px-2.5 py-1.5 shadow-lg border border-lime-400/30 uppercase">
+                                5v5 Half
+                              </span>
+                            </motion.div>
+                            {/* Dimmed Right Half */}
+                            <motion.div 
+                              initial={{ opacity: 0 }} animate={{ opacity: 1 }} 
+                              className="w-1/2 h-full bg-black/70 flex items-center justify-center"
+                            >
+                              <span className="text-neutral-500 text-[9px] font-bold tracking-widest font-mono uppercase bg-black/60 px-2 py-0.5 border border-neutral-800">
+                                Unused Space
+                              </span>
+                            </motion.div>
+                          </>
+                        ) : (
+                          <>
+                            {/* Highlighted Full Court */}
+                            <motion.div 
+                              initial={{ opacity: 0 }} animate={{ opacity: 1 }} 
+                              className="w-full h-full bg-lime-400/20 flex items-center justify-center backdrop-blur-[1px]"
+                            >
+                              <span className="text-lime-400 text-xs sm:text-sm font-black tracking-widest font-mono bg-black/80 px-4 py-2 shadow-[0_0_20px_rgba(163,230,53,0.3)] border border-lime-400/50 uppercase">
+                                7v7 Full Arena
+                              </span>
+                            </motion.div>
+                          </>
                         )}
-                      </motion.div>
+                      </div>
+                    </div>
 
-                      {/* Right Side (Court 2 / Full Mode Anchor) */}
-      
-                        <motion.div 
-                        className="w-1/2 h-full relative z-0 flex flex-col items-center justify-center cursor-pointer"
-                        animate={{ 
-                          
-backgroundColor: bookingType === "Full Court" ? "rgba(163, 230, 53, 0.3)" : "rgba(0, 0, 0, 0.5)"
-                        }}
-                        onClick={() => setBookingType("Full Court")}
-                      >
-             
-                        {bookingType === "Full Court" ?
-(
-                           <motion.span initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="absolute z-20 text-lime-400 text-xs sm:text-sm font-black tracking-widest font-mono bg-black/70 px-3 py-1.5 backdrop-blur-sm border border-lime-400/20 shadow-lg whitespace-nowrap">
-                             FULL ARENA MODE
-              
-                           </motion.span>
-                         ) : (
-                           <span className="z-20 text-neutral-500 text-[9px] sm:text-[10px] font-bold tracking-widest font-mono uppercase bg-black/40 px-2 py-0.5">
-                      
-                               AVAILABLE
-                           </span>
-                         )}
-                      </motion.div>
-                   
-                 </div>
-
-                    {/* Quick Toggle Buttons */}
+                    {/* Quick Toggle Buttons (The interactive controls) */}
                     <div className="flex flex-row sm:flex-col w-full sm:w-1/3 gap-2">
                       <motion.button
                         type="button"
-   
                         whileHover={{ x: 2 }}
                         whileTap={{ scale: 0.96 }}
                         onClick={() => setBookingType("Half Court")}
-                      
-                         className={`flex-1 flex flex-col items-center justify-center py-2.5 px-3 transition-all border ${
+                        className={`flex-1 flex flex-col items-center justify-center py-2.5 px-3 transition-all border ${
                           bookingType === "Half Court" 
-                            ?
-"bg-lime-400 text-black border-lime-400 shadow-[0_0_20px_rgba(163,230,53,0.3)]" 
+                            ? "bg-lime-400 text-black border-lime-400 shadow-[0_0_20px_rgba(163,230,53,0.3)]" 
                             : "bg-neutral-950 text-neutral-500 border-neutral-800 hover:border-neutral-700 hover:text-white"
                         }`}
                       >
-                 
-                        <span className="text-[9px] uppercase tracking-widest mb-0.5 opacity-80">Scale</span>
+                        <span className="text-[9px] uppercase tracking-widest mb-0.5 font-bold opacity-80">5v5 Mode</span>
                         <span className="font-mono font-black text-xs sm:text-sm uppercase tracking-wider">Half Court</span>
                       </motion.button>
                       <motion.button
-             
                         type="button"
                         whileHover={{ x: 2 }}
                         whileTap={{ scale: 0.96 }}
                         onClick={() => setBookingType("Full Court")}
-        
                         className={`flex-1 flex flex-col items-center justify-center py-2.5 px-3 transition-all border ${
                           bookingType === "Full Court" 
-                            ?
-"bg-lime-400 text-black border-lime-400 shadow-[0_0_20px_rgba(163,230,53,0.3)]" 
+                            ? "bg-lime-400 text-black border-lime-400 shadow-[0_0_20px_rgba(163,230,53,0.3)]" 
                             : "bg-neutral-950 text-neutral-500 border-neutral-800 hover:border-neutral-700 hover:text-white"
                         }`}
                       >
-                 
-                        <span className="text-[9px] uppercase tracking-widest mb-0.5 opacity-80">Scale</span>
+                        <span className="text-[9px] uppercase tracking-widest mb-0.5 font-bold opacity-80">7v7 Mode</span>
                         <span className="font-mono font-black text-xs sm:text-sm uppercase tracking-wider">Full Arena</span>
                       </motion.button>
                     </div>
-
-               
-                   </div>
+                  </div>
                 </div>
               </motion.div>
 
@@ -1152,26 +1127,32 @@ Convenience Fee</span>
                 </div>
               </div>
 
-              {/* Digital Barcode */}
+              {/* Digital Barcode (Interactive & Animated) */}
               <div className="px-5 sm:px-6 pt-4 pb-6 flex flex-col items-center opacity-30">
-            
                 <div className="w-full h-8 flex justify-between items-end gap-[2px]">
                   {Array.from({ length: 35 }).map((_, i) => {
                     const deterministicWidth = (i % 4) + 1.5;
-                    const deterministicHeight = 40 + ((i * 29) % 60);
+                    
+                    // Create a dynamic seed that changes whenever ANY form field changes
+                    const inputSeed = name.length + phone.length + sport.length + bookingType.length + bookingDate.length + startTime.length + duration.length;
+                    
+                    // Mix the static index with the dynamic seed to calculate a shifting height between 20% and 100%
+                    const dynamicHeight = 20 + (((i * 29) + (inputSeed * 17)) % 80);
+
                     return (
-                      <div 
+                      <motion.div 
                         key={i} 
                         className="bg-white rounded-t-sm" 
-                        style={{ 
-                          width: `${deterministicWidth}px`, height: `${deterministicHeight}%` }} 
+                        initial={false}
+                        animate={{ height: `${dynamicHeight}%` }}
+                        transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                        style={{ width: `${deterministicWidth}px` }} 
                       />
                     );
                   })}
                 </div>
                 <span className="text-[8px] font-mono text-white tracking-[0.3em] mt-2">
-                  SMES-{bookingDate ?
-                    bookingDate.replace(/-/g, "") : "XXXXXX"}-{startTime ? startTime.substring(0,2) : "XX"}
+                  SMES-{bookingDate ? bookingDate.replace(/-/g, "") : "XXXXXXXX"}-{startTime ? startTime.substring(0, 5).replace(":", "") : "XXXX"}
                 </span>
               </div>
             </div>

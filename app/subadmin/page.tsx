@@ -555,23 +555,27 @@ export default function AdminPage() {
 
   const exportToExcel = async () => {
     const XLSX = await import("xlsx");
+    
+    // 1. FORMATTED DATA (Includes new Barcode)
     const exportData = bookings.map((booking) => ({
-      Name: booking.customer_name,
-      Phone: booking.phone,
-      Date: booking.booking_date?.split("T")[0],
-      Time: booking.start_time,
-      Duration: booking.duration_minutes || 60,
-      Sport: booking.sport,
-      Type: booking.booking_type,
-      Court: booking.court_number || "-",
-      Total: booking.total_amount,
-      Advance: booking.advance_amount,
-      Balance: booking.balance_amount,
-      Status: booking.payment_status,
-      Payment_Method: booking.payment_method || "-",
-      Cash_Received: booking.cash_received || 0,
-      UPI_Received: booking.upi_received || 0,
-      Payment_Status: booking.payment_completed ? "Paid" : "Pending",
+      "Booking ID": booking.id,
+      "Barcode": booking.booking_reference || "N/A",
+      "Customer Name": booking.customer_name,
+      "Phone Number": booking.phone,
+      "Date": booking.booking_date?.split("T")[0],
+      "Time": booking.start_time,
+      "Duration (Mins)": booking.duration_minutes || 60,
+      "Sport": booking.sport,
+      "Type": booking.booking_type,
+      "Court": booking.court_number || "-",
+      "Total (₹)": booking.total_amount,
+      "Advance (₹)": booking.advance_amount,
+      "Balance (₹)": booking.balance_amount,
+      "Status": booking.payment_status,
+      "Payment Method": booking.payment_method || "-",
+      "Cash Received (₹)": booking.cash_received || 0,
+      "UPI Received (₹)": booking.upi_received || 0,
+      "Payment Status": booking.payment_completed ? "Paid" : "Pending",
     }));
 
     const currentMonthYear = new Date().toISOString().slice(0, 7);
@@ -592,10 +596,11 @@ export default function AdminPage() {
       return date.toLocaleString("en-US", { month: "long", year: "numeric" });
     };
 
-    const academyWorksheetData = (dbStudents || []).map((s: any) => {
+    const academyWorksheetData = (dbStudents || []).map((s: any, index: number) => {
       const joinDate = new Date(s.created_at);
       const isNew = joinDate.getMonth() === currentMonthNum && joinDate.getFullYear() === currentYearNum;
       const row: any = {
+        "S.No.": index + 1, // <-- Added Serial Number
         "Student Name": s.name + (isNew ? " (NEW)" : ""),
         "Phone Number": s.phone,
         "Date of Birth": s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-",
@@ -621,6 +626,8 @@ export default function AdminPage() {
 
     const workbook = XLSX.utils.book_new();
     const todayStr = new Date().toISOString().split("T")[0];
+    
+    // --- MAIN BOOKINGS SHEET ---
     const worksheet = XLSX.utils.aoa_to_sheet([
       ["SMES TURF BOOKING REPORT"],
       [`Export Date: ${new Date().toLocaleString("en-IN")}`],
@@ -636,13 +643,19 @@ export default function AdminPage() {
       [], [],
     ]);
     XLSX.utils.sheet_add_json(worksheet, exportData, { origin: "A14" });
+    
+    // ✅ NEW: Apply Auto-Filters so the table can be searched and sorted instantly in Excel
+    worksheet["!autofilter"] = { ref: `A14:R${14 + exportData.length}` };
+    
+    // ✅ NEW: Perfectly spaced columns so data isn't cut off
     worksheet["!cols"] = [
-      { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 15 },
-      { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 15 },
-      { wch: 18 }, { wch: 15 }, { wch: 15 }, { wch: 15 },
+      { wch: 12 }, { wch: 22 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, 
+      { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, 
+      { wch: 12 }, { wch: 15 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 18 },
     ];
     XLSX.utils.book_append_sheet(workbook, worksheet, "Bookings");
 
+    // --- TODAY SHEET ---
     const todayBookings = bookings.filter((booking) => booking.booking_date?.split("T")[0] === todayStr);
     const todayRevenue = todaysAdvance + todaysBalance;
     const todayAdvance = todaysAdvance;
@@ -666,6 +679,7 @@ export default function AdminPage() {
     ]);
     XLSX.utils.book_append_sheet(workbook, todaySheet, "Today");
 
+    // --- MONTHLY SHEET ---
     const monthlyCash = bookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
     const monthlyUpi = bookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
     const monthlyCollection = monthlyCash + monthlyUpi;
@@ -685,6 +699,7 @@ export default function AdminPage() {
     ]);
     XLSX.utils.book_append_sheet(workbook, monthlySheet, "Monthly");
 
+    // --- DAILY SUMMARY SHEET ---
     const dailyStats: Record<string, any> = {};
     bookings.forEach(b => {
       const d = b.booking_date?.split("T")[0] || "Unknown";
@@ -721,13 +736,24 @@ export default function AdminPage() {
       "Settlement Status": stat["Pending Balance (₹)"] > 0 ? `⚠️ ₹${stat["Pending Balance (₹)"]} DUE` : `✅ SETTLED`
     })).sort((a: any, b: any) => a.Date.localeCompare(b.Date));
     const dailySheet = XLSX.utils.json_to_sheet(dailySummaryArray);
+    
+    // ✅ NEW: Auto-filters on Daily Summary
+    dailySheet["!autofilter"] = { ref: `A1:J${1 + dailySummaryArray.length}` };
     dailySheet["!cols"] = [
       { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 28 }, { wch: 38 }, { wch: 20 }
     ];
     XLSX.utils.book_append_sheet(workbook, dailySheet, "Daily Summary");
 
+    // --- COACHING SHEET ---
     const academySheet = XLSX.utils.json_to_sheet(academyWorksheetData);
+    
+    // Dynamically calculate the final column letter so ALL months get the dropdown arrow
+    const totalColumns = 7 + uniqueMonths.length; 
+    const endColumnChar = String.fromCharCode(64 + totalColumns); 
+    
+    academySheet["!autofilter"] = { ref: `A1:${endColumnChar}${1 + academyWorksheetData.length}` }; 
     academySheet["!cols"] = [
+      { wch: 8 }, // Width for S.No.
       { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 15 }, { wch: 18 },
       ...uniqueMonths.map(() => ({ wch: 22 }))
     ];
