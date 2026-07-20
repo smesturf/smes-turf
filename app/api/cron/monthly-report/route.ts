@@ -3,17 +3,23 @@ import nodemailer from "nodemailer";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
 
-// ✅ THIS LINE FORCES NEXT.JS TO PULL LIVE DATA EVERY SINGLE TIME
+// 🚀 1. THE NUCLEAR CACHE-BUSTING OPTION FOR NEXT.JS
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
 
-// Initialize Supabase for the backend
+// 🚀 2. FORCE SUPABASE TO NEVER USE CACHED DATA
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+// 👇 Use the Admin Service Role Key to bypass Supabase RLS security blocks
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: { persistSession: false },
+  global: { fetch: (url, options) => fetch(url, { ...options, cache: "no-store" }) }
+});
 
 export async function GET(request: Request) {
   try {
-    // 1. Calculate Target Dates (Runs on the 1st of the month, so target is the last day of the previous month)
+    // Calculate Target Dates (Runs on the 1st of the month, so target is the last day of the previous month)
     const targetDate = new Date();
     targetDate.setDate(targetDate.getDate() - 1); 
     
@@ -23,14 +29,14 @@ export async function GET(request: Request) {
     const currentMonthYear = todayStr.slice(0, 7); // YYYY-MM
     const monthName = targetDate.toLocaleString("en-US", { month: "long" });
 
-    // 2. Fetch ALL Data from Supabase
+    // Fetch ALL Data from Supabase (Now guaranteed to be live)
     const { data: bookingsData } = await supabase.from("bookings").select("*").order("booking_date", { ascending: true });
     const { data: dbStudents } = await supabase.from("students").select(`*, student_payments(*)`).order("name", { ascending: true });
 
     const bookings = bookingsData || [];
     const students = dbStudents || [];
 
-    // 3. Initialize Workbook
+    // Initialize Workbook
     const workbook = XLSX.utils.book_new();
 
     /* ==========================================
@@ -76,7 +82,7 @@ export async function GET(request: Request) {
       ["Cash Collected (₹)", totalCashCollected],
       ["UPI Collected (₹)", totalUpiCollected],
       ["Total Collected (Cash + UPI) (₹)", totalCollection],
-      ["Actual Money In Hand (Adv + Cash + UPI) (₹)", moneyInHand],
+      ["Actual Money In Hand (Adv + Cash + UPI) (Adv + Cash + UPI) (₹)", moneyInHand],
       [], [],
     ]);
     XLSX.utils.sheet_add_json(mainSheet, exportData, { origin: "A14" });
@@ -186,7 +192,7 @@ export async function GET(request: Request) {
     XLSX.utils.book_append_sheet(workbook, dailySheet, "Daily Summary");
 
     /* ==========================================
-       SHEET 5: FOOTBALL COACHING
+       SHEET 5: FOOTBALL COACHING (GUARANTEED RENDER)
        ========================================== */
     const uniqueMonths = Array.from(
       new Set([
@@ -201,29 +207,49 @@ export async function GET(request: Request) {
       return date.toLocaleString("en-US", { month: "long", year: "numeric" });
     };
 
-    const academyWorksheetData = students.map((s: any, index: number) => {
-      const joinDate = new Date(s.created_at);
-      const isNew = joinDate.getMonth() === currentMonthNum && joinDate.getFullYear() === currentYearNum;
-      const row: any = {
-        "S.No.": index + 1,
-        "Student Name": s.name + (isNew ? " (NEW)" : ""),
-        "Phone Number": s.phone,
-        "Date of Birth": s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-",
-        "Email ID": s.email || "-",
-        "Monthly Fee (₹)": s.monthly_fee,
-        "Type": isNew ? "NEW REGISTRATION" : "EXISTING"
+    let academyWorksheetData: any[] = [];
+
+    // Safeguard: If the database is empty, create a fallback row so the Excel sheet headers still render
+    if (students.length === 0) {
+      const emptyRow: any = {
+        "S.No.": "-",
+        "Student Name": "No Students Found",
+        "Phone Number": "-",
+        "Date of Birth": "-",
+        "Email ID": "-",
+        "Monthly Fee (₹)": "-",
+        "Type": "-"
       };
-      uniqueMonths.forEach((my) => {
-        const record = s.student_payments?.find((p: any) => p.month_year === my);
-        const colLabel = formatMonthLabel(my);
-        row[colLabel] = record?.status === "settled" ? `✅ PAID (${record.payment_method || "UPI"})` : "❌ PENDING";
+      uniqueMonths.forEach((my) => emptyRow[formatMonthLabel(my)] = "-");
+      academyWorksheetData.push(emptyRow);
+    } else {
+      academyWorksheetData = students.map((s: any, index: number) => {
+        const joinDate = s.created_at ? new Date(s.created_at) : new Date();
+        const isNew = joinDate.getMonth() === currentMonthNum && joinDate.getFullYear() === currentYearNum;
+        const row: any = {
+          "S.No.": index + 1,
+          "Student Name": s.name + (isNew ? " (NEW)" : ""),
+          "Phone Number": s.phone,
+          "Date of Birth": s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-",
+          "Email ID": s.email || "-",
+          "Monthly Fee (₹)": s.monthly_fee,
+          "Type": isNew ? "NEW REGISTRATION" : "EXISTING"
+        };
+        uniqueMonths.forEach((my) => {
+          const record = s.student_payments?.find((p: any) => p.month_year === my);
+          const colLabel = formatMonthLabel(my);
+          row[colLabel] = record?.status === "settled" ? `✅ PAID (${record.payment_method || "UPI"})` : "❌ PENDING";
+        });
+        return row;
       });
-      return row;
-    });
+    }
 
     const academySheet = XLSX.utils.json_to_sheet(academyWorksheetData);
+    
+    // Safely generate the correct Excel Column letter
     const totalColumns = 7 + uniqueMonths.length; 
-    const endColumnChar = String.fromCharCode(64 + totalColumns); 
+    const endColumnChar = XLSX.utils.encode_col(totalColumns - 1); 
+    
     academySheet["!autofilter"] = { ref: `A1:${endColumnChar}${1 + academyWorksheetData.length}` }; 
     academySheet["!cols"] = [{ wch: 8 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 15 }, { wch: 18 }, ...uniqueMonths.map(() => ({ wch: 22 }))];
     XLSX.utils.book_append_sheet(workbook, academySheet, "Football Coaching");
