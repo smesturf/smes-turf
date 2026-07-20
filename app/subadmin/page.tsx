@@ -1008,7 +1008,11 @@ export default function AdminPage() {
               whileHover={{ y: -2 }}
               whileTap={{ scale: 0.97 }}
               className="bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-mono text-xs uppercase tracking-widest px-5 py-4 font-black transition-colors"
-              onClick={() => setShowManageSlots(true)}
+              onClick={() => {
+                setShowManageSlots(true);
+                setSlotDate(today); // Auto-set to today
+                loadAvailableAdminSlots(today); // Auto-load today's time slots
+              }}
             >
               ⚙️ Manage Slots
             </motion.button>
@@ -1024,15 +1028,6 @@ export default function AdminPage() {
               }}
             >
               ⚽ Football Coaching
-            </motion.button>
-
-            <motion.button
-              whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.35)" }}
-              whileTap={{ scale: 0.97 }}
-              onClick={exportToExcel}
-              className="bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-wider px-5 py-4 font-black transition-colors"
-            >
-              📊 Export Excel
             </motion.button>
           </div>
         </motion.div>
@@ -1463,7 +1458,7 @@ export default function AdminPage() {
                             </span>
                           )}
                         </td>
-                        <td className="p-4 whitespace-nowrap text-center">
+                       <td className="p-4 whitespace-nowrap text-center">
                           <div className="flex items-center justify-center gap-2">
                             {booking.balance_amount > 0 ? (
                               <motion.button
@@ -1486,14 +1481,6 @@ export default function AdminPage() {
                                 </motion.button>
                               )
                             )}
-                            <motion.button
-                              whileHover={{ y: -1 }}
-                              whileTap={{ scale: 0.96 }}
-                              onClick={() => deleteBooking(booking.id)}
-                              className="bg-neutral-900 hover:bg-red-950 border border-neutral-800 hover:border-red-900 text-red-400 hover:text-white text-xs font-mono uppercase font-black px-3 py-1.5 transition-colors"
-                            >
-                              ❌ Cancel
-                            </motion.button>
                           </div>
                         </td>
                       </motion.tr>
@@ -1711,15 +1698,12 @@ export default function AdminPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 relative">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-mono uppercase text-neutral-400">Reason</label>
-                  <select
-                    value={slotReason}
-                    onChange={(e) => setSlotReason(e.target.value)}
-                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
-                  >
-                    <option value="OFFLINE BOOKING">OFFLINE BOOKING</option>
-                    <option value="TOURNAMENT">TOURNAMENT</option>
-                    <option value="MAINTENANCE">MAINTENANCE</option>
-                  </select>
+                  <input
+                    type="text"
+                    value="OFFLINE BOOKING"
+                    disabled
+                    className="w-full p-3.5 bg-neutral-900 text-neutral-500 border border-neutral-800 outline-none text-sm font-medium cursor-not-allowed"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
@@ -1727,9 +1711,13 @@ export default function AdminPage() {
                   <input
                     type="date"
                     value={slotDate}
+                    min={today} // Prevents selecting past dates
                     onChange={(e) => {
                       setSlotDate(e.target.value);
-                      if (e.target.value) loadAvailableCourts(e.target.value, slotTime);
+                      if (e.target.value) {
+                        loadAvailableAdminSlots(e.target.value); // Fixes the empty time slot bug
+                        loadAvailableCourts(e.target.value, slotTime);
+                      }
                     }}
                     style={{ colorScheme: "dark" }}
                     className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
@@ -1753,35 +1741,19 @@ export default function AdminPage() {
                   </select>
                 </div>
 
-                {(slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE") ? (
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-mono uppercase text-neutral-400">End Time</label>
-                    <select
-                      value={slotEndTime}
-                      onChange={(e) => setSlotEndTime(e.target.value)}
-                      className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                    >
-                      <option value="">-- Select End --</option>
-                      {adminTimeSlots.map((t) => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-mono uppercase text-neutral-400">Duration (mins)</label>
-                    <select
-                      value={slotDuration}
-                      onChange={(e) => setSlotDuration(Number(e.target.value))}
-                      className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                    >
-                      <option value={30}>30 mins</option>
-                      <option value={60}>60 mins</option>
-                      <option value={90}>90 mins</option>
-                      <option value={120}>120 mins</option>
-                    </select>
-                  </div>
-                )}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400">Duration (mins)</label>
+                  <select
+                    value={slotDuration}
+                    onChange={(e) => setSlotDuration(Number(e.target.value))}
+                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                  >
+                    <option value={30}>30 mins</option>
+                    <option value={60}>60 mins</option>
+                    <option value={90}>90 mins</option>
+                    <option value={120}>120 mins</option>
+                  </select>
+                </div>
 
                 <div className="space-y-1.5 sm:col-span-2">
                   <label className="text-[10px] font-mono uppercase text-neutral-400">Court</label>
