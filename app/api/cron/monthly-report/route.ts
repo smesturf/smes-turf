@@ -3,6 +3,9 @@ import nodemailer from "nodemailer";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
 
+// ✅ THIS LINE FORCES NEXT.JS TO PULL LIVE DATA EVERY SINGLE TIME
+export const dynamic = "force-dynamic";
+
 // Initialize Supabase for the backend
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
