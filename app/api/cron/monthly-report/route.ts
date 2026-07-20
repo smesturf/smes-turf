@@ -271,7 +271,8 @@ export async function GET(request: Request) {
       "abhayispilot@gmail.com",
       "jathinsb704@gmail.com",
       "anandsk551@gmail.com",
-      "abhayhanki@gmail.com"
+      "abhayhanki@gmail.com",
+      "adithyatd0@gmail.com"
     ];
 
     await transporter.sendMail({
@@ -303,7 +304,7 @@ export async function GET(request: Request) {
       ],
     });
 
-    return NextResponse.json({ success: true, message: `Full 5-Sheet Report sent to 4 founders for ${monthName}` });
+    return NextResponse.json({ success: true, message: `Full 5-Sheet Report sent to 5 founders for ${monthName}` });
   } catch (error) {
     console.error("Cron Job Failed:", error);
     return NextResponse.json({ error: "Failed to generate monthly report" }, { status: 500 });
