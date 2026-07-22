@@ -386,12 +386,18 @@ export default function Home() {
       // 🛑 STOP LOADER
       setIsProcessingBooking(false);
 
+      // 🔑 Get reference ID & Advance Paid
+      const referenceId = verifyData.booking?.booking_reference || paymentData.razorpay_payment_id || "N/A";
+      const advancePaid = 200; // Advance paid amount
+
       // 🎉 TRIGGER PREMIUM SUCCESS MODAL
       setSuccessData({
         bookingId,
+        referenceId,
         name,
         date: bookingDate,
         time: startTime,
+        advancePaid,
         balance: balanceAmount
       });
 
@@ -1268,12 +1274,16 @@ export default function Home() {
                 <div>
                   <h2 className="text-2xl font-black uppercase tracking-tight text-white mb-1">Slot Confirmed!</h2>
                   <p className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">
-                    Booking ID: <span className="text-lime-400 font-bold">{successData.bookingId}</span>
+                    Booking ID: <span className="text-white font-bold">{successData.bookingId}</span>
                   </p>
                 </div>
 
                 {/* Digital Receipt Card */}
                 <div className="w-full bg-neutral-900/50 border border-neutral-800 p-4 mt-2 space-y-3 text-left">
+                  <div className="flex justify-between items-center border-b border-neutral-800 pb-2">
+                    <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Reference ID</span>
+                    <span className="text-xs font-mono font-bold text-lime-400 uppercase tracking-wider">{successData.referenceId}</span>
+                  </div>
                   <div className="flex justify-between items-center border-b border-neutral-800 pb-2">
                     <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Player</span>
                     <span className="text-xs font-bold text-white uppercase">{successData.name}</span>
@@ -1284,9 +1294,13 @@ export default function Home() {
                       {new Date(successData.date).toLocaleDateString("en-GB")}<br/>@ {successData.time}
                     </span>
                   </div>
+                  <div className="flex justify-between items-center border-b border-neutral-800 pb-2">
+                    <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Advance Paid</span>
+                    <span className="text-xs font-bold text-emerald-400 font-mono">₹{successData.advancePaid}</span>
+                  </div>
                   <div className="flex justify-between items-center pt-1">
                     <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Balance Due at Venue</span>
-                    <span className="text-sm font-black text-red-400">₹{successData.balance}</span>
+                    <span className="text-sm font-black text-red-400 font-mono">₹{successData.balance}</span>
                   </div>
                 </div>
 
