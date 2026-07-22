@@ -60,6 +60,12 @@ export default function Home() {
   // 🔄 SECURE PAYMENT LOADING STATE
   const [isPaymentLoading, setIsPaymentLoading] = useState(false);
 
+  // 🔄 POST-PAYMENT PROCESSING STATE
+  const [isProcessingBooking, setIsProcessingBooking] = useState(false);
+  
+  // 🎉 SUCCESS MODAL STATE
+  const [successData, setSuccessData] = useState<any>(null);
+
   // 🎨 DYNAMIC UI THEME ENGINE
   const theme = useMemo(() => {
     const isRainy = weather?.condition.includes("Rain") || weather?.condition.includes("Drizzle") || weather?.condition.includes("Thunderstorm");
@@ -338,6 +344,9 @@ export default function Home() {
 
   /* -------- Secure Server Booking Handler -------- */
   const handleBooking = async (paymentData: any) => {
+    // 🚀 START PROCESSING LOADER
+    setIsProcessingBooking(true);
+
     try {
       const response = await fetch("/api/verify-booking", {
         method: "POST",
@@ -353,6 +362,7 @@ export default function Home() {
       const verifyData = await response.json();
 
       if (!response.ok) {
+        setIsProcessingBooking(false);
         alert(`❌ ${verifyData.error || "Payment verification failed."}`);
         return;
       }
@@ -373,8 +383,19 @@ export default function Home() {
         }),
       });
 
-      alert("✅ Payment Successful & Booking Secured!");
+      // 🛑 STOP LOADER
+      setIsProcessingBooking(false);
 
+      // 🎉 TRIGGER PREMIUM SUCCESS MODAL
+      setSuccessData({
+        bookingId,
+        name,
+        date: bookingDate,
+        time: startTime,
+        balance: balanceAmount
+      });
+
+      // Reset form fields quietly in the background
       setName("");
       setPhone("");
       setBookingDate("");
@@ -384,6 +405,7 @@ export default function Home() {
 
     } catch (error) {
       console.error(error);
+      setIsProcessingBooking(false);
       alert("A network error occurred during confirmation.");
     }
   };
@@ -1175,6 +1197,113 @@ export default function Home() {
                 Please do not close or refresh
               </p>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------- 🔄 POST-PAYMENT PROCESSING LOADER ---------- */}
+      <AnimatePresence>
+        {isProcessingBooking && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/95 backdrop-blur-md flex flex-col items-center justify-center z-[999999]"
+          >
+            <div className="relative w-24 h-24 flex items-center justify-center mb-8">
+              <div className="absolute inset-0 border-t-2 border-l-2 border-lime-400 rounded-full animate-spin" />
+              <div className="absolute inset-3 border-r-2 border-b-2 border-white rounded-full animate-[spin_1.2s_reverse_infinite]" />
+              <span className="text-3xl animate-pulse">🔒</span>
+            </div>
+            
+            <h2 className="text-lime-400 font-mono font-black uppercase tracking-[0.2em] mb-3 text-center px-4 text-sm sm:text-base drop-shadow-[0_0_10px_rgba(163,230,53,0.5)]">
+              Securing Your Slot
+            </h2>
+            
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500"></span>
+              </span>
+              <p className="text-neutral-400 font-mono text-[10px] sm:text-xs uppercase tracking-widest">
+                Verifying Payment & Dispatching Tickets...
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------- 🎉 FINAL SUCCESS CONFIRMATION MODAL ---------- */}
+      <AnimatePresence>
+        {successData && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 z-[999999]"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.9, y: 20, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              className="bg-[#0a0a0a] border border-neutral-800 p-6 sm:p-8 w-full max-w-md shadow-2xl relative overflow-hidden"
+            >
+              {/* Glowing Background Accent */}
+              <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-lime-400 to-emerald-500" />
+              <div className="absolute top-[-50px] left-1/2 -translate-x-1/2 w-[200px] h-[100px] bg-lime-500/20 blur-[60px] rounded-full pointer-events-none" />
+
+              <div className="flex flex-col items-center text-center space-y-4 relative z-10">
+                
+                {/* Checkmark Animation */}
+                <motion.div 
+                  initial={{ scale: 0 }} 
+                  animate={{ scale: 1, rotate: 360 }} 
+                  transition={{ type: "spring", delay: 0.2 }}
+                  className="w-20 h-20 bg-lime-400/10 border-2 border-lime-400 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(163,230,53,0.3)] mb-2"
+                >
+                  <span className="text-4xl drop-shadow-[0_0_10px_rgba(163,230,53,0.8)]">✅</span>
+                </motion.div>
+
+                <div>
+                  <h2 className="text-2xl font-black uppercase tracking-tight text-white mb-1">Slot Confirmed!</h2>
+                  <p className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">
+                    Booking ID: <span className="text-lime-400 font-bold">{successData.bookingId}</span>
+                  </p>
+                </div>
+
+                {/* Digital Receipt Card */}
+                <div className="w-full bg-neutral-900/50 border border-neutral-800 p-4 mt-2 space-y-3 text-left">
+                  <div className="flex justify-between items-center border-b border-neutral-800 pb-2">
+                    <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Player</span>
+                    <span className="text-xs font-bold text-white uppercase">{successData.name}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-neutral-800 pb-2">
+                    <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Schedule</span>
+                    <span className="text-xs font-bold text-lime-400 uppercase text-right">
+                      {new Date(successData.date).toLocaleDateString("en-GB")}<br/>@ {successData.time}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center pt-1">
+                    <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Balance Due at Venue</span>
+                    <span className="text-sm font-black text-red-400">₹{successData.balance}</span>
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-neutral-500 font-mono mt-4 leading-relaxed">
+                  A confirmation message has been sent to your WhatsApp. Please arrive 10 minutes prior to kickoff.
+                </p>
+
+                <motion.button
+                  whileHover={{ y: -2, boxShadow: "0 10px 25px rgba(163,230,53,0.2)" }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setSuccessData(null)}
+                  className="w-full mt-4 bg-lime-400 hover:bg-lime-300 text-black font-black font-mono text-xs uppercase tracking-widest py-4 transition-all"
+                >
+                  Done
+                </motion.button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
