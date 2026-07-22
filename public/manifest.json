@@ -1,8 +1,10 @@
 {
+  "id": "smes-customer-app",
   "name": "SMES Turf",
   "short_name": "SMES Turf",
   "description": "Premium multisport arena booking app.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#020617",
   "theme_color": "#a3e635",

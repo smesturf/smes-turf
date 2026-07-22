@@ -1,8 +1,10 @@
 {
+  "id": "smes-staff-app",
   "name": "SMES Staff Terminal",
   "short_name": "SMES Staff",
   "description": "Secure Admin Gateway for SMES Turf",
   "start_url": "/staff",
+  "scope": "/staff/",
   "display": "standalone",
   "background_color": "#050505",
   "theme_color": "#a3e635",
