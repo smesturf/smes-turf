@@ -3,8 +3,6 @@
 import { useState, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { motion } from "framer-motion";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
 
 export default function BookingLookup() {
   const [phone, setPhone] = useState("");
@@ -58,42 +56,64 @@ export default function BookingLookup() {
     return `#${id}`;
   };
 
-  /* -------- Image Download -------- */
+  /* -------- Safe Image Download (html-to-image) -------- */
   const downloadAsImage = async () => {
     if (!passRef.current) return;
     setIsDownloading(true);
+
     try {
-      const canvas = await html2canvas(passRef.current, { scale: 3, backgroundColor: "#0a0a0a", useCORS: true });
-      const image = canvas.toDataURL("image/png");
+      const { toPng } = await import("html-to-image");
+
+      const dataUrl = await toPng(passRef.current, {
+        quality: 0.95,
+        pixelRatio: 2,
+        backgroundColor: "#0a0a0a",
+        cacheBust: true,
+      });
+
       const link = document.createElement("a");
-      link.href = image;
       link.download = `SMES_Pass_${selectedBooking.booking_reference || formatBookingId(selectedBooking.id)}.png`;
+      link.href = dataUrl;
+      document.body.appendChild(link);
       link.click();
-    } catch (err) {
+      document.body.removeChild(link);
+    } catch (err: any) {
       console.error("Image export error:", err);
-      alert("❌ Failed to generate image.");
+      alert(`❌ Image download failed: ${err.message || "Failed to render image."}`);
     } finally {
       setIsDownloading(false);
     }
   };
 
-  /* -------- PDF Download -------- */
+  /* -------- Safe PDF Download (html-to-image + jsPDF) -------- */
   const downloadAsPDF = async () => {
     if (!passRef.current) return;
     setIsDownloading(true);
+
     try {
-      const canvas = await html2canvas(passRef.current, { scale: 3, backgroundColor: "#0a0a0a", useCORS: true });
-      const imgData = canvas.toDataURL("image/png");
+      const { toPng } = await import("html-to-image");
+      const jsPDF = (await import("jspdf")).default;
+
+      const dataUrl = await toPng(passRef.current, {
+        quality: 0.95,
+        pixelRatio: 2,
+        backgroundColor: "#0a0a0a",
+        cacheBust: true,
+      });
+
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const imgWidth = 170;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const passWidth = passRef.current.clientWidth || 500;
+      const passHeight = passRef.current.clientHeight || 700;
+      const imgHeight = (passHeight * imgWidth) / passWidth;
+
       pdf.setFillColor(10, 10, 10);
       pdf.rect(0, 0, 210, 297, "F");
-      pdf.addImage(imgData, "PNG", 20, 20, imgWidth, imgHeight);
+      pdf.addImage(dataUrl, "PNG", 20, 20, imgWidth, imgHeight);
       pdf.save(`SMES_Arena_Pass_${selectedBooking.booking_reference || formatBookingId(selectedBooking.id)}.pdf`);
-    } catch (err) {
+    } catch (err: any) {
       console.error("PDF export error:", err);
-      alert("❌ Failed to generate PDF.");
+      alert(`❌ PDF download failed: ${err.message || "Failed to render PDF."}`);
     } finally {
       setIsDownloading(false);
     }
@@ -353,7 +373,7 @@ export default function BookingLookup() {
                       whileTap={{ scale: 0.97 }}
                       onClick={downloadAsImage}
                       disabled={isDownloading}
-                      className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-lime-400 font-mono text-xs uppercase tracking-widest py-4 font-black transition-colors flex items-center justify-center gap-2"
+                      className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-lime-400 font-mono text-xs uppercase tracking-widest py-4 font-black transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       {isDownloading ? "Generating..." : "🖼️ Save Image"}
                     </motion.button>
@@ -363,7 +383,7 @@ export default function BookingLookup() {
                       whileTap={{ scale: 0.97 }}
                       onClick={downloadAsPDF}
                       disabled={isDownloading}
-                      className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-4 font-black transition-colors shadow-[0_0_15px_rgba(163,230,53,0.2)] flex items-center justify-center gap-2"
+                      className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-4 font-black transition-colors shadow-[0_0_15px_rgba(163,230,53,0.2)] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       {isDownloading ? "Generating..." : "📄 Download PDF"}
                     </motion.button>
