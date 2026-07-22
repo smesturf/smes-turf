@@ -486,11 +486,12 @@ export default function Home() {
         variants={stagger}
         initial="hidden"
         animate="show"
-        className="max-w-7xl mx-auto px-4 pt-12 pb-6 sm:pt-16 sm:pb-8 relative z-10 text-center"
+        className="max-w-7xl mx-auto px-4 pt-6 pb-6 sm:pt-10 sm:pb-8 relative z-10 text-center"
       >
+        {/* ⬆️ Shifted upwards: lower padding & smaller bottom margin */}
         <motion.div
           variants={fadeUp}
-          className="inline-flex items-center gap-1.5 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-slate-900/80 backdrop-blur border border-slate-800 text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-lime-400 mb-4 sm:mb-6 mt-4"
+          className="inline-flex items-center gap-1.5 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-slate-900/80 backdrop-blur border border-slate-800 text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-lime-400 mb-2 sm:mb-3"
         >
           <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />
           Elite Sports Venue
@@ -498,9 +499,10 @@ export default function Home() {
 
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 sm:gap-8">
           <div className="text-center lg:text-left">
+            {/* 🔍 Bigger Heading Display */}
             <motion.h1
               variants={fadeUp}
-              className="text-4xl sm:text-6xl md:text-8xl font-black tracking-tighter uppercase leading-none text-white"
+              className="text-5xl sm:text-7xl md:text-9xl lg:text-[9.5rem] font-black tracking-tighter uppercase leading-none text-white"
             >
               <span className="inline-block bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-neutral-400">
                 SMES TURF
@@ -510,9 +512,9 @@ export default function Home() {
             {/* 📍 Location Pin under Heading */}
             <motion.div
               variants={fadeUp}
-              className="flex items-center justify-center lg:justify-start gap-1.5 text-xs font-mono text-lime-400 uppercase tracking-wider mt-2.5 font-bold"
+              className="flex items-center justify-center lg:justify-start gap-1.5 text-xs sm:text-sm font-mono text-lime-400 uppercase tracking-wider mt-3 font-bold"
             >
-              <span className="text-sm">📍</span>
+              <span className="text-base">📍</span>
               <span>Vijayanagar, 2nd Stage, Mysuru</span>
             </motion.div>
 
@@ -1097,7 +1099,7 @@ export default function Home() {
               <div><span className="text-lime-500">L:</span> Mysuru, Karnataka</div>
             </div>
 
-            {/* 📄 Terms & Conditions Button (Small, Same Style) */}
+            {/* 📄 Terms & Conditions Button */}
             <Link
               href="/terms"
               className="text-[9px] sm:text-[10px] text-neutral-500 hover:text-lime-400 uppercase tracking-widest transition-colors pt-1 underline underline-offset-4 decoration-neutral-800 hover:decoration-lime-400"
