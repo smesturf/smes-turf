@@ -486,12 +486,11 @@ export default function Home() {
         variants={stagger}
         initial="hidden"
         animate="show"
-        className="max-w-7xl mx-auto px-4 pt-6 pb-6 sm:pt-10 sm:pb-8 relative z-10 text-center"
+        className="max-w-7xl mx-auto px-4 pt-6 sm:pt-12 pb-6 sm:pb-8 relative z-10 text-center"
       >
-        {/* ⬆️ Shifted upwards: lower padding & smaller bottom margin */}
         <motion.div
           variants={fadeUp}
-          className="inline-flex items-center gap-1.5 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-slate-900/80 backdrop-blur border border-slate-800 text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-lime-400 mb-2 sm:mb-3"
+          className="inline-flex items-center gap-1.5 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-slate-900/80 backdrop-blur border border-slate-800 text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-lime-400 mb-3 sm:mb-6 mt-1 sm:mt-4"
         >
           <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />
           Elite Sports Venue
@@ -499,10 +498,10 @@ export default function Home() {
 
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 sm:gap-8">
           <div className="text-center lg:text-left">
-            {/* 🔍 Bigger Heading Display */}
+            {/* 🛑 Added whitespace-nowrap to keep SMES TURF strictly in a single line on desktop */}
             <motion.h1
               variants={fadeUp}
-              className="text-5xl sm:text-7xl md:text-9xl lg:text-[9.5rem] font-black tracking-tighter uppercase leading-none text-white"
+              className="text-5xl sm:text-6xl md:text-8xl font-black tracking-tighter uppercase leading-none text-white whitespace-nowrap"
             >
               <span className="inline-block bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-neutral-400">
                 SMES TURF
@@ -512,9 +511,9 @@ export default function Home() {
             {/* 📍 Location Pin under Heading */}
             <motion.div
               variants={fadeUp}
-              className="flex items-center justify-center lg:justify-start gap-1.5 text-xs sm:text-sm font-mono text-lime-400 uppercase tracking-wider mt-3 font-bold"
+              className="flex items-center justify-center lg:justify-start gap-1.5 text-xs sm:text-sm font-mono text-lime-400 uppercase tracking-wider mt-0.5 sm:mt-3 font-bold"
             >
-              <span className="text-base">📍</span>
+              <span className="text-sm sm:text-base">📍</span>
               <span>Vijayanagar, 2nd Stage, Mysuru</span>
             </motion.div>
 
@@ -528,10 +527,12 @@ export default function Home() {
             </motion.p>
           </div>
 
+          {/* Header Action Buttons with Custom SVG Logos */}
           <motion.div
             variants={fadeUp}
             className="grid grid-cols-1 gap-2 w-full max-w-md mx-auto lg:max-w-none lg:mx-0 lg:flex lg:w-auto lg:gap-3"
           >
+            {/* BOOK NOW Button */}
             <motion.button
               suppressHydrationWarning={true}
               whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.35)" }}
@@ -539,26 +540,72 @@ export default function Home() {
               onClick={scrollToBooking}
               type="button"
               className="bg-lime-400 hover:bg-lime-300 text-black text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-colors font-black text-center shadow-lg shadow-lime-400/10 cursor-pointer flex items-center justify-center gap-2"
-             >
-              📅 BOOK NOW
+            >
+              <svg className="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24">
+                <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2z"/>
+              </svg>
+              <span>BOOK NOW</span>
             </motion.button>
+
+            {/* Additional Header Navigation Links with Icons */}
             {[
-              { href: "/my-booking", label: "🎟️ My Bookings" },
-              { href: "https://wa.me/918453095258", label: "WhatsApp" },
-              { href: "https://instagram.com/smesturf", label: "Instagram" }, 
-              { href: "https://maps.google.com/?q=12.329329,76.612008", label: "Find Arena" },
-              { href: "tel:+918453095258", label: "Call Desk" },
+              { 
+                href: "/my-booking", 
+                label: "My Bookings",
+                icon: (
+                  <svg className="w-4 h-4 fill-lime-400 shrink-0" viewBox="0 0 24 24">
+                    <path d="M22 10V6c0-1.11-.9-2-2-2H4c-1.1 0-1.99.89-1.99 2v4c1.1 0 1.99.9 1.99 2s-.89 2-2 2v4c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2v-4c-1.1 0-2-.9-2-2s.9-2 2-2zm-2-1.46c-1.19.69-2 1.99-2 3.46s.81 2.77 2 3.46V18H4v-2.54c1.19-.69 2-1.99 2-3.46s-.81-2.77-2-3.46V6h16v2.54zM11 7h2v2h-2zm0 4h2v2h-2zm0 4h2v2h-2z"/>
+                  </svg>
+                )
+              },
+              { 
+                href: "https://wa.me/918453095258", 
+                label: "WhatsApp",
+                icon: (
+                  <svg className="w-4 h-4 fill-emerald-400 shrink-0" viewBox="0 0 24 24">
+                    <path d="M12.012 2c-5.506 0-9.969 4.458-9.969 9.968 0 1.764.453 3.487 1.313 5.013l-1.396 5.099 5.234-1.365c1.472.802 3.137 1.222 4.818 1.222l.004-.001c5.505 0 9.967-4.457 9.967-9.968 0-2.663-1.038-5.168-2.923-7.051-1.884-1.884-4.388-2.92-7.048-2.92zm5.834 14.161c-.247.693-1.229 1.272-1.996 1.423-.523.103-1.205.186-3.504-.76-2.942-1.21-4.839-4.204-4.986-4.401-.147-.197-1.198-1.593-1.198-3.038 0-1.445.759-2.158 1.028-2.451.269-.293.587-.366.783-.366.196 0 .392.001.564.01.185.009.434-.07.679.529.245.599.833 2.032.906 2.18.073.148.122.321.024.518-.098.197-.147.321-.293.494-.147.173-.309.387-.441.52-.147.148-.302.309-.13.576.173.268.767 1.267 1.648 2.051 1.134 1.009 2.091 1.321 2.385 1.469.294.148.465.123.637-.074.172-.197.735-.856.932-1.15.196-.294.392-.246.661-.148.269.098 1.714.808 2.008.955.294.148.49.222.563.346.073.123.073.717-.174 1.41z"/>
+                  </svg>
+                )
+              },
+              { 
+                href: "https://instagram.com/smesturf", 
+                label: "Instagram",
+                icon: (
+                  <svg className="w-4 h-4 fill-pink-500 shrink-0" viewBox="0 0 24 24">
+                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                  </svg>
+                )
+              }, 
+              { 
+                href: "https://maps.google.com/?q=12.329329,76.612008", 
+                label: "Find Arena",
+                icon: (
+                  <svg className="w-4 h-4 fill-red-400 shrink-0" viewBox="0 0 24 24">
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                  </svg>
+                )
+              },
+              { 
+                href: "tel:+918453095258", 
+                label: "Call Desk",
+                icon: (
+                  <svg className="w-4 h-4 fill-lime-400 shrink-0" viewBox="0 0 24 24">
+                    <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+                  </svg>
+                )
+              },
             ].map((btn) => (
               <motion.a
                 key={btn.label}
                 whileHover={{ y: -2, borderColor: "rgba(163,230,53,0.6)" }}
                 whileTap={{ scale: 0.97 }}
                 href={btn.href}
-                className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-colors text-center flex items-center justify-center"
+                className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-colors text-center flex items-center justify-center gap-2"
               >
-                {btn.label}
+                {btn.icon}
+                <span>{btn.label}</span>
               </motion.a>
-               ))}
+            ))}
           </motion.div>
         </div>
 
@@ -1099,7 +1146,7 @@ export default function Home() {
               <div><span className="text-lime-500">L:</span> Mysuru, Karnataka</div>
             </div>
 
-            {/* 📄 Terms & Conditions Button */}
+            {/* 📄 Terms & Conditions Link */}
             <Link
               href="/terms"
               className="text-[9px] sm:text-[10px] text-neutral-500 hover:text-lime-400 uppercase tracking-widest transition-colors pt-1 underline underline-offset-4 decoration-neutral-800 hover:decoration-lime-400"
