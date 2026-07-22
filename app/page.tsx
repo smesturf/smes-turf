@@ -1172,7 +1172,7 @@ export default function Home() {
             scrollToBooking();
           }
         }}
-        className={`fixed bottom-6 left-4 md:left-auto md:bottom-8 md:right-8 z-[9000] backdrop-blur-md px-5 py-3 rounded-full transition-all duration-300 shadow-xl cursor-pointer flex items-center gap-2 text-[11px] md:text-[12px] font-mono font-bold uppercase tracking-widest ${
+        className={`fixed bottom-6 right-4 md:bottom-8 md:right-8 z-[9000] backdrop-blur-md px-5 py-3 rounded-full transition-all duration-300 shadow-xl cursor-pointer flex items-center gap-2 text-[11px] md:text-[12px] font-mono font-bold uppercase tracking-widest ${
           startTime && name && phone.length === 10
             ? "bg-lime-400 text-black border border-lime-400 hover:bg-lime-300"
             : "bg-neutral-900/95 border border-neutral-700 hover:border-lime-400/50 text-white"
