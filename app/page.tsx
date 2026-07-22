@@ -54,7 +54,7 @@ export default function Home() {
   // 🌤️ DYNAMIC WEATHER WIDGET STATE
   const [weather, setWeather] = useState<{ temp: number; condition: string } | null>(null);
 
-  /// 🎫 CONFIRMATION MODAL STATE (New Add)
+  /// 🎫 CONFIRMATION MODAL STATE
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   
   // 🔄 SECURE PAYMENT LOADING STATE
@@ -369,6 +369,8 @@ export default function Home() {
 
       const balanceAmount = totalAmount - 200;
       const bookingId = verifyData.booking?.id ? `#${verifyData.booking.id.toString().slice(-4)}` : "#----";
+      const referenceId = verifyData.booking?.booking_reference || paymentData.razorpay_payment_id || "N/A";
+      const advancePaid = 200;
       
       const clientText = `🏟️ *SMES Sports Academy Booking Confirmed*\n\nHello ${name},\n\nYour booking has been successfully confirmed.\n\n📅 *Date:* ${bookingDate}\n🕒 *Time:* ${startTime}\n⏱ *Duration:* ${duration} Minutes\n🏏 *Sport:* ${sport}\n🏟 *Court:* ${bookingType}\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200\n💳 *Balance Due:* ₹${balanceAmount}\n\n📍 *Location:*\nSMES Sports Academy, Mysuru\n\n⚠️ Please arrive 10 minutes before your slot.\n⚠️ Balance payment must be completed before play starts.\n\nThank you for choosing SMES Sports Academy.\n\n📞 *Support:* 8453095258`;
       const adminText = `🔔 *NEW BOOKING RECEIVED*\n\n*SMES Sports Academy*\n\n👤 *Customer:* ${name}\n📞 *Phone:* ${phone}\n\n📅 *Date:* ${bookingDate}\n🕒 *Time:* ${startTime}\n⏱ *Duration:* ${duration} Minutes\n\n🏟 *Court:* ${verifyData.booking?.court_number || bookingType}\n🏏 *Sport:* ${sport}\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200\n💳 *Balance:* ₹${balanceAmount}\n\n💳 *Payment Status:* PAID\n\n*Booking ID:* ${bookingId}`;
@@ -386,11 +388,7 @@ export default function Home() {
       // 🛑 STOP LOADER
       setIsProcessingBooking(false);
 
-      // 🔑 Get reference ID & Advance Paid
-      const referenceId = verifyData.booking?.booking_reference || paymentData.razorpay_payment_id || "N/A";
-      const advancePaid = 200; // Advance paid amount
-
-      // 🎉 TRIGGER PREMIUM SUCCESS MODAL
+      // 🎉 TRIGGER PREMIUM SUCCESS MODAL WITH REF ID & ADVANCE PAID
       setSuccessData({
         bookingId,
         referenceId,
@@ -501,6 +499,7 @@ export default function Home() {
               📅 BOOK NOW
             </motion.button>
             {[
+              { href: "/my-booking", label: "🎟️ My Bookings" },
               { href: "https://wa.me/918453095258", label: "WhatsApp" },
               { href: "https://instagram.com/smesturf", label: "Instagram" }, 
               { href: "https://maps.google.com/?q=12.329329,76.612008", label: "Find Arena" },
@@ -656,7 +655,7 @@ export default function Home() {
                 </div>
               </motion.div>
 
-              {/* Sport + Pitch Config (Interactive UI Upgrade) */}
+              {/* Sport + Pitch Config */}
               <motion.div variants={fadeUp} className="space-y-6">
                 
                 {/* Discipline Selector */}
@@ -676,7 +675,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Interactive Field Configurator (UX Upgraded) */}
+                {/* Interactive Field Configurator */}
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400 flex justify-between items-center">
                     <span>Arena Scale Configuration</span>
@@ -860,8 +859,7 @@ export default function Home() {
             </div>
           </motion.div>
 
-        
-          {/* -------- Summary Side (VIP Match Ticket Upgrade) -------- */}
+          {/* -------- Summary Side (VIP Match Ticket) -------- */}
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -984,19 +982,16 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* 🚀 UPGRADED: Dynamic Barcode that reacts instantly to ALL keystrokes */}
+              {/* Dynamic Barcode */}
               <div className="px-5 sm:px-6 pt-4 pb-6 flex flex-col items-center opacity-30">
                 <div className="w-full h-8 flex justify-between items-end gap-[2px]">
                   {Array.from({ length: 35 }).map((_, i) => {
                     const deterministicWidth = (i % 4) + 1.5;
-                    
-                    // Generate a true hash based on EVERY character typed so far
                     const combinedString = `${name}${phone}${sport}${bookingType}${bookingDate}${startTime}${duration}`;
                     let charSum = 0;
                     for (let j = 0; j < combinedString.length; j++) {
                       charSum += combinedString.charCodeAt(j);
                     }
-                    
                     const dynamicHeight = 20 + (((i * 41) + (charSum * 17)) % 80);
 
                     return (
@@ -1017,7 +1012,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* 🚀 UPGRADED: Button triggers Modal instead of direct payment */}
             <motion.button
               suppressHydrationWarning={true}
               whileHover={startTime && name && phone.length === 10 ?
@@ -1089,7 +1083,7 @@ export default function Home() {
         <span>Book Now</span>
       </motion.button>
 
-      {/* ---------- 🚀 UPGRADED: Arena Pass Confirmation Modal ---------- */}
+      {/* ---------- Arena Pass Confirmation Modal ---------- */}
       <AnimatePresence>
         {showConfirmModal && (
           <motion.div
@@ -1172,7 +1166,7 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* ---------- 🔄 UPGRADED: Secure Payment Loading Overlay ---------- */}
+      {/* ---------- Secure Payment Loading Overlay ---------- */}
       <AnimatePresence>
         {isPaymentLoading && (
           <motion.div
@@ -1182,11 +1176,8 @@ export default function Home() {
             className="fixed inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center z-[999999]"
           >
             <div className="relative w-24 h-24 flex items-center justify-center mb-8">
-              {/* Outer fast spinning ring */}
               <div className="absolute inset-0 border-t-2 border-l-2 border-lime-400 rounded-full animate-spin" />
-              {/* Inner reverse spinning ring */}
               <div className="absolute inset-3 border-r-2 border-b-2 border-emerald-400 rounded-full animate-[spin_1.5s_reverse_infinite]" />
-              {/* Center Icon */}
               <span className="text-3xl animate-pulse">{sport === "Cricket" ? "🏏" : "⚽"}</span>
             </div>
             
@@ -1207,7 +1198,7 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* ---------- 🔄 POST-PAYMENT PROCESSING LOADER ---------- */}
+      {/* ---------- POST-PAYMENT PROCESSING LOADER ---------- */}
       <AnimatePresence>
         {isProcessingBooking && (
           <motion.div
