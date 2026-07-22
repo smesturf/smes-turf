@@ -54,8 +54,11 @@ export default function Home() {
   // 🌤️ DYNAMIC WEATHER WIDGET STATE
   const [weather, setWeather] = useState<{ temp: number; condition: string } | null>(null);
 
-  // 🎫 CONFIRMATION MODAL STATE (New Add)
+  /// 🎫 CONFIRMATION MODAL STATE (New Add)
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  
+  // 🔄 SECURE PAYMENT LOADING STATE
+  const [isPaymentLoading, setIsPaymentLoading] = useState(false);
 
   // 🎨 DYNAMIC UI THEME ENGINE
   const theme = useMemo(() => {
@@ -276,6 +279,18 @@ export default function Home() {
 
   /* -------- Secure Razorpay Intent -------- */
   const openRazorpay = async () => {
+    if (!name || !phone || !bookingDate || !startTime) {
+      alert("⚠️ Please fill all fields and select a valid time slot.");
+      return;
+    }
+    if (phone.length !== 10) {
+      alert("⚠️ Invalid Phone Number: Please enter exactly 10 digits.");
+      return;
+    }
+
+    // 🚀 TRIGGER LOADING OVERLAY
+    setIsPaymentLoading(true); 
+
     try {
       const response = await fetch("/api/create-order", {
         method: "POST",
@@ -292,6 +307,7 @@ export default function Home() {
       const orderData = await response.json();
 
       if (!response.ok) {
+        setIsPaymentLoading(false); // Kill loader on error
         alert(`❌ ${orderData.error || "Slot is no longer available. Please select another time."}`);
         loadBookedSlots(bookingDate); 
         return;
@@ -313,10 +329,13 @@ export default function Home() {
       if ((window as any).Razorpay) {
         const razor = new (window as any).Razorpay(options);
         razor.open();
+        setIsPaymentLoading(false); // Kill loader as Razorpay takes over
       } else {
+        setIsPaymentLoading(false);
         alert("Payment gateway script still loading. Please try again.");
       }
     } catch (error) {
+      setIsPaymentLoading(false); // Kill loader on network crash
       console.error("Order creation failed:", error);
       alert("Failed to initiate secure checkout.");
     }
@@ -1291,6 +1310,41 @@ export default function Home() {
                 </div>
               </form>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------- 🔄 UPGRADED: Secure Payment Loading Overlay ---------- */}
+      <AnimatePresence>
+        {isPaymentLoading && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center z-[999999]"
+          >
+            <div className="relative w-24 h-24 flex items-center justify-center mb-8">
+              {/* Outer fast spinning ring */}
+              <div className="absolute inset-0 border-t-2 border-l-2 border-lime-400 rounded-full animate-spin" />
+              {/* Inner reverse spinning ring */}
+              <div className="absolute inset-3 border-r-2 border-b-2 border-emerald-400 rounded-full animate-[spin_1.5s_reverse_infinite]" />
+              {/* Center Icon */}
+              <span className="text-3xl animate-pulse">{sport === "Cricket" ? "🏏" : "⚽"}</span>
+            </div>
+            
+            <h2 className="text-lime-400 font-mono font-black uppercase tracking-[0.2em] mb-3 text-center px-4 text-sm sm:text-base drop-shadow-[0_0_10px_rgba(163,230,53,0.5)]">
+              Connecting to Secure Gateway
+            </h2>
+            
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+              </span>
+              <p className="text-neutral-400 font-mono text-[10px] sm:text-xs uppercase tracking-widest">
+                Please do not close or refresh
+              </p>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
