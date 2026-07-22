@@ -486,7 +486,7 @@ export default function Home() {
         variants={stagger}
         initial="hidden"
         animate="show"
-        className="max-w-7xl mx-auto px-4 pt-6 sm:pt-12 pb-6 sm:pb-8 relative z-10 text-center"
+        className="max-w-7xl mx-auto px-4 pt-6 sm:pt-16 pb-6 sm:pb-8 relative z-10 text-center"
       >
         <motion.div
           variants={fadeUp}
@@ -530,7 +530,7 @@ export default function Home() {
           {/* Header Action Buttons with Custom SVG Logos */}
           <motion.div
             variants={fadeUp}
-            className="grid grid-cols-1 gap-2 w-full max-w-md mx-auto lg:max-w-none lg:mx-0 lg:flex lg:w-auto lg:gap-3"
+            className="grid grid-cols-1 gap-2 w-full max-w-md mx-auto lg:max-w-none lg:mx-0 lg:flex lg:flex-wrap lg:justify-end lg:w-auto lg:gap-3"
           >
             {/* BOOK NOW Button */}
             <motion.button
@@ -1157,25 +1157,36 @@ export default function Home() {
         </div>
       </motion.footer>
 
-      {/* ---------- Floating CTA ---------- */}
+      {/* ---------- SMART Floating CTA ---------- */}
       <motion.button
         suppressHydrationWarning={true}
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 1.2, duration: 0.5, ease: easeOut }}
-        whileHover={{ scale: 1.05, boxShadow: "0 0 30px rgba(163,230,53,0.5)" }}
+        whileHover={{ scale: 1.05, boxShadow: startTime && name && phone.length === 10 ? "0 0 20px rgba(163,230,53,0.4)" : "0 0 20px rgba(163,230,53,0.2)" }}
         whileTap={{ scale: 0.95 }}
-        onClick={scrollToBooking}
-        className="fixed bottom-6 right-4 md:bottom-8 md:right-8 z-[9000] bg-lime-400 hover:bg-lime-300 text-black px-6 py-3.5 rounded-full transition-colors shadow-[0_0_20px_rgba(163,230,53,0.3)] cursor-pointer flex items-center gap-2 text-[12px] font-mono font-black uppercase tracking-widest"
-        title="Book Now"
+        onClick={() => {
+          if (startTime && name && phone.length === 10) {
+            setShowConfirmModal(true);
+          } else {
+            scrollToBooking();
+          }
+        }}
+        className={`fixed bottom-6 left-4 md:left-auto md:bottom-8 md:right-8 z-[9000] backdrop-blur-md px-5 py-3 rounded-full transition-all duration-300 shadow-xl cursor-pointer flex items-center gap-2 text-[11px] md:text-[12px] font-mono font-bold uppercase tracking-widest ${
+          startTime && name && phone.length === 10
+            ? "bg-lime-400 text-black border border-lime-400 hover:bg-lime-300"
+            : "bg-neutral-900/95 border border-neutral-700 hover:border-lime-400/50 text-white"
+        }`}
+        title={startTime && name && phone.length === 10 ? "Confirm Match Slot" : "Book Here"}
       >
         <motion.span
+          className={startTime && name && phone.length === 10 ? "text-black" : "text-lime-400"}
           animate={{ rotate: [0, 15, -10, 0] }}
           transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
         >
-          ⚡
+          {startTime && name && phone.length === 10 ? "🔒" : "⚡"}
         </motion.span>
-        <span>Book Now</span>
+        <span>{startTime && name && phone.length === 10 ? "Confirm Slot" : "Book Here"}</span>
       </motion.button>
 
       {/* ---------- Arena Pass Confirmation Modal ---------- */}

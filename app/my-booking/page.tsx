@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { supabase } from "../lib/supabase";
 import { motion } from "framer-motion";
 
@@ -10,9 +10,6 @@ export default function BookingLookup() {
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
-  const [isDownloading, setIsDownloading] = useState(false);
-
-  const passRef = useRef<HTMLDivElement>(null);
 
   /* -------- Fetch Bookings Directly by Phone -------- */
   const handleLookup = async (e: React.FormEvent) => {
@@ -56,69 +53,6 @@ export default function BookingLookup() {
     return `#${id}`;
   };
 
-  /* -------- Safe Image Download (html-to-image) -------- */
-  const downloadAsImage = async () => {
-    if (!passRef.current) return;
-    setIsDownloading(true);
-
-    try {
-      const { toPng } = await import("html-to-image");
-
-      const dataUrl = await toPng(passRef.current, {
-        quality: 0.95,
-        pixelRatio: 2,
-        backgroundColor: "#0a0a0a",
-        cacheBust: true,
-      });
-
-      const link = document.createElement("a");
-      link.download = `SMES_Pass_${selectedBooking.booking_reference || formatBookingId(selectedBooking.id)}.png`;
-      link.href = dataUrl;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (err: any) {
-      console.error("Image export error:", err);
-      alert(`❌ Image download failed: ${err.message || "Failed to render image."}`);
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
-  /* -------- Safe PDF Download (html-to-image + jsPDF) -------- */
-  const downloadAsPDF = async () => {
-    if (!passRef.current) return;
-    setIsDownloading(true);
-
-    try {
-      const { toPng } = await import("html-to-image");
-      const jsPDF = (await import("jspdf")).default;
-
-      const dataUrl = await toPng(passRef.current, {
-        quality: 0.95,
-        pixelRatio: 2,
-        backgroundColor: "#0a0a0a",
-        cacheBust: true,
-      });
-
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const imgWidth = 170;
-      const passWidth = passRef.current.clientWidth || 500;
-      const passHeight = passRef.current.clientHeight || 700;
-      const imgHeight = (passHeight * imgWidth) / passWidth;
-
-      pdf.setFillColor(10, 10, 10);
-      pdf.rect(0, 0, 210, 297, "F");
-      pdf.addImage(dataUrl, "PNG", 20, 20, imgWidth, imgHeight);
-      pdf.save(`SMES_Arena_Pass_${selectedBooking.booking_reference || formatBookingId(selectedBooking.id)}.pdf`);
-    } catch (err: any) {
-      console.error("PDF export error:", err);
-      alert(`❌ PDF download failed: ${err.message || "Failed to render PDF."}`);
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
   const getTimeRangeLabel = (startTimeStr: string, durationMins: number) => {
     if (!startTimeStr) return "";
     const [h, m] = startTimeStr.split(":");
@@ -159,7 +93,7 @@ export default function BookingLookup() {
             My Match Passes
           </h1>
           <p className="text-neutral-400 text-xs sm:text-sm font-mono">
-            Enter your registered 10-digit mobile number to view and download your official arena booking passes.
+            Enter your registered 10-digit mobile number to view your official arena booking passes.
           </p>
         </div>
 
@@ -269,14 +203,18 @@ export default function BookingLookup() {
               )}
             </div>
 
-            {/* Right Column: Pass Preview & Download Actions */}
+            {/* Right Column: Protected Pass Preview */}
             <div className="lg:col-span-7 lg:sticky lg:top-8">
               {selectedBooking ? (
                 <div className="space-y-4">
-                  <div ref={passRef} className="bg-[#0a0a0a] border border-neutral-800 p-6 sm:p-8 shadow-2xl relative overflow-hidden">
+                  <div 
+                    className="bg-[#0a0a0a] border border-neutral-800 p-6 sm:p-8 shadow-2xl relative overflow-hidden select-none"
+                    style={{ WebkitUserSelect: "none", msUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}
+                    onContextMenu={(e) => e.preventDefault()}
+                  >
                     <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-lime-400 to-emerald-500" />
                     
-                    <div className="flex justify-between items-start pb-6 border-b border-neutral-800">
+                    <div className="flex justify-between items-start pb-6 border-b border-neutral-800 pointer-events-none">
                       <div>
                         <span className="text-[10px] font-mono text-lime-400 uppercase tracking-[0.2em] font-bold block mb-1">
                           Official Arena Pass
@@ -300,7 +238,7 @@ export default function BookingLookup() {
                       </div>
                     </div>
 
-                    <div className="py-6 grid grid-cols-2 gap-y-4 gap-x-6 text-left border-b border-neutral-800">
+                    <div className="py-6 grid grid-cols-2 gap-y-4 gap-x-6 text-left border-b border-neutral-800 pointer-events-none">
                       <div>
                         <span className="text-[9px] font-mono text-neutral-500 uppercase block mb-1">Player Name</span>
                         <span className="text-sm font-bold text-white uppercase">{selectedBooking.customer_name}</span>
@@ -324,7 +262,7 @@ export default function BookingLookup() {
                       </div>
                     </div>
 
-                    <div className="py-5 space-y-2 border-b border-neutral-800">
+                    <div className="py-5 space-y-2 border-b border-neutral-800 pointer-events-none">
                       <div className="flex justify-between items-center text-xs font-mono">
                         <span className="text-neutral-500 uppercase">Total Booking Value</span>
                         <span className="text-neutral-300 font-bold">₹{selectedBooking.total_amount}</span>
@@ -342,7 +280,7 @@ export default function BookingLookup() {
                     </div>
 
                     {/* Barcode Display */}
-                    <div className="pt-6 flex flex-col items-center opacity-80">
+                    <div className="pt-6 flex flex-col items-center opacity-80 pointer-events-none">
                       <div className="w-full h-10 flex justify-between items-end gap-[2px]">
                         {Array.from({ length: 42 }).map((_, i) => {
                           const heights = [40, 80, 60, 100, 50, 90, 70, 30, 85, 95];
@@ -361,32 +299,9 @@ export default function BookingLookup() {
                       </span>
                     </div>
 
-                    <p className="text-[9px] font-mono text-neutral-500 text-center mt-4">
-                      📍 SMES Sports Academy, Mysuru • Arrive 10 minutes prior to kickoff.
+                    <p className="text-[9px] font-mono text-neutral-500 text-center mt-4 pointer-events-none">
+                      📍 SMES Sports Academy, Mysuru • Please present this pass at the counter.
                     </p>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <motion.button
-                      whileHover={{ y: -1 }}
-                      whileTap={{ scale: 0.97 }}
-                      onClick={downloadAsImage}
-                      disabled={isDownloading}
-                      className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-lime-400 font-mono text-xs uppercase tracking-widest py-4 font-black transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                    >
-                      {isDownloading ? "Generating..." : "🖼️ Save Image"}
-                    </motion.button>
-
-                    <motion.button
-                      whileHover={{ y: -1 }}
-                      whileTap={{ scale: 0.97 }}
-                      onClick={downloadAsPDF}
-                      disabled={isDownloading}
-                      className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-4 font-black transition-colors shadow-[0_0_15px_rgba(163,230,53,0.2)] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                    >
-                      {isDownloading ? "Generating..." : "📄 Download PDF"}
-                    </motion.button>
                   </div>
                 </div>
               ) : null}
