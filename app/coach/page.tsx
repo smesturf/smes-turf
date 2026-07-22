@@ -59,7 +59,7 @@ export default function CoachPage() {
     
     if (isCoach !== "true") {
       // If the coach token is missing, send them away
-      router.replace("/");
+      router.replace("/staff");
     } else {
       // Token confirmed! Access allowed
       setIsAuthorized(true);
@@ -379,9 +379,9 @@ export default function CoachPage() {
               📊 Download Roster
             </motion.button>
             <button 
-              onClick={() => { localStorage.removeItem("subAdminLoggedIn"); router.replace("/"); }}
-              className="bg-neutral-900 border border-neutral-800 text-neutral-400 text-[10px] sm:text-xs font-mono py-4 px-4 hover:text-white transition-colors uppercase tracking-wider"
-            >
+  onClick={() => { localStorage.removeItem("subAdminLoggedIn"); router.replace("/staff"); }}
+  className="bg-neutral-900 border border-neutral-800 text-neutral-400 text-[10px] sm:text-xs font-mono py-4 px-4 hover:text-white transition-colors uppercase tracking-wider"
+>
               Exit Terminal
             </button>
           </div>

@@ -165,7 +165,7 @@ export default function AdminPage() {
   useEffect(() => {
     const loggedIn = localStorage.getItem("subadminLoggedIn");
     if (loggedIn !== "true") {
-      router.push("/");
+      router.push("/staff");
       return;
     }
     loadBookings();
@@ -205,8 +205,8 @@ export default function AdminPage() {
       clearTimeout(timeout);
       timeout = setTimeout(() => {
         localStorage.removeItem("subadminLoggedIn");
-        alert("Session Expired. Please authorize via the Staff Node on the Home Page.");
-        router.push("/");
+        alert("Session Expired. Please authorize via the System Gateway.");
+        router.push("/staff");
       }, 12 * 60 * 1000 * 60);
     };
 
@@ -804,7 +804,7 @@ export default function AdminPage() {
   const handleLogout = () => {
     localStorage.removeItem("subadminLoggedIn");
     localStorage.removeItem("adminLoginTime");
-    router.push("/");
+    router.push("/staff");
   };
 
   const savePayment = async () => {
