@@ -58,7 +58,7 @@ export default function CoachPage() {
     const isCoach = localStorage.getItem("subAdminLoggedIn");
     
     if (isCoach !== "true") {
-      // If the coach token is missing, send them away
+      // If the coach token is missing, send them away to /staff
       router.replace("/staff");
     } else {
       // Token confirmed! Access allowed
@@ -66,7 +66,35 @@ export default function CoachPage() {
     }
   }, [router]);
 
-  /* -------- 2. REALTIME SYNCHRONIZATION -------- */
+  /* -------- 2. INACTIVITY AUTO-LOGOUT TIMER -------- */
+  useEffect(() => {
+    if (!isAuthorized) return;
+
+    let timeout: NodeJS.Timeout;
+    const INACTIVITY_LIMIT = 15 * 60 * 1000; // 15 Minutes Inactivity Limit
+
+    const resetTimer = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(async () => {
+        await supabase.auth.signOut();
+        localStorage.removeItem("subAdminLoggedIn");
+        alert("⚠️ Session expired due to inactivity. Please log in again.");
+        router.push("/staff");
+      }, INACTIVITY_LIMIT);
+    };
+
+    const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+    events.forEach((event) => window.addEventListener(event, resetTimer));
+    
+    resetTimer(); // Initialize timer on mount
+
+    return () => {
+      clearTimeout(timeout);
+      events.forEach((event) => window.removeEventListener(event, resetTimer));
+    };
+  }, [isAuthorized, router]);
+
+  /* -------- 3. REALTIME SYNCHRONIZATION -------- */
   useEffect(() => {
     if (!isAuthorized) return; // Wait to connect until authorized
 
@@ -215,6 +243,7 @@ export default function CoachPage() {
     ];
     XLSX.writeFile(workbook, `Coach_Report_${currentMonthYear}.xlsx`);
   };
+
   /* -------- Automated Email Reminders -------- */
   const sendEmailReminders = async () => {
     // 1. Filter students who are unpaid AND have an email address provided
@@ -293,10 +322,10 @@ export default function CoachPage() {
     );
   }, [students, search]);
 
-  /* -------- 3. SECURE LOADER INTERCEPTOR -------- */
+  /* -------- 4. SECURE LOADER INTERCEPTOR -------- */
   if (!isAuthorized) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-955 text-neutral-400">
+      <div className="flex min-h-screen items-center justify-center bg-neutral-950 text-neutral-400">
         <div className="text-center space-y-3">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-lime-400 border-t-transparent mx-auto"></div>
           <p className="text-xs font-mono tracking-widest uppercase text-neutral-500">// Syncing Coach Credentials</p>
@@ -379,9 +408,13 @@ export default function CoachPage() {
               📊 Download Roster
             </motion.button>
             <button 
-  onClick={() => { localStorage.removeItem("subAdminLoggedIn"); router.replace("/staff"); }}
-  className="bg-neutral-900 border border-neutral-800 text-neutral-400 text-[10px] sm:text-xs font-mono py-4 px-4 hover:text-white transition-colors uppercase tracking-wider"
->
+              onClick={async () => { 
+                await supabase.auth.signOut();
+                localStorage.removeItem("subAdminLoggedIn"); 
+                router.replace("/staff"); 
+              }}
+              className="bg-neutral-900 border border-neutral-800 text-neutral-400 text-[10px] sm:text-xs font-mono py-4 px-4 hover:text-white transition-colors uppercase tracking-wider"
+            >
               Exit Terminal
             </button>
           </div>

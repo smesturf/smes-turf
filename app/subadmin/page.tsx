@@ -199,27 +199,29 @@ export default function AdminPage() {
     };
   }, [router]);
 
+  /* -------- Inactivity Auto-Logout Timer -------- */
   useEffect(() => {
     let timeout: NodeJS.Timeout;
+    const INACTIVITY_LIMIT = 15 * 60 * 1000; // 15 Minutes Inactivity Limit
+
     const resetTimer = () => {
       clearTimeout(timeout);
-      timeout = setTimeout(() => {
+      timeout = setTimeout(async () => {
+        await supabase.auth.signOut();
         localStorage.removeItem("subadminLoggedIn");
-        alert("Session Expired. Please authorize via the System Gateway.");
+        alert("⚠️ Session expired due to inactivity. Please log in again.");
         router.push("/staff");
-      }, 12 * 60 * 1000 * 60);
+      }, INACTIVITY_LIMIT);
     };
 
-    window.addEventListener("mousemove", resetTimer);
-    window.addEventListener("keypress", resetTimer);
-    window.addEventListener("click", resetTimer);
-    resetTimer();
+    const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+    events.forEach((event) => window.addEventListener(event, resetTimer));
+    
+    resetTimer(); // Initialize timer on mount
 
     return () => {
       clearTimeout(timeout);
-      window.removeEventListener("mousemove", resetTimer);
-      window.removeEventListener("keypress", resetTimer);
-      window.removeEventListener("click", resetTimer);
+      events.forEach((event) => window.removeEventListener(event, resetTimer));
     };
   }, [router]);
 
