@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "./lib/supabase";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
@@ -14,11 +14,6 @@ const easeOut = [0.22, 1, 0.36, 1] as const;
 const fadeUp = {
   hidden: { opacity: 0, y: 24 },
   show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: easeOut } },
-};
-
-const fadeIn = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { duration: 0.8, ease: easeOut } },
 };
 
 const stagger = {
@@ -66,30 +61,67 @@ export default function Home() {
   // 🎉 SUCCESS MODAL STATE
   const [successData, setSuccessData] = useState<any>(null);
 
-  // 🎨 DYNAMIC UI THEME ENGINE
-  const theme = useMemo(() => {
-    const isRainy = weather?.condition.includes("Rain") || weather?.condition.includes("Drizzle") || weather?.condition.includes("Thunderstorm");
-    const isHot = weather?.temp ? weather.temp >= 28 && !isRainy : false;
+  // 📄 AUTOMATIC PASS DOWNLOAD REF
+  const autoPassRef = useRef<HTMLDivElement>(null);
 
-    if (isRainy) return {
-      emoji: "🌧️",
-      aurora1: "from-cyan-500/15", aurora2: "bg-blue-500/15", aurora3: "bg-cyan-500/15",
-      ticketBar: "from-cyan-500 to-blue-400", textAccent: "text-cyan-400", 
-      glow: "drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]", pulse: "bg-cyan-400", iconShadow: "shadow-[0_0_15px_rgba(34,211,238,0.15)]"
+  /* -------- HELPER: TIME RANGE FORMATTER (e.g. 8:00 PM - 9:30 PM) -------- */
+  const getTimeRangeLabel = (startTimeStr: string, durationMins: number | string) => {
+    if (!startTimeStr) return "";
+    const parts = startTimeStr.split(" ");
+    if (parts.length < 2) return startTimeStr;
+
+    const [time, ampm] = parts;
+    let [h, m] = time.split(":").map(Number);
+    if (ampm === "PM" && h !== 12) h += 12;
+    if (ampm === "AM" && h === 12) h = 0;
+
+    const startTotal = h * 60 + m;
+    const endTotal = startTotal + Number(durationMins || 60);
+
+    const formatString = (t: number) => {
+      const hours24 = Math.floor(t / 60) % 24;
+      const mins = t % 60;
+      const displayH = hours24 % 12 === 0 ? 12 : hours24 % 12;
+      const displayAMPM = hours24 >= 12 ? "PM" : "AM";
+      return `${String(displayH).padStart(2, "0")}:${String(mins).padStart(2, "0")} ${displayAMPM}`;
     };
-    if (isHot) return {
-      emoji: "☀️",
-      aurora1: "from-orange-500/15", aurora2: "bg-rose-500/15", aurora3: "bg-orange-500/15",
-      ticketBar: "from-orange-500 to-rose-400", textAccent: "text-orange-400",
-      glow: "drop-shadow-[0_0_8px_rgba(251,146,60,0.5)]", pulse: "bg-orange-400", iconShadow: "shadow-[0_0_15px_rgba(251,146,60,0.15)]"
-    };
-    return {
-      emoji: "🌤️",
-      aurora1: "from-lime-500/10", aurora2: "bg-emerald-500/10", aurora3: "bg-lime-500/10",
-      ticketBar: "from-lime-500 to-emerald-400", textAccent: "text-lime-400",
-      glow: "drop-shadow-[0_0_8px_rgba(163,230,53,0.5)]", pulse: "bg-lime-400", iconShadow: "shadow-[0_0_15px_rgba(163,230,53,0.15)]"
-    };
-  }, [weather]);
+
+    return `${startTimeStr} - ${formatString(endTotal)}`;
+  };
+
+  /* -------- AUTOMATIC PASS DOWNLOAD TRIGGER -------- */
+  useEffect(() => {
+    if (successData) {
+      const triggerAutoDownload = async () => {
+        try {
+          // Wait 600ms for modal DOM & animations to fully stabilize
+          await new Promise((resolve) => setTimeout(resolve, 600));
+
+          if (!autoPassRef.current) return;
+
+          const { toPng } = await import("html-to-image");
+
+          const dataUrl = await toPng(autoPassRef.current, {
+            quality: 0.95,
+            pixelRatio: 2,
+            backgroundColor: "#0a0a0a",
+            cacheBust: true,
+          });
+
+          const link = document.createElement("a");
+          link.download = `SMES_Arena_Pass_${successData.referenceId || successData.bookingId}.png`;
+          link.href = dataUrl;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        } catch (err) {
+          console.error("Auto-download error:", err);
+        }
+      };
+
+      triggerAutoDownload();
+    }
+  }, [successData]);
 
   /* -------- Fetch Live Mysuru Weather -------- */
   useEffect(() => {
@@ -137,7 +169,7 @@ export default function Home() {
     if (bookingDate) loadBookedSlots(bookingDate);
   }, [bookingDate, bookingType]);
 
-  const { totalAmount, regularAmount, advanceAmount } = useMemo(
+  const { totalAmount, regularAmount } = useMemo(
     () => getPrice(duration, bookingType),
     [duration, bookingType]
   );
@@ -289,7 +321,6 @@ export default function Home() {
       return;
     }
 
-    // 🚀 TRIGGER LOADING OVERLAY
     setIsPaymentLoading(true); 
 
     try {
@@ -308,7 +339,7 @@ export default function Home() {
       const orderData = await response.json();
 
       if (!response.ok) {
-        setIsPaymentLoading(false); // Kill loader on error
+        setIsPaymentLoading(false);
         alert(`❌ ${orderData.error || "Slot is no longer available. Please select another time."}`);
         loadBookedSlots(bookingDate); 
         return;
@@ -330,13 +361,13 @@ export default function Home() {
       if ((window as any).Razorpay) {
         const razor = new (window as any).Razorpay(options);
         razor.open();
-        setIsPaymentLoading(false); // Kill loader as Razorpay takes over
+        setIsPaymentLoading(false);
       } else {
         setIsPaymentLoading(false);
         alert("Payment gateway script still loading. Please try again.");
       }
     } catch (error) {
-      setIsPaymentLoading(false); // Kill loader on network crash
+      setIsPaymentLoading(false);
       console.error("Order creation failed:", error);
       alert("Failed to initiate secure checkout.");
     }
@@ -344,7 +375,6 @@ export default function Home() {
 
   /* -------- Secure Server Booking Handler -------- */
   const handleBooking = async (paymentData: any) => {
-    // 🚀 START PROCESSING LOADER
     setIsProcessingBooking(true);
 
     try {
@@ -368,7 +398,7 @@ export default function Home() {
       }
 
       const balanceAmount = totalAmount - 200;
-      const bookingId = verifyData.booking?.id ? `#${verifyData.booking.id.toString().slice(-4)}` : "#----";
+      const bookingId = verifyData.booking?.id ? `#${verifyData.booking.id}` : "#----";
       const referenceId = verifyData.booking?.booking_reference || paymentData.razorpay_payment_id || "N/A";
       const advancePaid = 200;
       
@@ -385,7 +415,6 @@ export default function Home() {
         }),
       });
 
-      // 🛑 STOP LOADER
       setIsProcessingBooking(false);
 
       // 🎉 TRIGGER PREMIUM SUCCESS MODAL WITH REF ID & ADVANCE PAID
@@ -393,13 +422,18 @@ export default function Home() {
         bookingId,
         referenceId,
         name,
+        phone,
+        sport,
+        bookingType,
         date: bookingDate,
         time: startTime,
+        duration,
+        totalAmount,
         advancePaid,
         balance: balanceAmount
       });
 
-      // Reset form fields quietly in the background
+      // Reset form fields
       setName("");
       setPhone("");
       setBookingDate("");
@@ -425,7 +459,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden">
 
-      {/* ---------- Animated Aurora Background ---------- */}
+      {/* ---------- Background ---------- */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
         <div className="absolute top-0 inset-x-0 h-[400px] sm:h-[640px] bg-gradient-to-b from-lime-500/10 via-transparent to-transparent" />
         <motion.div
@@ -438,7 +472,6 @@ export default function Home() {
           transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
           className="absolute top-[15%] right-[-10%] w-[50%] h-[50%] bg-lime-500/10 rounded-full blur-[80px] sm:blur-[120px]"
         />
-        {/* Subtle grid */}
         <div
           className="absolute inset-0 opacity-[0.03]"
           style={{
@@ -518,7 +551,6 @@ export default function Home() {
           </motion.div>
         </div>
 
-        {/* ⚡ PRICING PROMO NODE */}
         <motion.div
           variants={fadeUp}
           className="mt-8 sm:mt-12 inline-flex items-center gap-3 sm:gap-4 bg-neutral-900/70 backdrop-blur border border-neutral-800 px-4 py-3 rounded-none w-full sm:w-auto"
@@ -608,7 +640,6 @@ export default function Home() {
                 </h2>
               </div>
               
-              {/* 🌤️ NEW WEATHER WIDGET PLACEMENT */}
               {weather && (
                 <div className="bg-neutral-900/40 border border-neutral-800 px-4 py-2.5 inline-flex items-center gap-3">
                   <span className="text-xl">🌤️</span>
@@ -616,7 +647,7 @@ export default function Home() {
                     <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500">
                       Vijayanagar 2nd Stage
                     </span>
-        <span className="text-xs font-mono text-white font-bold">
+                    <span className="text-xs font-mono text-white font-bold">
                       {weather.temp}°C — <span className="text-lime-400">{weather.condition}</span>
                     </span>
                   </div>
@@ -658,7 +689,6 @@ export default function Home() {
               {/* Sport + Pitch Config */}
               <motion.div variants={fadeUp} className="space-y-6">
                 
-                {/* Discipline Selector */}
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400">Sport Discipline</label>
                   <div className="relative">
@@ -675,7 +705,6 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Interactive Field Configurator */}
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400 flex justify-between items-center">
                     <span>Arena Scale Configuration</span>
@@ -684,7 +713,6 @@ export default function Home() {
                   
                   <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 bg-neutral-900/40 p-3 sm:p-4 border border-neutral-800">
                     
-                    {/* Visual Graphic Pitch */}
                     <div className="relative w-full sm:w-2/3 h-32 sm:h-40 bg-[#0d2a13] border-2 border-neutral-700 rounded-sm overflow-hidden flex shadow-inner group">
                       
                       <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-40 group-hover:opacity-70 transition-opacity duration-300 z-10">
@@ -781,7 +809,7 @@ export default function Home() {
                 />
               </motion.div>
 
-              {/* 🕒 DYNAMIC PRICE SCALER */}
+              {/* Session Length */}
               <motion.div variants={fadeUp} className="space-y-2 relative">
                 <label className="text-xs font-mono uppercase text-neutral-400">Session Length</label>
                 <div className="relative">
@@ -859,7 +887,7 @@ export default function Home() {
             </div>
           </motion.div>
 
-          {/* -------- Summary Side (VIP Match Ticket) -------- */}
+          {/* -------- Summary Side -------- */}
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -867,9 +895,7 @@ export default function Home() {
             transition={{ duration: 0.7, ease: easeOut }}
             className="lg:col-span-5 lg:sticky lg:top-6"
           >
-            {/* 🎟️ TICKET CONTAINER */}
             <div className="relative bg-[#0a0a0a] border border-neutral-800 flex flex-col shadow-2xl overflow-hidden">
-              
               <div className="h-2 w-full bg-gradient-to-r from-lime-500 to-emerald-400" />
               
               <div className="p-5 sm:p-6 pb-4 flex justify-between items-start">
@@ -933,7 +959,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Perforated Tear Line */}
+              {/* Perforated Line */}
               <div className="relative w-full h-8 flex items-center justify-center my-1">
                  <div className="absolute left-[-16px] w-8 h-8 bg-neutral-950 rounded-full border border-neutral-800 z-10" />
                 <div className="absolute left-[-20px] w-10 h-10 bg-neutral-950 z-20" /> 
@@ -982,7 +1008,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Dynamic Barcode */}
+              {/* Barcode Graphic */}
               <div className="px-5 sm:px-6 pt-4 pb-6 flex flex-col items-center opacity-30">
                 <div className="w-full h-8 flex justify-between items-end gap-[2px]">
                   {Array.from({ length: 35 }).map((_, i) => {
@@ -1100,13 +1126,11 @@ export default function Home() {
               onClick={(e) => e.stopPropagation()}
               className="bg-neutral-900 border border-neutral-800 p-6 sm:p-8 w-full max-w-md shadow-2xl space-y-6 relative overflow-hidden"
             >
-               {/* Modal Header */}
                <div className="border-b border-neutral-800 pb-4">
                   <h3 className="text-xl font-black uppercase text-white tracking-tight">Are you confirm?</h3>
                   <p className="text-neutral-400 text-xs font-mono uppercase mt-1">Please verify your Arena Pass details</p>
                </div>
 
-               {/* Modal Details Grid */}
                <div className="grid grid-cols-2 gap-4 bg-black/50 p-4 border border-neutral-800/50">
                   <div>
                      <span className="text-[10px] text-neutral-500 font-mono uppercase block mb-1">Sport & Scale</span>
@@ -1126,7 +1150,6 @@ export default function Home() {
                   </div>
                </div>
 
-               {/* Modal Financials */}
                <div className="space-y-3">
                   <div className="flex justify-between items-center text-neutral-400 px-1">
                      <span className="text-xs font-mono uppercase">Gross Value</span>
@@ -1143,7 +1166,6 @@ export default function Home() {
                   </div>
                </div>
 
-               {/* Modal Actions */}
                <div className="flex gap-3 pt-2">
                   <button 
                     onClick={() => setShowConfirmModal(false)}
@@ -1230,72 +1252,101 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* ---------- 🎉 FINAL SUCCESS CONFIRMATION MODAL ---------- */}
+      {/* ---------- 🎉 FINAL SUCCESS CONFIRMATION MODAL WITH AUTO-DOWNLOAD PASS ---------- */}
       <AnimatePresence>
         {successData && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 z-[999999]"
+            className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 z-[999999] overflow-y-auto"
           >
             <motion.div
               initial={{ scale: 0.9, y: 20, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.9, y: 20, opacity: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 25 }}
-              className="bg-[#0a0a0a] border border-neutral-800 p-6 sm:p-8 w-full max-w-md shadow-2xl relative overflow-hidden"
+              className="bg-[#0a0a0a] border border-neutral-800 p-6 sm:p-8 w-full max-w-md shadow-2xl relative overflow-hidden my-8"
             >
-              {/* Glowing Background Accent */}
+              {/* Glowing Top Accent */}
               <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-lime-400 to-emerald-500" />
               <div className="absolute top-[-50px] left-1/2 -translate-x-1/2 w-[200px] h-[100px] bg-lime-500/20 blur-[60px] rounded-full pointer-events-none" />
 
               <div className="flex flex-col items-center text-center space-y-4 relative z-10">
                 
-                {/* Checkmark Animation */}
+                {/* Animated Checkmark */}
                 <motion.div 
                   initial={{ scale: 0 }} 
                   animate={{ scale: 1, rotate: 360 }} 
                   transition={{ type: "spring", delay: 0.2 }}
-                  className="w-20 h-20 bg-lime-400/10 border-2 border-lime-400 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(163,230,53,0.3)] mb-2"
+                  className="w-16 h-16 bg-lime-400/10 border-2 border-lime-400 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(163,230,53,0.3)] mb-1"
                 >
-                  <span className="text-4xl drop-shadow-[0_0_10px_rgba(163,230,53,0.8)]">✅</span>
+                  <span className="text-3xl drop-shadow-[0_0_10px_rgba(163,230,53,0.8)]">✅</span>
                 </motion.div>
 
                 <div>
                   <h2 className="text-2xl font-black uppercase tracking-tight text-white mb-1">Slot Confirmed!</h2>
-                  <p className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">
-                    Booking ID: <span className="text-white font-bold">{successData.bookingId}</span>
+                  <p className="text-[10px] font-mono uppercase tracking-widest text-lime-400 flex items-center justify-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-ping" />
+                    Auto-downloading Arena Pass to device...
                   </p>
                 </div>
 
-                {/* Digital Receipt Card */}
-                <div className="w-full bg-neutral-900/50 border border-neutral-800 p-4 mt-2 space-y-3 text-left">
-                  <div className="flex justify-between items-center border-b border-neutral-800 pb-2">
-                    <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Reference ID</span>
-                    <span className="text-xs font-mono font-bold text-lime-400 uppercase tracking-wider">{successData.referenceId}</span>
+                {/* Printable Digital Ticket Node (autoPassRef Target) */}
+                <div
+                  ref={autoPassRef}
+                  className="w-full bg-[#0a0a0a] border border-neutral-800 p-5 text-left space-y-3 relative overflow-hidden shadow-xl"
+                >
+                  <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-lime-400 to-emerald-500" />
+                  
+                  <div className="flex justify-between items-start border-b border-neutral-800 pb-3">
+                    <div>
+                      <span className="text-[9px] font-mono text-lime-400 uppercase font-bold tracking-widest block">Official Arena Pass</span>
+                      <h3 className="text-base font-black text-white uppercase tracking-tight">SMES Sports Turf</h3>
+                      <p className="text-[9px] font-mono text-neutral-400 mt-0.5">
+                        Ref: <strong className="text-lime-400">{successData.referenceId}</strong>
+                      </p>
+                    </div>
+                    <div className="w-8 h-8 bg-neutral-900 border border-neutral-800 flex items-center justify-center">
+                      <span className="text-base">{successData.sport === "Cricket" ? "🏏" : "⚽"}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center border-b border-neutral-800 pb-2">
-                    <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Player</span>
-                    <span className="text-xs font-bold text-white uppercase">{successData.name}</span>
+
+                  <div className="grid grid-cols-2 gap-2 border-b border-neutral-800 pb-3 text-xs font-mono">
+                    <div>
+                      <span className="text-[8px] text-neutral-500 uppercase block">Booking ID</span>
+                      <span className="font-bold text-white uppercase">{successData.bookingId}</span>
+                    </div>
+                    <div>
+                      <span className="text-[8px] text-neutral-500 uppercase block">Player</span>
+                      <span className="font-bold text-white uppercase truncate block">{successData.name}</span>
+                    </div>
+                    <div>
+                      <span className="text-[8px] text-neutral-500 uppercase block">Schedule</span>
+                      <span className="font-bold text-lime-400 uppercase">
+                        {new Date(successData.date).toLocaleDateString("en-GB")}<br/>
+                        {getTimeRangeLabel(successData.time, successData.duration)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[8px] text-neutral-500 uppercase block">Scale</span>
+                      <span className="font-bold text-white uppercase">{successData.bookingType}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center border-b border-neutral-800 pb-2">
-                    <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Schedule</span>
-                    <span className="text-xs font-bold text-lime-400 uppercase text-right">
-                      {new Date(successData.date).toLocaleDateString("en-GB")}<br/>@ {successData.time}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center border-b border-neutral-800 pb-2">
-                    <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Advance Paid</span>
-                    <span className="text-xs font-bold text-emerald-400 font-mono">₹{successData.advancePaid}</span>
-                  </div>
-                  <div className="flex justify-between items-center pt-1">
-                    <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Balance Due at Venue</span>
-                    <span className="text-sm font-black text-red-400 font-mono">₹{successData.balance}</span>
+
+                  <div className="space-y-1 pt-1 text-xs font-mono">
+                    <div className="flex justify-between">
+                      <span className="text-[9px] text-neutral-500 uppercase">Advance Paid</span>
+                      <span className="font-bold text-emerald-400">₹{successData.advancePaid}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[9px] text-neutral-500 uppercase">Balance Due at Venue</span>
+                      <span className="font-bold text-red-400">₹{successData.balance}</span>
+                    </div>
                   </div>
                 </div>
 
-                <p className="text-[10px] text-neutral-500 font-mono mt-4 leading-relaxed">
+                <p className="text-[10px] text-neutral-500 font-mono mt-2 leading-relaxed">
                   A confirmation message has been sent to your WhatsApp. Please arrive 10 minutes prior to kickoff.
                 </p>
 
@@ -1303,7 +1354,7 @@ export default function Home() {
                   whileHover={{ y: -2, boxShadow: "0 10px 25px rgba(163,230,53,0.2)" }}
                   whileTap={{ scale: 0.97 }}
                   onClick={() => setSuccessData(null)}
-                  className="w-full mt-4 bg-lime-400 hover:bg-lime-300 text-black font-black font-mono text-xs uppercase tracking-widest py-4 transition-all"
+                  className="w-full mt-2 bg-lime-400 hover:bg-lime-300 text-black font-black font-mono text-xs uppercase tracking-widest py-4 transition-all"
                 >
                   Done
                 </motion.button>
