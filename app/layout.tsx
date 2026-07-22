@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "SMES Turf",
   description: "Sports Sports Academy Turf",
-  manifest: "/manifest.json",
+  
   icons: {
     icon: "/icon.png?v=2", // 👈 The ?v=2 forces the browser to download the new image
     apple: "/icon-192x192.png?v=2",
