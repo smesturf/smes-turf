@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "./lib/supabase";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { getPrice } from "./lib/booking-rules";
@@ -94,7 +95,6 @@ export default function Home() {
     if (successData) {
       const triggerAutoDownload = async () => {
         try {
-          // Wait 600ms for modal DOM & animations to fully stabilize
           await new Promise((resolve) => setTimeout(resolve, 600));
 
           if (!autoPassRef.current) return;
@@ -417,7 +417,6 @@ export default function Home() {
 
       setIsProcessingBooking(false);
 
-      // 🎉 TRIGGER PREMIUM SUCCESS MODAL WITH REF ID & ADVANCE PAID
       setSuccessData({
         bookingId,
         referenceId,
@@ -507,6 +506,16 @@ export default function Home() {
                 SMES TURF
               </span>
             </motion.h1>
+
+            {/* 📍 Location Pin under Heading */}
+            <motion.div
+              variants={fadeUp}
+              className="flex items-center justify-center lg:justify-start gap-1.5 text-xs font-mono text-lime-400 uppercase tracking-wider mt-2.5 font-bold"
+            >
+              <span className="text-sm">📍</span>
+              <span>Vijayanagar, 2nd Stage, Mysuru</span>
+            </motion.div>
+
             <motion.p
               variants={fadeUp}
               className="text-base sm:text-lg md:text-xl font-medium tracking-normal text-neutral-400 mt-3 sm:mt-4 max-w-xl mx-auto lg:mx-0"
@@ -1080,10 +1089,21 @@ export default function Home() {
               © 2026 Built for competitive team sports action and weekend fun.
             </p>
           </div>
-          <div className="flex flex-wrap justify-center md:justify-end gap-x-6 gap-y-2 font-mono text-[9px] sm:text-[10px] text-neutral-400 uppercase tracking-widest">
-            <div><span className="text-lime-500">P:</span> +91 8453095258</div>
-            <div><span className="text-lime-500">E:</span> sports@smesturf.com</div>
-            <div><span className="text-lime-500">L:</span> Mysuru, Karnataka</div>
+
+          <div className="flex flex-col items-center md:items-end gap-2 font-mono text-[9px] sm:text-[10px] text-neutral-400 uppercase tracking-widest">
+            <div className="flex flex-wrap justify-center md:justify-end gap-x-6 gap-y-2">
+              <div><span className="text-lime-500">P:</span> +91 8453095258</div>
+              <div><span className="text-lime-500">E:</span> sports@smesturf.com</div>
+              <div><span className="text-lime-500">L:</span> Mysuru, Karnataka</div>
+            </div>
+
+            {/* 📄 Terms & Conditions Button (Small, Same Style) */}
+            <Link
+              href="/terms"
+              className="text-[9px] sm:text-[10px] text-neutral-500 hover:text-lime-400 uppercase tracking-widest transition-colors pt-1 underline underline-offset-4 decoration-neutral-800 hover:decoration-lime-400"
+            >
+              Terms & Conditions
+            </Link>
           </div>
         </div>
       </motion.footer>
