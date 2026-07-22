@@ -85,11 +85,6 @@ export default function Home() {
     };
   }, [weather]);
 
-  // Staff Auth
-  const [showStaffModal, setShowStaffModal] = useState(false);
-  const [staffRole, setStaffRole] = useState("Admin");
-  const [staffPassword, setStaffPassword] = useState("");
-
   /* -------- Fetch Live Mysuru Weather -------- */
   useEffect(() => {
     const fetchWeather = async () => {
@@ -393,44 +388,6 @@ export default function Home() {
     }
   };
 
-  /* -------- Staff Login -------- */
-  const handleStaffLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    let staffEmail = "";
-    if (staffRole === "Admin") staffEmail = "sports+admin@smestuff.com";
-    if (staffRole === "Sub-Admin") staffEmail = "sports+subadmin@smestuff.com";
-    if (staffRole === "Coach") staffEmail = "sports+coach@smestuff.com";
-
-    if (!staffEmail) return;
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: staffEmail,
-      password: staffPassword,
-    });
-
-    if (error) {
-      alert(`❌ Authorization Refused: ${error.message}`);
-      return;
-    }
-
-    if (data.session) {
-      if (staffRole === "Admin") {
-        localStorage.setItem("adminLoggedIn", "true");
-        localStorage.setItem("adminLoginTime", Date.now().toString());
-        router.push("/admin");
-      } else if (staffRole === "Sub-Admin") {
-        localStorage.setItem("subadminLoggedIn", "true");
-        router.push("/subadmin");
-      } else if (staffRole === "Coach") {
-        localStorage.setItem("subAdminLoggedIn", "true");
-        router.push("/coach");
-      }
-      setShowStaffModal(false);
-      setStaffPassword("");
-    }
-  };
-
   const scrollToBooking = () => {
     const el = document.getElementById("booking-engine-section");
     if (el) el.scrollIntoView({ behavior: "smooth" });
@@ -465,28 +422,6 @@ export default function Home() {
           }}
         />
       </div>
-
-      {/* ---------- Hamburger ---------- */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-        className="absolute top-6 right-4 sm:top-8 sm:right-6 z-[100]"
-      >
-        <motion.button
-          suppressHydrationWarning={true}
-          whileHover={{ scale: 1.1, rotate: 90 }}
-          whileTap={{ scale: 0.95 }}
-          transition={{ type: "spring", stiffness: 300, damping: 20 }}
-          onClick={() => setShowStaffModal(true)}
-          className="text-neutral-400 hover:text-lime-400 p-2 transition-colors cursor-pointer flex items-center justify-center"
-          title="Staff Login"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </motion.button>
-      </motion.div>
 
       {/* ---------- Header ---------- */}
       <motion.header
@@ -1204,111 +1139,6 @@ export default function Home() {
                      Proceed To Pay
                   </button>
                </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ---------- Staff Modal ---------- */}
-      <AnimatePresence>
-        {showStaffModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-[99999]"
-            onClick={() => setShowStaffModal(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 30 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 30 }}
-              transition={{ type: "spring", stiffness: 260, damping: 24 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl w-full max-w-sm shadow-2xl space-y-4"
-            >
-              <div className="text-center">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-lime-400">
-                  // Secure Node Terminal
-                </span>
-                <h3 className="text-lg font-black uppercase text-white mt-1">System Gateway</h3>
-              </div>
-
-              <form onSubmit={handleStaffLogin} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-mono uppercase tracking-wider text-neutral-400">
-                    Target Role
-                  </label>
-                  <LayoutGroup>
-                    <div className="grid grid-cols-3 gap-2">
-                      {["Admin", "Sub-Admin", "Coach"].map((role) => (
-                        <motion.button
-                          suppressHydrationWarning={true}
-                          key={role}
-                          type="button"
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => setStaffRole(role)}
-                          className={`relative py-2.5 text-[11px] font-mono uppercase tracking-wider transition-colors border ${
-                            staffRole === role
-                              ? "bg-lime-400 border-lime-400 text-black font-black"
-                              : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white"
-                          }`}
-                        >
-                          {staffRole === role && (
-                            <motion.span
-                              layoutId="role-highlight"
-                              className="absolute inset-0 bg-lime-400 -z-0"
-                              transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                            />
-                          )}
-                          <span className="relative z-10">{role}</span>
-                        </motion.button>
-                      ))}
-                    </div>
-                  </LayoutGroup>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400">
-                    Access Keycode
-                  </label>
-                  <input
-                    suppressHydrationWarning={true}
-                    type="password"
-                    placeholder="Enter password"
-                    value={staffPassword}
-                    onChange={(e) => setStaffPassword(e.target.value)}
-                    className="w-full p-3.5 rounded-xl bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium"
-                    autoFocus
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <motion.button
-                    suppressHydrationWarning={true}
-                    whileHover={{ y: -1 }}
-                    whileTap={{ scale: 0.97 }}
-                    type="submit"
-                    className="w-full bg-gradient-to-r from-lime-400 to-lime-300 text-neutral-950 font-mono text-xs uppercase tracking-wider py-3 font-black transition-all min-h-[44px]"
-                  >
-                    Authorize
-                  </motion.button>
-                  <motion.button
-                    suppressHydrationWarning={true}
-                    whileHover={{ y: -1 }}
-                    whileTap={{ scale: 0.97 }}
-                    type="button"
-                    onClick={() => {
-                      setShowStaffModal(false);
-                      setStaffPassword("");
-                    }}
-                    className="w-full bg-neutral-800 hover:bg-neutral-700 text-slate-300 font-mono text-xs uppercase tracking-wider py-3 transition-colors min-h-[44px]"
-                  >
-                    Cancel
-                  </motion.button>
-                </div>
-              </form>
             </motion.div>
           </motion.div>
         )}
