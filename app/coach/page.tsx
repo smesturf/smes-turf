@@ -147,7 +147,6 @@ export default function CoachPage() {
 
     loadCoachData();
 
-    // Minor fix: Wrapped in anonymous arrow functions to secure context execution 
     const bookingsChannel = supabase
       .channel("coach-b-sync")
       .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, () => loadCoachData())
@@ -623,11 +622,12 @@ export default function CoachPage() {
                     </tr>
                   </thead>
                   
+                  {/* Changed to md:divide-y to prevent overlapping borders on mobile, keeps desktop table neat */}
                   <motion.tbody
                     variants={stagger}
                     initial="hidden"
                     animate="show"
-                    className="divide-y divide-neutral-900 text-sm font-medium block md:table-row-group"
+                    className="md:divide-y md:divide-neutral-900 text-sm font-medium block md:table-row-group"
                   >
                     <AnimatePresence>
                       {filteredStudents.length === 0 ? (
@@ -654,8 +654,8 @@ export default function CoachPage() {
                               key={student.id}
                               variants={rowItem}
                               layout
-                              /* COMPACT MOBILE GRID LAYOUT: Forces elements into a horizontal 2x2 rectangle */
-                              className={`grid grid-cols-[1fr_auto] md:table-row items-center p-3 md:p-0 border-b md:border-none border-neutral-900/50 transition-colors gap-x-2 gap-y-1.5 ${
+                              /* Added strict border-b and border-neutral-800 for mobile separation */
+                              className={`grid grid-cols-[1fr_auto] md:table-row items-center p-4 md:p-0 border-b border-neutral-800 md:border-none transition-colors gap-x-2 gap-y-1.5 ${
                                 isUnpaid
                                   ? "bg-red-500/[0.05] hover:bg-red-500/[0.10]"
                                   : "hover:bg-lime-400/[0.03]"
