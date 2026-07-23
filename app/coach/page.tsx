@@ -6,6 +6,53 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 
 /* ------------------------------------------------------------------ */
+/*  Interfaces & Types                                                */
+/* ------------------------------------------------------------------ */
+interface Payment {
+  id: string;
+  month_year: string;
+  status: string;
+  amount_paid: number;
+  payment_method: string | null;
+}
+
+interface Student {
+  id: string;
+  name: string;
+  phone: string;
+  dob: string | null;
+  email: string | null;
+  created_at: string;
+  monthly_fee: number;
+  student_payments?: Payment[];
+  // Processed UI fields
+  payment_status?: string;
+  amount_paid?: number;
+  payment_method?: string | null;
+  payment_record_id?: string | null;
+}
+
+interface Booking {
+  id: string;
+  booking_date: string;
+  start_time: string;
+  duration_minutes: number;
+  court_number: string;
+  booking_type: string;
+}
+
+interface BlockedSlot {
+  id: string;
+  booking_date: string;
+  start_time: string;
+  duration_minutes: number;
+  court_number: string;
+  reason: string;
+}
+
+type TabType = "bookings" | "blocks";
+
+/* ------------------------------------------------------------------ */
 /*  Motion Presets                                                    */
 /* ------------------------------------------------------------------ */
 const easeOut = [0.22, 1, 0.36, 1] as const;
@@ -30,10 +77,12 @@ const rowItem = {
 /* ------------------------------------------------------------------ */
 export default function CoachPage() {
   const router = useRouter();
-  const [isAuthorized, setIsAuthorized] = useState(false); // Secure validation state
-  const [bookings, setBookings] = useState<any[]>([]);
-  const [blockedSlots, setBlockedSlots] = useState<any[]>([]);
-  const [students, setStudents] = useState<any[]>([]);
+  
+  // State
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [blockedSlots, setBlockedSlots] = useState<BlockedSlot[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
 
   // Registration Form States
   const [newStudentName, setNewStudentName] = useState("");
@@ -41,11 +90,12 @@ export default function CoachPage() {
   const [newStudentDOB, setNewStudentDOB] = useState("");
   const [newStudentEmail, setNewStudentEmail] = useState("");
 
-  // UI state (visual only — does not touch business logic)
-  const [tab, setTab] = useState<"bookings" | "blocks">("bookings"); // Set default tab cleanly
+  // UI state
+  const [tab, setTab] = useState<TabType>("bookings");
   const [search, setSearch] = useState("");
   const [isSendingEmails, setIsSendingEmails] = useState(false);
 
+  // Constants
   const FIXED_COACHING_FEE = 3500;
   const currentMonthYear = new Date().toISOString().slice(0, 7); // YYYY-MM
   const currentMonthLabel = new Date().toLocaleString("en-US", {
@@ -53,15 +103,12 @@ export default function CoachPage() {
     year: "numeric",
   });
 
-  /* -------- 1. FIXED ROUTE GUARD -------- */
+  /* -------- 1. ROUTE GUARD -------- */
   useEffect(() => {
     const isCoach = localStorage.getItem("subAdminLoggedIn");
-    
     if (isCoach !== "true") {
-      // If the coach token is missing, send them away to /staff
       router.replace("/staff");
     } else {
-      // Token confirmed! Access allowed
       setIsAuthorized(true);
     }
   }, [router]);
@@ -84,9 +131,9 @@ export default function CoachPage() {
     };
 
     const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
-    events.forEach((event) => window.addEventListener(event, resetTimer));
+    events.forEach((event) => window.addEventListener(event, resetTimer, { passive: true }));
     
-    resetTimer(); // Initialize timer on mount
+    resetTimer();
 
     return () => {
       clearTimeout(timeout);
@@ -96,25 +143,25 @@ export default function CoachPage() {
 
   /* -------- 3. REALTIME SYNCHRONIZATION -------- */
   useEffect(() => {
-    if (!isAuthorized) return; // Wait to connect until authorized
+    if (!isAuthorized) return;
 
     loadCoachData();
 
     const bookingsChannel = supabase
       .channel("coach-b-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, () => loadCoachData())
+      .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, loadCoachData)
       .subscribe();
     const blockedChannel = supabase
       .channel("coach-bl-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "blocked_slots" }, () => loadCoachData())
+      .on("postgres_changes", { event: "*", schema: "public", table: "blocked_slots" }, loadCoachData)
       .subscribe();
     const studentsChannel = supabase
       .channel("coach-st-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "students" }, () => loadCoachData())
+      .on("postgres_changes", { event: "*", schema: "public", table: "students" }, loadCoachData)
       .subscribe();
     const paymentsChannel = supabase
       .channel("coach-p-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "student_payments" }, () => loadCoachData())
+      .on("postgres_changes", { event: "*", schema: "public", table: "student_payments" }, loadCoachData)
       .subscribe();
 
     return () => {
@@ -134,7 +181,8 @@ export default function CoachPage() {
       .gte("booking_date", todayStr)
       .order("booking_date", { ascending: true })
       .order("start_time", { ascending: true });
-    setBookings(bData || []);
+    
+    if (bData) setBookings(bData as Booking[]);
 
     const { data: blData } = await supabase
       .from("blocked_slots")
@@ -142,7 +190,8 @@ export default function CoachPage() {
       .gte("booking_date", todayStr)
       .order("booking_date", { ascending: true })
       .order("start_time", { ascending: true });
-    setBlockedSlots(blData || []);
+      
+    if (blData) setBlockedSlots(blData as BlockedSlot[]);
 
     const { data: stData } = await supabase
       .from("students")
@@ -150,9 +199,9 @@ export default function CoachPage() {
       .order("name", { ascending: true });
 
     if (stData) {
-      const processedStudents = stData.map((student: any) => {
+      const processedStudents = stData.map((student: Student) => {
         const currentMonthRecord = student.student_payments?.find(
-          (p: any) => p.month_year === currentMonthYear
+          (p: Payment) => p.month_year === currentMonthYear
         );
         return {
           ...student,
@@ -190,7 +239,7 @@ export default function CoachPage() {
       .single();
 
     if (stError || !student) {
-      alert(stError?.message || "Registration failed node mismatch");
+      alert(stError?.message || "Registration failed. Node mismatch.");
       return;
     }
 
@@ -202,23 +251,27 @@ export default function CoachPage() {
       payment_method: null,
     }]);
 
-    if (pmError) { alert(pmError.message); return; }
+    if (pmError) { 
+      alert(pmError.message); 
+      return; 
+    }
 
     alert(`✅ ${newStudentName} Enrolled Successfully! Pending Desk Payment Approval.`);
-    setNewStudentName(""); setNewStudentPhone(""); setNewStudentDOB(""); setNewStudentEmail("");
+    setNewStudentName(""); 
+    setNewStudentPhone(""); 
+    setNewStudentDOB(""); 
+    setNewStudentEmail("");
     loadCoachData();
   };
 
   const exportCoachExcel = async () => {
     const XLSX = await import("xlsx");
-
     const currentMonthNum = new Date().getMonth();
     const currentYearNum = new Date().getFullYear();
 
     const data = students.map((s) => {
       const joinDate = new Date(s.created_at);
-      const isNew =
-        joinDate.getMonth() === currentMonthNum && joinDate.getFullYear() === currentYearNum;
+      const isNew = joinDate.getMonth() === currentMonthNum && joinDate.getFullYear() === currentYearNum;
 
       return {
         "Student Name": s.name + (isNew ? " (NEW)" : ""),
@@ -226,8 +279,8 @@ export default function CoachPage() {
         "Date of Birth": s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-",
         "Email ID": s.email || "-",
         "Monthly Fee (₹)": s.monthly_fee || FIXED_COACHING_FEE,
-        "Amount Paid (₹)": s.amount_paid,
-        "Payment Method": s.payment_method,
+        "Amount Paid (₹)": s.amount_paid || 0,
+        "Payment Method": s.payment_method || "-",
         "Status": s.payment_status === "settled" ? "✅ SETTLED" : "❌ PENDING",
         "Type": isNew ? "NEW STUDENT" : "EXISTING",
       };
@@ -244,9 +297,7 @@ export default function CoachPage() {
     XLSX.writeFile(workbook, `Coach_Report_${currentMonthYear}.xlsx`);
   };
 
-  /* -------- Automated Email Reminders -------- */
   const sendEmailReminders = async () => {
-    // 1. Filter students who are unpaid AND have an email address provided
     const pendingStudents = students.filter(s => s.payment_status !== "settled" && s.email);
     const noEmailStudents = students.filter(s => s.payment_status !== "settled" && !s.email);
 
@@ -262,7 +313,6 @@ export default function CoachPage() {
 
     setIsSendingEmails(true);
     try {
-      // 2. Trigger the secure backend API
       const response = await fetch("/api/send-reminders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -274,7 +324,6 @@ export default function CoachPage() {
       });
 
       if (!response.ok) throw new Error("Failed to send emails");
-      
       alert(`✅ Successfully dispatched ${pendingStudents.length} email reminders!`);
     } catch (error) {
       console.error(error);
@@ -297,7 +346,6 @@ export default function CoachPage() {
     return `${formatString(startTotal)} to ${formatString(endTotal)}`;
   };
 
-  /* -------- Derived stats (visual only) -------- */
   const stats = useMemo(() => {
     const total = students.length;
     const paid = students.filter((s) => s.payment_status === "settled").length;
@@ -339,8 +387,6 @@ export default function CoachPage() {
   /* ================================================================ */
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden">
-
-      {/* Animated Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
         <div className="absolute top-0 inset-x-0 h-[520px] bg-gradient-to-b from-lime-500/10 via-transparent to-transparent" />
         <motion.div
@@ -364,8 +410,6 @@ export default function CoachPage() {
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto p-4 sm:p-6 md:p-10">
-
-        {/* ---------- Header ---------- */}
         <motion.div
           variants={stagger}
           initial="hidden"
@@ -420,7 +464,6 @@ export default function CoachPage() {
           </div>
         </motion.div>
 
-        {/* ---------- Stat Cards ---------- */}
         <motion.div
           variants={stagger}
           initial="hidden"
@@ -459,13 +502,8 @@ export default function CoachPage() {
           ))}
         </motion.div>
 
-        {/* ---------- Main Grid ---------- */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-
-          {/* -------- Left column -------- */}
           <div className="lg:col-span-2 space-y-6 lg:space-y-8">
-
-            {/* Enrollment Card */}
             <motion.section
               variants={fadeUp}
               initial="hidden"
@@ -490,6 +528,7 @@ export default function CoachPage() {
                   <label className="text-[10px] font-mono uppercase text-neutral-400">Student Name</label>
                   <input
                     type="text"
+                    required
                     placeholder="Enter player name"
                     value={newStudentName}
                     onChange={(e) => setNewStudentName(e.target.value)}
@@ -501,6 +540,8 @@ export default function CoachPage() {
                   <label className="text-[10px] font-mono uppercase text-neutral-400">Phone (10 Digits)</label>
                   <input
                     type="text"
+                    required
+                    pattern="\d*"
                     placeholder="10-digit number"
                     value={newStudentPhone}
                     onChange={(e) => {
@@ -545,7 +586,6 @@ export default function CoachPage() {
               </form>
             </motion.section>
 
-            {/* Roster Table */}
             <motion.section
               variants={fadeUp}
               initial="hidden"
@@ -571,9 +611,11 @@ export default function CoachPage() {
                 />
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[720px]">
-                  <thead>
+              {/* RESPONSIVE TABLE CONTAINER: Removed overflow-x-auto & min-w to prevent horizontal scrolling */}
+              <div className="w-full">
+                <table className="w-full text-left border-collapse">
+                  {/* Hide standard table headers on mobile screens */}
+                  <thead className="hidden md:table-header-group">
                     <tr className="border-b border-neutral-900 text-[10px] font-mono uppercase tracking-widest text-neutral-500 bg-neutral-950/40">
                       <th className="p-4">Student Info</th>
                       <th className="p-4">Contact Details</th>
@@ -581,11 +623,12 @@ export default function CoachPage() {
                       <th className="p-4 text-center">Payment Status</th>
                     </tr>
                   </thead>
+                  
                   <motion.tbody
                     variants={stagger}
                     initial="hidden"
                     animate="show"
-                    className="divide-y divide-neutral-900 text-sm font-medium"
+                    className="divide-y divide-neutral-900 text-sm font-medium block md:table-row-group"
                   >
                     <AnimatePresence>
                       {filteredStudents.length === 0 ? (
@@ -593,8 +636,9 @@ export default function CoachPage() {
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
+                          className="block md:table-row"
                         >
-                          <td colSpan={4} className="p-8 text-center text-xs font-mono text-neutral-600">
+                          <td colSpan={4} className="p-8 text-center text-xs font-mono text-neutral-600 block md:table-cell">
                             No students match your search.
                           </td>
                         </motion.tr>
@@ -611,13 +655,14 @@ export default function CoachPage() {
                               key={student.id}
                               variants={rowItem}
                               layout
-                              className={`transition-colors ${
+                              /* MOBILE CARD LAYOUT: Turns row into flex column on small screens */
+                              className={`flex flex-col md:table-row transition-colors p-3 md:p-0 border-b md:border-none border-neutral-900/50 ${
                                 isUnpaid
                                   ? "bg-red-500/[0.05] hover:bg-red-500/[0.10]"
                                   : "hover:bg-lime-400/[0.03]"
                               }`}
                             >
-                              <td className="p-4">
+                              <td className="py-2 md:p-4 block md:table-cell">
                                 <div className={`font-bold flex items-center gap-2 ${
                                   isUnpaid ? "text-red-300" : "text-white"
                                 }`}>
@@ -639,18 +684,29 @@ export default function CoachPage() {
                                     : "-"}
                                 </div>
                               </td>
-                              <td className="p-4 space-y-0.5">
+                              
+                              <td className="py-1 md:p-4 block md:table-cell space-y-0.5">
                                 <div className="font-mono text-neutral-300 text-xs">
                                   {student.phone}
                                 </div>
-                                <div className="text-xs text-neutral-500 truncate max-w-[200px]">
+                                <div className="text-xs text-neutral-500 truncate max-w-full md:max-w-[200px]">
                                   {student.email || "-"}
                                 </div>
                               </td>
-                              <td className="p-4 font-mono text-white">
+                              
+                              <td className="py-3 md:p-4 flex justify-between items-center md:table-cell font-mono text-white mt-2 md:mt-0 border-t border-neutral-900/40 md:border-none">
+                                {/* Mobile Label */}
+                                <span className="md:hidden text-[10px] font-mono text-neutral-500 uppercase tracking-widest">
+                                  Fee:
+                                </span>
                                 ₹{student.monthly_fee || FIXED_COACHING_FEE}
                               </td>
-                              <td className="p-4 text-center">
+                              
+                              <td className="pb-2 md:p-4 flex justify-between items-center md:table-cell md:text-center">
+                                {/* Mobile Label */}
+                                <span className="md:hidden text-[10px] font-mono text-neutral-500 uppercase tracking-widest">
+                                  Status:
+                                </span>
                                 {student.payment_status === "settled" ? (
                                   <span className="px-3 py-1 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 whitespace-nowrap inline-flex items-center gap-1 justify-center">
                                     ✅ Paid
@@ -676,10 +732,7 @@ export default function CoachPage() {
             </motion.section>
           </div>
 
-          {/* -------- Right Column: Live Feeds -------- */}
           <div className="space-y-6 lg:space-y-8 lg:col-span-1">
-
-            {/* Tab pill (visual) */}
             <LayoutGroup>
               <div className="grid grid-cols-2 gap-2 p-1.5 border border-neutral-900 bg-neutral-900/30 backdrop-blur">
                 {[
@@ -689,7 +742,7 @@ export default function CoachPage() {
                   <motion.button
                     key={t.id}
                     whileTap={{ scale: 0.97 }}
-                    onClick={() => setTab(t.id as any)}
+                    onClick={() => setTab(t.id as TabType)}
                     className={`relative py-2.5 text-[10px] font-mono uppercase tracking-widest transition-colors ${
                       tab === t.id
                         ? "text-black font-black"
@@ -709,7 +762,6 @@ export default function CoachPage() {
               </div>
             </LayoutGroup>
 
-            {/* Bookings Feed */}
             <AnimatePresence mode="wait">
               {tab === "bookings" ? (
                 <motion.section
@@ -812,7 +864,6 @@ export default function CoachPage() {
               )}
             </AnimatePresence>
 
-            {/* Small footer note */}
             <motion.div
               initial={{ opacity: 0 }}
               whileInView={{ opacity: 1 }}

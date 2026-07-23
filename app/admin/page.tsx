@@ -40,7 +40,7 @@ export default function AdminPage() {
 
   const [bookings, setBookings] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterDate, setFilterDate] = useState<string>(""); // ⚙️ New Date Filter State
+  const [filterDate, setFilterDate] = useState<string>(""); // ⚙️ Date Filter State
   const [blockedSlots, setBlockedSlots] = useState<any[]>([]);
   const [todaySlots, setTodaySlots] = useState(0);
   const [tomorrowSlots, setTomorrowSlots] = useState(0);
@@ -665,7 +665,6 @@ export default function AdminPage() {
 
   // ⚙️ MANAGE OPERATIONS HANDLERS
 
-  // 1. Cancel with Refund Advance
   const handleCancelWithRefund = async () => {
     if (!selectedManageBooking) return;
     const advanceAmount = selectedManageBooking.advance_amount || 0;
@@ -687,7 +686,6 @@ export default function AdminPage() {
     loadBookings();
   };
 
-  // 2. Reschedule Booking
   const handleRescheduleBooking = async () => {
     if (!selectedManageBooking || !rescheduleDate || !rescheduleTime) {
       alert("Please select both Date and Time for rescheduling.");
@@ -720,7 +718,6 @@ export default function AdminPage() {
       return;
     }
 
-    // Proportional Price Calculation
     const originalDur = selectedManageBooking.duration_minutes || 60;
     const originalTotal = selectedManageBooking.total_amount || 0;
     const pricePerMin = originalTotal / originalDur;
@@ -748,7 +745,6 @@ export default function AdminPage() {
     loadBookings();
   };
 
-  // 3. Cancel without Refund
   const handleCancelWithoutRefund = async () => {
     if (!selectedManageBooking) return;
     const confirmCancel = confirm(
@@ -769,7 +765,6 @@ export default function AdminPage() {
     loadBookings();
   };
 
-  // 4. Extend Slot
   const checkAndExtendBooking = async () => {
     if (!selectedManageBooking) return;
 
@@ -803,7 +798,6 @@ export default function AdminPage() {
       return;
     }
 
-    // Price Update Calculation
     const currentTotal = selectedManageBooking.total_amount || 0;
     const currentBalance = selectedManageBooking.balance_amount || 0;
     
@@ -838,13 +832,16 @@ export default function AdminPage() {
     .filter((booking) => booking.booking_date?.split("T")[0] === getTodayStr())
     .reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
 
+  // ⚙️ UPDATED EXCEL EXPORT (Contains S.No, Email, Reference ID, correctly formatted)
   const exportToExcel = async () => {
     const XLSX = await import("xlsx");
     
-    const exportData = bookings.map((booking) => ({
+    const exportData = bookings.map((booking, index) => ({
+      "S.No.": index + 1,
       "Booking ID": booking.id,
-      "Barcode": booking.booking_reference || "N/A",
+      "Reference ID": booking.booking_reference || "N/A",
       "Customer Name": booking.customer_name,
+      "Email ID": booking.email || "No Email Provided",
       "Phone Number": booking.phone,
       "Date": booking.booking_date?.split("T")[0],
       "Time": booking.start_time,
@@ -927,11 +924,29 @@ export default function AdminPage() {
     ]);
     XLSX.utils.sheet_add_json(worksheet, exportData, { origin: "A14" });
     
-    worksheet["!autofilter"] = { ref: `A14:R${14 + exportData.length}` };
+    // Auto-filter now spans columns A to T
+    worksheet["!autofilter"] = { ref: `A14:T${14 + exportData.length}` };
     worksheet["!cols"] = [
-      { wch: 12 }, { wch: 22 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, 
-      { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, 
-      { wch: 12 }, { wch: 15 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 18 },
+      { wch: 8 },  // S.No
+      { wch: 12 }, // Booking ID
+      { wch: 18 }, // Ref ID
+      { wch: 22 }, // Name
+      { wch: 25 }, // Email
+      { wch: 15 }, // Phone
+      { wch: 15 }, // Date
+      { wch: 12 }, // Time
+      { wch: 15 }, // Duration
+      { wch: 12 }, // Sport
+      { wch: 15 }, // Type
+      { wch: 12 }, // Court
+      { wch: 12 }, // Total
+      { wch: 12 }, // Advance
+      { wch: 12 }, // Balance
+      { wch: 12 }, // Status
+      { wch: 18 }, // Pay Method
+      { wch: 18 }, // Cash
+      { wch: 18 }, // UPI
+      { wch: 15 }, // Pay Status
     ];
     XLSX.utils.book_append_sheet(workbook, worksheet, "Bookings");
 
@@ -1254,7 +1269,6 @@ export default function AdminPage() {
           className="flex flex-col md:flex-row items-stretch justify-between gap-4 mb-6"
         >
           <div className="w-full md:w-96 relative">
-            {/* ⚙️ Placeholder Updated */}
             <input
               type="text"
               placeholder="🔍 Filter by ID, name, email, phone..."
@@ -1633,7 +1647,7 @@ export default function AdminPage() {
           // Showing {filteredBookings.length} booking(s) active
         </p>
 
-        {/* ---------- COMPACT BOOKINGS TABLE (Scrolls on mobile natively) ---------- */}
+        {/* ---------- COMPACT BOOKINGS TABLE (Now scrolls on mobile natively) ---------- */}
         <motion.section
           variants={fadeUp}
           initial="hidden"
@@ -1817,7 +1831,7 @@ export default function AdminPage() {
                               )
                             )}
 
-                            {/* ⚙️ MASTER ADMIN MANAGE BUTTON */}
+                            {/* ⚙️ MASTER ADMIN MANAGE BUTTON (4 Options) */}
                             <motion.button
                               whileHover={{ y: -1 }}
                               whileTap={{ scale: 0.96 }}
@@ -2055,7 +2069,7 @@ export default function AdminPage() {
                     <label className="text-[10px] font-mono uppercase text-neutral-400">New Date</label>
                     <input
                       type="date"
-                      min={getTodayStr()}
+                      min={getTodayStr()} // ⚙️ Dynamic Date Fetch
                       value={rescheduleDate}
                       onChange={(e) => {
                         const newDate = e.target.value;
@@ -2373,7 +2387,7 @@ export default function AdminPage() {
                   <label className="text-[10px] font-mono uppercase text-neutral-400">Date</label>
                   <input
                     type="date"
-                    min={getTodayStr()} 
+                    min={getTodayStr()} // ⚙️ Dynamic Date Fetch
                     value={slotDate}
                     onChange={(e) => {
                       setSlotDate(e.target.value);
