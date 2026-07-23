@@ -346,45 +346,42 @@ const openRazorpay = async () => {
       return;
     }
 
-      // ✅ NEW UPDATED CODE
-const options = {
-  key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-  amount: orderData.amount,
-  currency: orderData.currency,
-  name: "SMES Turf",
-  description: "Advance Booking Payment",
-  order_id: orderData.id,
-  handler: async function (paymentRes: any) {
-    await handleBooking(paymentRes);
-  },
-  // ⚡ AUTOFILL NAME, EMAIL & PHONE
-  prefill: {
-    name: name,
-    email: email,
-    contact: phone,
-  },
-  // ⚡ LOCK FIELDS SO USER ONLY HAS TO ENTER CARD DETAILS
-  readonly: {
-    name: true,
-    email: true,
-    contact: true,
-  },
-};
+    const options = {
+      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+      amount: orderData.amount,
+      currency: orderData.currency,
+      name: "SMES Turf",
+      description: "Advance Booking Payment",
+      order_id: orderData.id,
+      handler: async function (paymentRes: any) {
+        await handleBooking(paymentRes);
+      },
+      prefill: {
+        name: name,
+        email: email,
+        contact: `+91${phone}`, // Automatically fills customer phone
+      },
+      readonly: {
+        name: true,
+        email: true,
+        contact: true, // Prevents editing customer phone inside popup
+      },
+    };
 
-      if ((window as any).Razorpay) {
-        const razor = new (window as any).Razorpay(options);
-        razor.open();
-        setIsPaymentLoading(false);
-      } else {
-        setIsPaymentLoading(false);
-        alert("Payment gateway script still loading. Please try again.");
-      }
-    } catch (error) {
+    if ((window as any).Razorpay) {
+      const razor = new (window as any).Razorpay(options);
+      razor.open();
       setIsPaymentLoading(false);
-      console.error("Order creation failed:", error);
-      alert("Failed to initiate secure checkout.");
+    } else {
+      setIsPaymentLoading(false);
+      alert("Payment gateway script still loading. Please try again.");
     }
-  };
+  } catch (error) {
+    setIsPaymentLoading(false);
+    console.error("Order creation failed:", error);
+    alert("Failed to initiate secure checkout.");
+  }
+};
 
   /* -------- Secure Server Booking Handler -------- */
   const handleBooking = async (paymentData: any) => {
