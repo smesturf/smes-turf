@@ -1440,7 +1440,7 @@ export default function Home() {
                 </div>
 
                 <p className="text-[10px] text-neutral-500 font-mono mt-2 leading-relaxed">
-                  A confirmation message has been sent to your EMAIL. Please arrive 10 minutes prior to kickoff.
+                  A confirmation message has been sent to you EMAIL. Please arrive 10 minutes prior to kickoff.
                 </p>
 
                 <motion.button
