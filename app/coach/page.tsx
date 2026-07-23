@@ -25,7 +25,6 @@ interface Student {
   created_at: string;
   monthly_fee: number;
   student_payments?: Payment[];
-  // Processed UI fields
   payment_status?: string;
   amount_paid?: number;
   payment_method?: string | null;
@@ -103,14 +102,29 @@ export default function CoachPage() {
     year: "numeric",
   });
 
-  /* -------- 1. ROUTE GUARD -------- */
+  /* -------- 1. SECURE ROUTE GUARD (SUPABASE AUTH) -------- */
   useEffect(() => {
-    const isCoach = localStorage.getItem("subAdminLoggedIn");
-    if (isCoach !== "true") {
-      router.replace("/staff");
-    } else {
-      setIsAuthorized(true);
-    }
+    const checkAuth = async () => {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      // If there's no valid server session, boot them out securely
+      if (error || !session) {
+        router.replace("/staff");
+      } else {
+        setIsAuthorized(true);
+      }
+    };
+    
+    checkAuth();
+
+    // Listen for logout events across tabs
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        router.replace("/staff");
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, [router]);
 
   /* -------- 2. INACTIVITY AUTO-LOGOUT TIMER -------- */
@@ -123,8 +137,8 @@ export default function CoachPage() {
     const resetTimer = () => {
       clearTimeout(timeout);
       timeout = setTimeout(async () => {
-        await supabase.auth.signOut();
-        localStorage.removeItem("subAdminLoggedIn");
+        // Securely sign out from server instead of deleting a local key
+        await supabase.auth.signOut(); 
         alert("⚠️ Session expired due to inactivity. Please log in again.");
         router.push("/staff");
       }, INACTIVITY_LIMIT);
@@ -173,6 +187,7 @@ export default function CoachPage() {
   }, [isAuthorized]);
 
   const loadCoachData = async () => {
+    // Force IST query date
     const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
     const { data: bData } = await supabase
@@ -454,7 +469,6 @@ export default function CoachPage() {
             <button 
               onClick={async () => { 
                 await supabase.auth.signOut();
-                localStorage.removeItem("subAdminLoggedIn"); 
                 router.replace("/staff"); 
               }}
               className="bg-neutral-900 border border-neutral-800 text-neutral-400 text-[10px] sm:text-xs font-mono py-4 px-4 hover:text-white transition-colors uppercase tracking-wider"
@@ -622,7 +636,6 @@ export default function CoachPage() {
                     </tr>
                   </thead>
                   
-                  {/* Changed to md:divide-y to prevent overlapping borders on mobile, keeps desktop table neat */}
                   <motion.tbody
                     variants={stagger}
                     initial="hidden"
@@ -654,14 +667,12 @@ export default function CoachPage() {
                               key={student.id}
                               variants={rowItem}
                               layout
-                              /* Added strict border-b and border-neutral-800 for mobile separation */
                               className={`grid grid-cols-[1fr_auto] md:table-row items-center p-4 md:p-0 border-b border-neutral-800 md:border-none transition-colors gap-x-2 gap-y-1.5 ${
                                 isUnpaid
                                   ? "bg-red-500/[0.05] hover:bg-red-500/[0.10]"
                                   : "hover:bg-lime-400/[0.03]"
                               }`}
                             >
-                              {/* 1. Name & DOB (Top Left on Mobile) */}
                               <td className="block md:table-cell order-1 md:order-none py-1 md:p-4">
                                 <div className={`font-bold flex items-center gap-2 ${
                                   isUnpaid ? "text-red-300" : "text-white"
@@ -682,7 +693,6 @@ export default function CoachPage() {
                                 </div>
                               </td>
                               
-                              {/* 2. Contact Details (Bottom Left on Mobile) */}
                               <td className="block md:table-cell order-3 md:order-none py-1 md:p-4 space-y-0.5">
                                 <div className="font-mono text-neutral-300 text-[11px] md:text-xs">
                                   {student.phone}
@@ -692,7 +702,6 @@ export default function CoachPage() {
                                 </div>
                               </td>
                               
-                              {/* 3. Fee (Bottom Right on Mobile) */}
                               <td className="flex justify-end md:justify-start items-center md:table-cell order-4 md:order-none py-1 md:p-4 font-mono text-white text-xs md:text-sm">
                                 <span className="md:hidden text-[9px] font-mono text-neutral-500 uppercase tracking-widest mr-1.5">
                                   Fee:
@@ -700,7 +709,6 @@ export default function CoachPage() {
                                 ₹{student.monthly_fee || FIXED_COACHING_FEE}
                               </td>
                               
-                              {/* 4. Status (Top Right on Mobile) */}
                               <td className="flex justify-end md:table-cell md:text-center order-2 md:order-none py-1 md:p-4">
                                 {student.payment_status === "settled" ? (
                                   <span className="px-2.5 py-1 text-[9px] md:text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 whitespace-nowrap inline-flex items-center gap-1 justify-center">

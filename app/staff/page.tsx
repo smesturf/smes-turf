@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "../lib/supabase"; // Adjust this path if your lib folder is somewhere else
+import { supabase } from "../lib/supabase";
 import { motion, LayoutGroup } from "framer-motion";
 
 export default function StaffPortal() {
@@ -20,6 +20,7 @@ export default function StaffPortal() {
     if (staffRole === "Sub-Admin") staffEmail = "sports+subadmin@smestuff.com";
     if (staffRole === "Coach") staffEmail = "sports+coach@smestuff.com";
 
+    // 1. Authenticate securely with Supabase
     const { data, error } = await supabase.auth.signInWithPassword({
       email: staffEmail,
       password: staffPassword,
@@ -31,16 +32,13 @@ export default function StaffPortal() {
       return;
     }
 
+    // 2. Route the user. Supabase has already saved the secure session token!
     if (data.session) {
       if (staffRole === "Admin") {
-        localStorage.setItem("adminLoggedIn", "true");
-        localStorage.setItem("adminLoginTime", Date.now().toString());
         router.push("/admin");
       } else if (staffRole === "Sub-Admin") {
-        localStorage.setItem("subadminLoggedIn", "true");
         router.push("/subadmin");
       } else if (staffRole === "Coach") {
-        localStorage.setItem("subAdminLoggedIn", "true"); 
         router.push("/coach");
       }
     }

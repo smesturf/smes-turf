@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Script from "next/script";
 import { supabase } from "./lib/supabase";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { getPrice } from "./lib/booking-rules";
@@ -37,7 +38,6 @@ export default function Home() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   
-  // 🛑 Removed default selections to force manual user choice
   const [sport, setSport] = useState("");
   const [bookingType, setBookingType] = useState("");
   
@@ -47,28 +47,18 @@ export default function Home() {
 
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
   
-  // 🔒 CLIENT DATE STATE
+  // 🔒 CLIENT DATE STATE (Strictly IST)
   const [minDate, setMinDate] = useState("");
 
-  // 🌤️ DYNAMIC WEATHER WIDGET STATE
   const [weather, setWeather] = useState<{ temp: number; condition: string } | null>(null);
-
-  /// 🎫 CONFIRMATION MODAL STATE
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  
-  // 🔄 SECURE PAYMENT LOADING STATE
   const [isPaymentLoading, setIsPaymentLoading] = useState(false);
-
-  // 🔄 POST-PAYMENT PROCESSING STATE
   const [isProcessingBooking, setIsProcessingBooking] = useState(false);
-  
-  // 🎉 SUCCESS MODAL STATE
   const [successData, setSuccessData] = useState<any>(null);
 
-  // 📄 AUTOMATIC PASS DOWNLOAD REF
   const autoPassRef = useRef<HTMLDivElement>(null);
 
-  /* -------- HELPER: TIME RANGE FORMATTER (e.g. 8:00 PM - 9:30 PM) -------- */
+  /* -------- HELPER: TIME RANGE FORMATTER -------- */
   const getTimeRangeLabel = (startTimeStr: string, durationMins: number | string) => {
     if (!startTimeStr) return "";
     const parts = startTimeStr.split(" ");
@@ -99,9 +89,7 @@ export default function Home() {
       const triggerAutoDownload = async () => {
         try {
           await new Promise((resolve) => setTimeout(resolve, 600));
-
           if (!autoPassRef.current) return;
-
           const { toPng } = await import("html-to-image");
 
           const dataUrl = await toPng(autoPassRef.current, {
@@ -153,16 +141,9 @@ export default function Home() {
     fetchWeather();
   }, []);
 
-  /* -------- Load Razorpay -------- */
-  useEffect(() => {
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-    document.body.appendChild(script);
-    return () => {
-      document.body.removeChild(script);
-    };
-  }, []);
+  /* -------- IST Strict Min Date -------- */
+  const getLocalDateString = () =>
+    new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
   useEffect(() => {
     setMinDate(getLocalDateString());
@@ -174,7 +155,6 @@ export default function Home() {
 
   const { totalAmount, regularAmount } = useMemo(
     () => {
-      // Don't calculate if type isn't selected
       if (!bookingType || !duration) return { totalAmount: 0, regularAmount: 0 };
       return getPrice(duration, bookingType);
     },
@@ -189,9 +169,6 @@ export default function Home() {
     return `${String(displayH).padStart(2, "0")}:${m} ${ampm}`;
   });
 
-  const getLocalDateString = () =>
-    new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-
   const isSlotAvailable = (slot: string) => {
     if (!bookingDate || !duration || !bookingType) return false;
     const segmentsNeeded = Number(duration) / 30;
@@ -203,12 +180,13 @@ export default function Home() {
       if (bookedSlots.includes(nextSlot)) return false;
     }
     
+    // Strict IST Today Check
     const today = getLocalDateString();
     if (bookingDate && bookingDate < today) return false;
     if (bookingDate !== today) return true;
 
-    const now = new Date();
-    const istTimeStr = now.toLocaleTimeString("en-US", {
+    // Strict IST Time Comparison
+    const istTimeStr = new Date().toLocaleTimeString("en-US", {
       timeZone: "Asia/Kolkata",
       hour12: false,
     });
@@ -229,14 +207,14 @@ export default function Home() {
   }, [bookingDate, bookedSlots, duration, bookingType]);
 
   const loadBookedSlots = async (dateStr: string) => {
-    if (!bookingType) return; // Wait until type is selected
+    if (!bookingType) return; 
 
-    const selectedDate = new Date(dateStr);
-    const prevDate = new Date(selectedDate);
-    prevDate.setDate(prevDate.getDate() - 1);
+    // IST strict offset parsing
+    const selectedDate = new Date(`${dateStr}T00:00:00+05:30`);
+    const prevDate = new Date(selectedDate.getTime() - 24 * 60 * 60 * 1000);
 
     const currentDateStr = dateStr;
-    const prevDateStr = prevDate.toISOString().split("T")[0];
+    const prevDateStr = prevDate.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
     const { data: bookingsData, error } = await supabase
       .from("bookings")
@@ -321,7 +299,6 @@ export default function Home() {
 
   /* -------- Secure Razorpay Intent -------- */
   const openRazorpay = async () => {
-    // 🛑 Added validation for Sport and BookingType
     if (!name || !phone || !email || !sport || !bookingType || !bookingDate || !startTime) {
       alert("⚠️ Please fill all fields, select a sport, arena configuration, and a valid time slot.");
       return;
@@ -368,12 +345,12 @@ export default function Home() {
         prefill: {
           name: name,
           email: email,
-          contact: `+91${phone}`, // Automatically fills customer phone
+          contact: `+91${phone}`, 
         },
         readonly: {
           name: true,
           email: true,
-          contact: true, // Prevents editing customer phone inside popup
+          contact: true, 
         },
       };
 
@@ -451,7 +428,6 @@ export default function Home() {
         balance: balanceAmount
       });
 
-      // Reset form fields
       setName("");
       setPhone("");
       setBookingDate("");
@@ -459,9 +435,6 @@ export default function Home() {
       setDuration("");
       setSport("");
       setBookingType("");
-      
-      // Load slots won't trigger until selections are made again
-
     } catch (error) {
       console.error(error);
       setIsProcessingBooking(false);
@@ -479,6 +452,9 @@ export default function Home() {
   /* ================================================================ */
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden">
+      
+      {/* 🚀 Next.js Optimized External Script Loading */}
+      <Script id="razorpay-js" src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
 
       {/* ---------- Background ---------- */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
@@ -552,7 +528,6 @@ export default function Home() {
             className="grid grid-cols-1 gap-2 w-full max-w-md mx-auto lg:max-w-none lg:mx-0 lg:flex lg:flex-wrap lg:justify-end lg:w-auto lg:gap-3"
           >
             <motion.button
-              suppressHydrationWarning={true}
               whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.35)" }}
               whileTap={{ scale: 0.97 }}
               onClick={scrollToBooking}
@@ -736,7 +711,6 @@ export default function Home() {
                 <div className="space-y-2">
                    <label className="text-xs font-mono uppercase text-neutral-400">Full Name</label>
                   <input
-                    suppressHydrationWarning={true}
                     type="text"
                     placeholder="Enter athlete name"
                     value={name}
@@ -748,7 +722,6 @@ export default function Home() {
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400">Phone Number</label>
                   <input
-                    suppressHydrationWarning={true}
                     type="tel"
                     placeholder="Active contact"
                     value={phone}
@@ -763,7 +736,6 @@ export default function Home() {
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400">Email Address</label>
                   <input
-                    suppressHydrationWarning={true}
                     type="email"
                     placeholder="For pass & reminders"
                     value={email}
@@ -780,12 +752,10 @@ export default function Home() {
                   <label className="text-xs font-mono uppercase text-neutral-400">Sport Discipline</label>
                   <div className="relative">
                     <select
-                      suppressHydrationWarning={true}
                       value={sport}
                       onChange={(e) => setSport(e.target.value)}
                       className={`w-full p-4 bg-neutral-900 outline-none rounded-none appearance-none text-base md:text-sm transition-colors border ${sport ? "text-lime-400 font-bold border-neutral-800 focus:border-lime-400" : "text-neutral-500 border-neutral-800 focus:border-neutral-600"}`}
                     >
-                      {/* 🛑 Default hidden placeholder added */}
                       <option value="" disabled hidden>-- Select Sport --</option>
                       <option value="Football">⚽ Football</option>
                       <option value="Cricket">🏏 Cricket</option>
@@ -844,7 +814,6 @@ export default function Home() {
                             </motion.div>
                           </>
                         ) : (
-                          // 🛑 Added neutral state when nothing is selected
                           <motion.div 
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                             className="w-full h-full bg-black/60 flex items-center justify-center backdrop-blur-[2px]"
@@ -895,7 +864,6 @@ export default function Home() {
               <motion.div variants={fadeUp} className="space-y-2">
                 <label className="text-xs font-mono uppercase text-neutral-400">Calendar Date</label>
                 <input
-                  suppressHydrationWarning={true}
                   type="date"
                   min={minDate}
                   value={bookingDate}
@@ -911,10 +879,8 @@ export default function Home() {
               <motion.div variants={fadeUp} className="space-y-2 relative">
                 <label className="text-xs font-mono uppercase text-neutral-400">Session Length</label>
                 <div className="relative">
-                  {/* 🛑 Disabled until Date AND BookingType are selected */}
                   <select
                     disabled={!bookingDate || !bookingType} 
-                    suppressHydrationWarning={true}
                     value={duration}
                     onChange={(e) => setDuration(e.target.value)}
                     className={`w-full p-4 bg-neutral-900 text-white border outline-none rounded-none appearance-none text-base md:text-sm transition-all ${
@@ -938,7 +904,6 @@ export default function Home() {
                  <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Slot</label>
                 <div className="relative">
                   <LayoutGroup>
-                    {/* 🛑 Added !bookingType to disabled/opacity condition */}
                     <motion.div
                       variants={stagger}
                       initial="hidden"
@@ -953,7 +918,6 @@ export default function Home() {
 
                         return (
                           <motion.button
-                            suppressHydrationWarning={true}
                             key={slot}
                             variants={slotItem}
                             whileHover={available && !selected && bookingDate && duration && bookingType ? { scale: 1.06 } : {}}
@@ -1139,7 +1103,6 @@ export default function Home() {
             </div>
 
             <motion.button
-              suppressHydrationWarning={true}
               whileHover={startTime && name && email && phone.length === 10 && sport && bookingType ?
                 { y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.35)" } : {}}
               whileTap={startTime && name && email && phone.length === 10 && sport && bookingType ?
@@ -1153,7 +1116,6 @@ export default function Home() {
                   : "bg-lime-400 hover:bg-lime-300 text-black border border-lime-400 shadow-lime-400/20"
               }`}
             >
-              {/* 🛑 Updated logic for button messaging based on empty sport/bookingType */}
               {!name || !email || phone.length !== 10 
                 ? "Enter Name, Email & Phone" 
                 : !sport || !bookingType
@@ -1191,7 +1153,6 @@ export default function Home() {
               <div><span className="text-lime-500">L:</span> Mysuru, Karnataka</div>
             </div>
 
-            {/* 📄 Terms & Conditions Link */}
             <Link
               href="/terms"
               className="text-[9px] sm:text-[10px] text-neutral-500 hover:text-lime-400 uppercase tracking-widest transition-colors pt-1 underline underline-offset-4 decoration-neutral-800 hover:decoration-lime-400"
@@ -1204,7 +1165,6 @@ export default function Home() {
 
       {/* ---------- SMART Floating CTA ---------- */}
       <motion.button
-        suppressHydrationWarning={true}
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 1.2, duration: 0.5, ease: easeOut }}
@@ -1393,13 +1353,10 @@ export default function Home() {
               transition={{ type: "spring", stiffness: 300, damping: 25 }}
               className="bg-[#0a0a0a] border border-neutral-800 p-6 sm:p-8 w-full max-w-md shadow-2xl relative overflow-hidden my-8"
             >
-              {/* Glowing Top Accent */}
               <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-lime-400 to-emerald-500" />
               <div className="absolute top-[-50px] left-1/2 -translate-x-1/2 w-[200px] h-[100px] bg-lime-500/20 blur-[60px] rounded-full pointer-events-none" />
 
               <div className="flex flex-col items-center text-center space-y-4 relative z-10">
-                
-                {/* Animated Checkmark */}
                 <motion.div 
                   initial={{ scale: 0 }} 
                   animate={{ scale: 1, rotate: 360 }} 
@@ -1417,7 +1374,6 @@ export default function Home() {
                   </p>
                 </div>
 
-                {/* Printable Digital Ticket Node (autoPassRef Target) */}
                 <div
                   ref={autoPassRef}
                   className="w-full bg-[#0a0a0a] border border-neutral-800 p-5 text-left space-y-3 relative overflow-hidden shadow-xl"

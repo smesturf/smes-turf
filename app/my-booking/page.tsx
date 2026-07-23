@@ -5,15 +5,30 @@ import Link from "next/link";
 import { supabase } from "../lib/supabase";
 import { motion } from "framer-motion";
 
+interface Booking {
+  id: string;
+  booking_date: string;
+  start_time: string;
+  duration_minutes: number;
+  balance_amount: number;
+  total_amount: number;
+  advance_amount: number;
+  booking_reference: string;
+  customer_name: string;
+  phone: string;
+  sport: string;
+  court_number: string;
+  booking_type: string;
+}
+
 export default function BookingLookup() {
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
-  const [serverOtp, setServerOtp] = useState("");
-  const [bookings, setBookings] = useState<any[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [selectedBooking, setSelectedBooking] = useState<any>(null);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
   /* -------- Resend Cooldown Timer Logic -------- */
   const [countdown, setCountdown] = useState(30);
@@ -31,17 +46,19 @@ export default function BookingLookup() {
     return () => clearInterval(timer);
   }, [otpSent, countdown]);
 
-  /* -------- Auto-Login on Reload -------- */
+  /* -------- Auto-Login on Reload using SECURE Session -------- */
   useEffect(() => {
-    // Check if user was already verified before reload
-    const storedEmail = localStorage.getItem("verifiedEmail");
-    if (storedEmail) {
-      setEmail(storedEmail);
-      fetchUserBookings(storedEmail);
-    }
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.email) {
+        setEmail(session.user.email);
+        await fetchUserBookings(session.user.email);
+      }
+    };
+    checkSession();
   }, []);
 
-  /* -------- Fetch Bookings Logic (Extracted for Reusability) -------- */
+  /* -------- Fetch Bookings Logic -------- */
   const fetchUserBookings = async (targetEmail: string) => {
     setIsLoading(true);
     setHasSearched(true);
@@ -57,9 +74,9 @@ export default function BookingLookup() {
 
       if (error) throw error;
 
-      setBookings(data || []);
+      setBookings(data as Booking[] || []);
       if (data && data.length > 0) {
-        setSelectedBooking(data[0]);
+        setSelectedBooking(data[0] as Booking);
       } else {
         setSelectedBooking(null);
       }
@@ -71,47 +88,31 @@ export default function BookingLookup() {
     }
   };
 
-  /* -------- Reset Search State (Back Action) -------- */
-  const handleResetSearch = () => {
-    // Clear storage so reload requires OTP again
-    localStorage.removeItem("verifiedEmail");
+  /* -------- Reset Search State & SECURE Logout -------- */
+  const handleResetSearch = async () => {
+    await supabase.auth.signOut();
     setHasSearched(false);
     setOtpSent(false);
     setOtp("");
-    setEmail(""); // Clear email field
+    setEmail(""); 
     setBookings([]);
     setSelectedBooking(null);
   };
 
-  /* -------- 1. Send / Resend OTP to Email -------- */
+  /* -------- 1. Send SECURE OTP via Supabase Auth -------- */
   const handleSendOTP = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    
-    if (!email) {
-      alert("⚠️ Please enter your registered email address.");
-      return;
-    }
+    if (!email) return alert("⚠️ Please enter your registered email address.");
 
     setIsLoading(true);
     try {
-      // Generate a random 6-digit OTP
-      const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      setServerOtp(generatedOtp);
+      const { error } = await supabase.auth.signInWithOtp({ email });
+      if (error) throw error;
 
-      // Trigger backend email sender
-      const res = await fetch("/api/send-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, otp: generatedOtp }),
-      });
-
-      if (!res.ok) throw new Error("Failed to send OTP email.");
-
-      // Reset Timer & Set State
       setOtpSent(true);
       setCountdown(30);
       setCanResend(false);
-      alert("📧 OTP sent! Please check your email inbox.");
+      alert("📧 Secure OTP sent! Please check your email inbox.");
     } catch (err) {
       console.error(err);
       alert("❌ Failed to send OTP. Ensure the email is correct.");
@@ -120,19 +121,31 @@ export default function BookingLookup() {
     }
   };
 
-  /* -------- 2. Verify OTP & Fetch Bookings -------- */
+  /* -------- 2. Verify SECURE OTP & Fetch Bookings -------- */
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (otp !== serverOtp && otp !== "000000") { // '000000' is a dev bypass
-      alert("❌ Invalid OTP. Please try again.");
-      return;
-    }
+    if (otp.length !== 6) return alert("❌ Invalid OTP format.");
 
-    // Save the verified email in local storage so it persists on reload
-    localStorage.setItem("verifiedEmail", email);
+    setIsLoading(true);
     
-    // Fetch the bookings
-    await fetchUserBookings(email);
+    try {
+      const { error: authError } = await supabase.auth.verifyOtp({
+        email,
+        token: otp,
+        type: 'email',
+      });
+
+      if (authError) throw authError;
+      
+      // Verified securely, session token established
+      await fetchUserBookings(email);
+    } catch (err: any) {
+      console.error(err);
+      alert("❌ Invalid or Expired OTP. Please try again.");
+      setHasSearched(false);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   /* -------- Helper: Format Booking ID (e.g., #68) -------- */
@@ -174,17 +187,15 @@ export default function BookingLookup() {
         {/* Top Navigation Bar - ALWAYS VISIBLE */}
         <div className="mb-8 flex items-center justify-between border-b border-neutral-900 pb-4">
           {hasSearched ? (
-            /* Button visible after unlocking passes with OTP */
             <motion.button
               whileHover={{ x: -3 }}
               whileTap={{ scale: 0.95 }}
               onClick={handleResetSearch}
               className="inline-flex items-center gap-2 px-3.5 py-2 rounded bg-neutral-900 border border-neutral-800 hover:border-lime-400 text-neutral-300 hover:text-lime-400 font-mono text-xs uppercase tracking-widest transition-all shadow-lg"
             >
-              <span className="text-lime-400 font-bold text-sm">←</span> Back to Search
+              <span className="text-lime-400 font-bold text-sm">←</span> Secure Logout
             </motion.button>
           ) : (
-            /* Back button visible on the main OTP / email landing page */
             <Link href="/">
               <motion.div
                 whileHover={{ x: -3 }}
