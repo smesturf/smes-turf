@@ -31,11 +31,54 @@ export default function BookingLookup() {
     return () => clearInterval(timer);
   }, [otpSent, countdown]);
 
+  /* -------- Auto-Login on Reload -------- */
+  useEffect(() => {
+    // Check if user was already verified before reload
+    const storedEmail = localStorage.getItem("verifiedEmail");
+    if (storedEmail) {
+      setEmail(storedEmail);
+      fetchUserBookings(storedEmail);
+    }
+  }, []);
+
+  /* -------- Fetch Bookings Logic (Extracted for Reusability) -------- */
+  const fetchUserBookings = async (targetEmail: string) => {
+    setIsLoading(true);
+    setHasSearched(true);
+    setBookings([]);
+
+    try {
+      const { data, error } = await supabase
+        .from("bookings")
+        .select("*")
+        .eq("email", targetEmail)
+        .order("booking_date", { ascending: false })
+        .order("start_time", { ascending: false });
+
+      if (error) throw error;
+
+      setBookings(data || []);
+      if (data && data.length > 0) {
+        setSelectedBooking(data[0]);
+      } else {
+        setSelectedBooking(null);
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert("❌ Error retrieving bookings.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   /* -------- Reset Search State (Back Action) -------- */
   const handleResetSearch = () => {
+    // Clear storage so reload requires OTP again
+    localStorage.removeItem("verifiedEmail");
     setHasSearched(false);
     setOtpSent(false);
     setOtp("");
+    setEmail(""); // Clear email field
     setBookings([]);
     setSelectedBooking(null);
   };
@@ -85,32 +128,11 @@ export default function BookingLookup() {
       return;
     }
 
-    setIsLoading(true);
-    setHasSearched(true);
-    setBookings([]);
-
-    try {
-      const { data, error } = await supabase
-        .from("bookings")
-        .select("*")
-        .eq("email", email)
-        .order("booking_date", { ascending: false })
-        .order("start_time", { ascending: false });
-
-      if (error) throw error;
-
-      setBookings(data || []);
-      if (data && data.length > 0) {
-        setSelectedBooking(data[0]);
-      } else {
-        setSelectedBooking(null);
-      }
-    } catch (err: any) {
-      console.error(err);
-      alert("❌ Error retrieving bookings.");
-    } finally {
-      setIsLoading(false);
-    }
+    // Save the verified email in local storage so it persists on reload
+    localStorage.setItem("verifiedEmail", email);
+    
+    // Fetch the bookings
+    await fetchUserBookings(email);
   };
 
   /* -------- Helper: Format Booking ID (e.g., #68) -------- */

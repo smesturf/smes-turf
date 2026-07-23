@@ -33,15 +33,17 @@ const slotItem = {
 export default function Home() {
   const router = useRouter();
 
- const [name, setName] = useState("");
+  const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [sport, setSport] = useState("Football");
+  
+  // 🛑 Removed default selections to force manual user choice
+  const [sport, setSport] = useState("");
+  const [bookingType, setBookingType] = useState("");
+  
   const [bookingDate, setBookingDate] = useState("");
-
   const [startTime, setStartTime] = useState("");
   const [duration, setDuration] = useState(""); 
-  const [bookingType, setBookingType] = useState("Full Court");
 
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
   
@@ -167,11 +169,15 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (bookingDate) loadBookedSlots(bookingDate);
+    if (bookingDate && bookingType) loadBookedSlots(bookingDate);
   }, [bookingDate, bookingType]);
 
   const { totalAmount, regularAmount } = useMemo(
-    () => getPrice(duration, bookingType),
+    () => {
+      // Don't calculate if type isn't selected
+      if (!bookingType || !duration) return { totalAmount: 0, regularAmount: 0 };
+      return getPrice(duration, bookingType);
+    },
     [duration, bookingType]
   );
 
@@ -187,7 +193,7 @@ export default function Home() {
     new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
   const isSlotAvailable = (slot: string) => {
-    if (!bookingDate || !duration) return false;
+    if (!bookingDate || !duration || !bookingType) return false;
     const segmentsNeeded = Number(duration) / 30;
     const slotIndex = allSlots.indexOf(slot);
     
@@ -220,9 +226,11 @@ export default function Home() {
 
   useEffect(() => {
     if (startTime && !isSlotAvailable(startTime)) setStartTime("");
-  }, [bookingDate, bookedSlots, duration]);
+  }, [bookingDate, bookedSlots, duration, bookingType]);
 
   const loadBookedSlots = async (dateStr: string) => {
+    if (!bookingType) return; // Wait until type is selected
+
     const selectedDate = new Date(dateStr);
     const prevDate = new Date(selectedDate);
     prevDate.setDate(prevDate.getDate() - 1);
@@ -312,76 +320,77 @@ export default function Home() {
   };
 
   /* -------- Secure Razorpay Intent -------- */
-const openRazorpay = async () => {
-  if (!name || !phone || !email || !bookingDate || !startTime) {
-    alert("⚠️ Please fill all fields (including Email) and select a valid time slot.");
-    return;
-  }
-  if (phone.length !== 10) {
-    alert("⚠️ Invalid Phone Number: Please enter exactly 10 digits.");
-    return;
-  }
-
-  setIsPaymentLoading(true); 
-
-  try {
-    const response = await fetch("/api/create-order", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        bookingDate,
-        startTime,
-        duration,
-        bookingType,
-        amount: 205 // ₹200 Advance + ₹5 Razorpay Convenience Fee
-      })
-    });
-
-    const orderData = await response.json();
-
-    if (!response.ok) {
-      setIsPaymentLoading(false);
-      alert(`❌ ${orderData.error || "Slot is no longer available. Please select another time."}`);
-      loadBookedSlots(bookingDate); 
+  const openRazorpay = async () => {
+    // 🛑 Added validation for Sport and BookingType
+    if (!name || !phone || !email || !sport || !bookingType || !bookingDate || !startTime) {
+      alert("⚠️ Please fill all fields, select a sport, arena configuration, and a valid time slot.");
+      return;
+    }
+    if (phone.length !== 10) {
+      alert("⚠️ Invalid Phone Number: Please enter exactly 10 digits.");
       return;
     }
 
-    const options = {
-      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-      amount: orderData.amount,
-      currency: orderData.currency,
-      name: "SMES Turf",
-      description: "Advance Booking Payment",
-      order_id: orderData.id,
-      handler: async function (paymentRes: any) {
-        await handleBooking(paymentRes);
-      },
-      prefill: {
-        name: name,
-        email: email,
-        contact: `+91${phone}`, // Automatically fills customer phone
-      },
-      readonly: {
-        name: true,
-        email: true,
-        contact: true, // Prevents editing customer phone inside popup
-      },
-    };
+    setIsPaymentLoading(true); 
 
-    if ((window as any).Razorpay) {
-      const razor = new (window as any).Razorpay(options);
-      razor.open();
+    try {
+      const response = await fetch("/api/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookingDate,
+          startTime,
+          duration,
+          bookingType,
+          amount: 205 // ₹200 Advance + ₹5 Razorpay Convenience Fee
+        })
+      });
+
+      const orderData = await response.json();
+
+      if (!response.ok) {
+        setIsPaymentLoading(false);
+        alert(`❌ ${orderData.error || "Slot is no longer available. Please select another time."}`);
+        loadBookedSlots(bookingDate); 
+        return;
+      }
+
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: "SMES Turf",
+        description: "Advance Booking Payment",
+        order_id: orderData.id,
+        handler: async function (paymentRes: any) {
+          await handleBooking(paymentRes);
+        },
+        prefill: {
+          name: name,
+          email: email,
+          contact: `+91${phone}`, // Automatically fills customer phone
+        },
+        readonly: {
+          name: true,
+          email: true,
+          contact: true, // Prevents editing customer phone inside popup
+        },
+      };
+
+      if ((window as any).Razorpay) {
+        const razor = new (window as any).Razorpay(options);
+        razor.open();
+        setIsPaymentLoading(false);
+      } else {
+        setIsPaymentLoading(false);
+        alert("Payment gateway script still loading. Please try again.");
+      }
+    } catch (error) {
       setIsPaymentLoading(false);
-    } else {
-      setIsPaymentLoading(false);
-      alert("Payment gateway script still loading. Please try again.");
+      console.error("Order creation failed:", error);
+      alert("Failed to initiate secure checkout.");
     }
-  } catch (error) {
-    setIsPaymentLoading(false);
-    console.error("Order creation failed:", error);
-    alert("Failed to initiate secure checkout.");
-  }
-};
+  };
 
   /* -------- Secure Server Booking Handler -------- */
   const handleBooking = async (paymentData: any) => {
@@ -448,7 +457,10 @@ const openRazorpay = async () => {
       setBookingDate("");
       setStartTime("");
       setDuration("");
-      loadBookedSlots(bookingDate); 
+      setSport("");
+      setBookingType("");
+      
+      // Load slots won't trigger until selections are made again
 
     } catch (error) {
       console.error(error);
@@ -508,7 +520,6 @@ const openRazorpay = async () => {
 
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 sm:gap-8">
           <div className="text-center lg:text-left">
-            {/* 🛑 Added whitespace-nowrap to keep SMES TURF strictly in a single line on desktop */}
             <motion.h1
               variants={fadeUp}
               className="text-5xl sm:text-6xl md:text-8xl font-black tracking-tighter uppercase leading-none text-white whitespace-nowrap"
@@ -518,7 +529,6 @@ const openRazorpay = async () => {
               </span>
             </motion.h1>
 
-            {/* 📍 Location Pin under Heading */}
             <motion.div
               variants={fadeUp}
               className="flex items-center justify-center lg:justify-start gap-1.5 text-xs sm:text-sm font-mono text-lime-400 uppercase tracking-wider mt-0.5 sm:mt-3 font-bold"
@@ -537,12 +547,10 @@ const openRazorpay = async () => {
             </motion.p>
           </div>
 
-          {/* Header Action Buttons with Custom SVG Logos */}
           <motion.div
             variants={fadeUp}
             className="grid grid-cols-1 gap-2 w-full max-w-md mx-auto lg:max-w-none lg:mx-0 lg:flex lg:flex-wrap lg:justify-end lg:w-auto lg:gap-3"
           >
-            {/* BOOK NOW Button */}
             <motion.button
               suppressHydrationWarning={true}
               whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.35)" }}
@@ -557,7 +565,6 @@ const openRazorpay = async () => {
               <span>BOOK NOW</span>
             </motion.button>
 
-            {/* Additional Header Navigation Links with Icons */}
             {[
               { 
                 href: "/my-booking", 
@@ -776,8 +783,10 @@ const openRazorpay = async () => {
                       suppressHydrationWarning={true}
                       value={sport}
                       onChange={(e) => setSport(e.target.value)}
-                      className="w-full p-4 bg-neutral-900 text-lime-400 font-bold border border-neutral-800 focus:border-lime-400 outline-none rounded-none appearance-none text-base md:text-sm transition-colors"
+                      className={`w-full p-4 bg-neutral-900 outline-none rounded-none appearance-none text-base md:text-sm transition-colors border ${sport ? "text-lime-400 font-bold border-neutral-800 focus:border-lime-400" : "text-neutral-500 border-neutral-800 focus:border-neutral-600"}`}
                     >
+                      {/* 🛑 Default hidden placeholder added */}
+                      <option value="" disabled hidden>-- Select Sport --</option>
                       <option value="Football">⚽ Football</option>
                       <option value="Cricket">🏏 Cricket</option>
                     </select>
@@ -788,7 +797,7 @@ const openRazorpay = async () => {
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400 flex justify-between items-center">
                     <span>Arena Scale Configuration</span>
-                    <span className="text-lime-400 tracking-wider font-black">{bookingType.toUpperCase()}</span>
+                    <span className="text-lime-400 tracking-wider font-black">{bookingType ? bookingType.toUpperCase() : "PENDING"}</span>
                   </label>
                   
                   <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 bg-neutral-900/40 p-3 sm:p-4 border border-neutral-800">
@@ -823,7 +832,7 @@ const openRazorpay = async () => {
                               </span>
                             </motion.div>
                           </>
-                        ) : (
+                        ) : bookingType === "Full Court" ? (
                           <>
                             <motion.div 
                               initial={{ opacity: 0 }} animate={{ opacity: 1 }} 
@@ -834,6 +843,16 @@ const openRazorpay = async () => {
                               </span>
                             </motion.div>
                           </>
+                        ) : (
+                          // 🛑 Added neutral state when nothing is selected
+                          <motion.div 
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                            className="w-full h-full bg-black/60 flex items-center justify-center backdrop-blur-[2px]"
+                          >
+                            <span className="text-neutral-500 text-[10px] sm:text-xs font-bold tracking-widest font-mono uppercase bg-black/80 px-3 py-1.5 border border-neutral-800">
+                              Awaiting Selection
+                            </span>
+                          </motion.div>
                         )}
                       </div>
                     </div>
@@ -882,7 +901,6 @@ const openRazorpay = async () => {
                   value={bookingDate}
                   onChange={(e) => {
                     setBookingDate(e.target.value);
-                    loadBookedSlots(e.target.value);
                   }}
                   className="w-full p-4 bg-neutral-900 text-lime-400 font-bold font-mono border border-neutral-800 focus:border-lime-400 outline-none rounded-none text-base md:text-sm"
                   style={{ colorScheme: "dark" }}
@@ -893,23 +911,24 @@ const openRazorpay = async () => {
               <motion.div variants={fadeUp} className="space-y-2 relative">
                 <label className="text-xs font-mono uppercase text-neutral-400">Session Length</label>
                 <div className="relative">
+                  {/* 🛑 Disabled until Date AND BookingType are selected */}
                   <select
-                    disabled={!bookingDate} 
+                    disabled={!bookingDate || !bookingType} 
                     suppressHydrationWarning={true}
                     value={duration}
                     onChange={(e) => setDuration(e.target.value)}
                     className={`w-full p-4 bg-neutral-900 text-white border outline-none rounded-none appearance-none text-base md:text-sm transition-all ${
-                         !bookingDate ?
+                         !bookingDate || !bookingType ?
                         "border-neutral-800/50 opacity-40 cursor-not-allowed text-neutral-500" : "border-neutral-800 focus:border-lime-400"
                     }`}
                   >
                     <option value="" disabled hidden>-- Select Session Length --</option> 
-                    <option value="60">60 Minutes (- ₹{bookingType === "Half Court" ? 700 : 1200})</option>
-                    <option value="90">90 Minutes (- ₹{bookingType === "Half Court" ? 1050 : 1800})</option>
-                    <option value="120">120 Minutes (- ₹{bookingType === "Half Court" ? 1400 : 2400})</option>
+                    <option value="60">60 Minutes {bookingType ? `(- ₹${bookingType === "Half Court" ? 700 : 1200})` : ""}</option>
+                    <option value="90">90 Minutes {bookingType ? `(- ₹${bookingType === "Half Court" ? 1050 : 1800})` : ""}</option>
+                    <option value="120">120 Minutes {bookingType ? `(- ₹${bookingType === "Half Court" ? 1400 : 2400})` : ""}</option>
                   </select>
                   <div className={`pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-xs transition-all ${
-                    !bookingDate ? "text-neutral-700 opacity-40" : "text-neutral-500"
+                    !bookingDate || !bookingType ? "text-neutral-700 opacity-40" : "text-neutral-500"
                   }`}>▼</div>
                 </div>
               </motion.div>
@@ -919,12 +938,13 @@ const openRazorpay = async () => {
                  <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Slot</label>
                 <div className="relative">
                   <LayoutGroup>
+                    {/* 🛑 Added !bookingType to disabled/opacity condition */}
                     <motion.div
                       variants={stagger}
                       initial="hidden"
                       animate="show"
                       className={`grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 p-3 sm:p-4 bg-neutral-900/30 border border-neutral-800 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-700 transition-all ${
-                        !bookingDate || !duration ? "opacity-40 pointer-events-none select-none" : ""
+                        !bookingDate || !duration || !bookingType ? "opacity-40 pointer-events-none select-none" : ""
                       }`}
                     >
                       {allSlots.map((slot) => {
@@ -936,15 +956,15 @@ const openRazorpay = async () => {
                             suppressHydrationWarning={true}
                             key={slot}
                             variants={slotItem}
-                            whileHover={available && !selected && bookingDate && duration ? { scale: 1.06 } : {}}
-                            whileTap={available && bookingDate && duration ? { scale: 0.94 } : {}}
+                            whileHover={available && !selected && bookingDate && duration && bookingType ? { scale: 1.06 } : {}}
+                            whileTap={available && bookingDate && duration && bookingType ? { scale: 0.94 } : {}}
                             type="button"
-                            disabled={!available || !bookingDate || !duration} 
+                            disabled={!available || !bookingDate || !duration || !bookingType} 
                             onClick={() => setStartTime(slot)}
                             className={`relative py-3 px-1 text-[11px] sm:text-xs font-mono font-bold uppercase transition-colors border ${
                               selected
                                 ? "bg-red-600 border-red-500 text-white"
-                                : available && bookingDate && duration
+                                : available && bookingDate && duration && bookingType
                                 ? "bg-lime-500/10 border-lime-500/30 text-lime-400 hover:bg-lime-500 hover:text-black cursor-pointer"
                                 : "bg-neutral-950 border-neutral-900 text-neutral-600 opacity-50 cursor-not-allowed"
                             }`}
@@ -1015,11 +1035,11 @@ const openRazorpay = async () => {
                 </div>
                 <div>
                   <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Sport</span>
-                  <span className="text-xs sm:text-sm font-bold text-lime-400 uppercase tracking-wider">{sport}</span>
+                  <span className="text-xs sm:text-sm font-bold text-lime-400 uppercase tracking-wider">{sport || "TBD"}</span>
                 </div>
                 <div>
                   <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Scale</span>
-                  <span className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">{bookingType}</span>
+                  <span className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">{bookingType || "TBD"}</span>
                 </div>
                  <div>
                   <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Date</span>
@@ -1120,21 +1140,24 @@ const openRazorpay = async () => {
 
             <motion.button
               suppressHydrationWarning={true}
-              whileHover={startTime && name && email && phone.length === 10 ?
+              whileHover={startTime && name && email && phone.length === 10 && sport && bookingType ?
                 { y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.35)" } : {}}
-              whileTap={startTime && name && email && phone.length === 10 ?
+              whileTap={startTime && name && email && phone.length === 10 && sport && bookingType ?
                 { scale: 0.97 } : {}}
               type="button"
               onClick={() => setShowConfirmModal(true)}
-              disabled={!startTime || !name || !email || phone.length !== 10}
+              disabled={!startTime || !name || !email || phone.length !== 10 || !sport || !bookingType}
               className={`w-full mt-4 font-mono text-xs sm:text-sm uppercase tracking-widest py-4 sm:py-5 transition-all font-black shadow-lg flex items-center justify-center gap-3 ${
-                !startTime || !name || !email || phone.length !== 10
+                !startTime || !name || !email || phone.length !== 10 || !sport || !bookingType
                   ? "bg-neutral-900 border border-neutral-800 text-neutral-600 cursor-not-allowed"
                   : "bg-lime-400 hover:bg-lime-300 text-black border border-lime-400 shadow-lime-400/20"
               }`}
             >
+              {/* 🛑 Updated logic for button messaging based on empty sport/bookingType */}
               {!name || !email || phone.length !== 10 
                 ? "Enter Name, Email & Phone" 
+                : !sport || !bookingType
+                ? "Select Sport & Scale"
                 : !startTime 
                 ? "Select Kickoff Time" 
                 : "⚡ Confirm Match Slot"}
@@ -1185,30 +1208,30 @@ const openRazorpay = async () => {
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 1.2, duration: 0.5, ease: easeOut }}
-        whileHover={{ scale: 1.05, boxShadow: startTime && name && phone.length === 10 ? "0 0 20px rgba(163,230,53,0.4)" : "0 0 20px rgba(163,230,53,0.2)" }}
+        whileHover={{ scale: 1.05, boxShadow: startTime && name && phone.length === 10 && sport && bookingType ? "0 0 20px rgba(163,230,53,0.4)" : "0 0 20px rgba(163,230,53,0.2)" }}
         whileTap={{ scale: 0.95 }}
         onClick={() => {
-          if (startTime && name && phone.length === 10) {
+          if (startTime && name && phone.length === 10 && sport && bookingType) {
             setShowConfirmModal(true);
           } else {
             scrollToBooking();
           }
         }}
         className={`fixed bottom-6 right-4 md:bottom-8 md:right-8 z-[9000] backdrop-blur-md px-5 py-3 rounded-full transition-all duration-300 shadow-xl cursor-pointer flex items-center gap-2 text-[11px] md:text-[12px] font-mono font-bold uppercase tracking-widest ${
-          startTime && name && phone.length === 10
+          startTime && name && phone.length === 10 && sport && bookingType
             ? "bg-lime-400 text-black border border-lime-400 hover:bg-lime-300"
             : "bg-neutral-900/95 border border-neutral-700 hover:border-lime-400/50 text-white"
         }`}
-        title={startTime && name && phone.length === 10 ? "Confirm Match Slot" : "Book Here"}
+        title={startTime && name && phone.length === 10 && sport && bookingType ? "Confirm Match Slot" : "Book Here"}
       >
         <motion.span
-          className={startTime && name && phone.length === 10 ? "text-black" : "text-lime-400"}
+          className={startTime && name && phone.length === 10 && sport && bookingType ? "text-black" : "text-lime-400"}
           animate={{ rotate: [0, 15, -10, 0] }}
           transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
         >
-          {startTime && name && phone.length === 10 ? "🔒" : "⚡"}
+          {startTime && name && phone.length === 10 && sport && bookingType ? "🔒" : "⚡"}
         </motion.span>
-        <span>{startTime && name && phone.length === 10 ? "Confirm Slot" : "Book Here"}</span>
+        <span>{startTime && name && phone.length === 10 && sport && bookingType ? "Confirm Slot" : "Book Here"}</span>
       </motion.button>
 
       {/* ---------- Arena Pass Confirmation Modal ---------- */}
