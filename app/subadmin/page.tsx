@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
@@ -512,7 +512,7 @@ export default function AdminPage() {
     setAvailableAdminSlots(availableTimes);
   };
 
-  // ⚙️ Load Reschedule Available Slots (Range-based & Court-aware)
+  // ⚙️ Load Reschedule Available Slots
   const loadRescheduleAvailableSlots = async (
     date: string,
     duration: number = rescheduleDuration,
@@ -1345,7 +1345,7 @@ export default function AdminPage() {
           // Showing {filteredBookings.length} booking(s) active
         </p>
 
-        {/* ---------- COMPACT BOOKINGS TABLE ---------- */}
+        {/* ---------- COMPACT BOOKINGS SECTION ---------- */}
         <motion.section
           variants={fadeUp}
           initial="hidden"
@@ -1361,7 +1361,129 @@ export default function AdminPage() {
               Active Orders · <span className="text-lime-400">Live Feed</span>
             </h2>
           </div>
-          <div className="overflow-x-auto">
+
+          {/* 📱 MOBILE VIEW: SCROLL-FREE STACKED CARDS */}
+          <div className="block md:hidden divide-y divide-neutral-900">
+            <AnimatePresence>
+              {filteredBookings.map((booking) => {
+                const bookingDate = booking.booking_date?.split("T")[0];
+                let rowColor = "bg-transparent";
+                if (bookingDate === getTodayStr()) rowColor = "bg-lime-500/[0.05]";
+                else if (bookingDate === getTomorrowStr()) rowColor = "bg-amber-500/[0.04]";
+
+                return (
+                  <motion.div
+                    key={booking.id}
+                    variants={rowItem}
+                    layout
+                    className={`${rowColor} p-4 flex flex-col gap-4 hover:bg-white/[0.02] transition-colors`}
+                  >
+                    {/* Header: Name, ID, Date badge */}
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-black text-white text-base leading-none">{booking.customer_name}</span>
+                        <span className="text-[9px] font-mono text-neutral-500 uppercase tracking-widest mt-1">
+                          ID: {booking.booking_reference || booking.id}
+                        </span>
+                        <span className="text-xs font-mono text-neutral-400 mt-1">{booking.phone}</span>
+                        <span className="text-[10px] font-mono text-neutral-500 truncate max-w-[180px]">{booking.email || "No Email Provided"}</span>
+                      </div>
+                      <div className="flex flex-col items-end gap-1.5 text-right">
+                        {bookingDate === getTodayStr() && (
+                          <span className="px-2 py-0.5 bg-lime-400/10 border border-lime-400/30 text-lime-400 text-[9px] font-black uppercase tracking-widest">
+                            Today
+                          </span>
+                        )}
+                        {bookingDate === getTomorrowStr() && (
+                          <span className="px-2 py-0.5 bg-amber-400/10 border border-amber-400/30 text-amber-400 text-[9px] font-black uppercase tracking-widest">
+                            Tomorrow
+                          </span>
+                        )}
+                        <span className="text-xs font-mono text-neutral-200">
+                          {new Date(bookingDate).toLocaleDateString("en-GB")}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Middle: Schedule & Arena grid */}
+                    <div className="grid grid-cols-2 gap-3 bg-neutral-950/60 border border-neutral-800/60 rounded p-3">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[9px] font-mono text-neutral-500 uppercase tracking-widest">Schedule</span>
+                        <span className="text-xs font-mono text-white">{getTimeRangeLabel(booking.start_time, booking.duration_minutes || 60)}</span>
+                        <span className="text-[10px] font-mono text-cyan-400">{booking.duration_minutes || 60} mins</span>
+                      </div>
+                      <div className="flex flex-col gap-1 items-end text-right">
+                        <span className="text-[9px] font-mono text-neutral-500 uppercase tracking-widest">Arena</span>
+                        <span className="text-[11px] font-black uppercase tracking-widest text-neutral-300">{booking.sport}</span>
+                        <span className="text-[10px] font-mono text-fuchsia-400">{booking.booking_type || "Full Court"} • {booking.court_number || "-"}</span>
+                      </div>
+                    </div>
+
+                    {/* Finances & Actions */}
+                    <div className="flex justify-between items-end gap-2">
+                      <div className="flex flex-col gap-0.5 font-mono text-xs">
+                        <span className="text-neutral-400">Tot: ₹{booking.total_amount} <span className="text-neutral-600">|</span> Adv: <span className="text-emerald-400">₹{booking.advance_amount || 0}</span></span>
+                        <div className="text-[13px] mt-1">
+                          <span className="text-neutral-500">Due: </span>
+                          {booking.balance_amount > 0 ? (
+                            <span className="text-red-400 font-black">₹{booking.balance_amount}</span>
+                          ) : (
+                            <span className="text-lime-400 font-black">₹0</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        {booking.balance_amount > 0 ? (
+                          <motion.button
+                            whileTap={{ scale: 0.96 }}
+                            onClick={() => { setSelectedBooking(booking); setShowPaymentModal(true); }}
+                            className="bg-lime-400 text-black text-[10px] font-mono uppercase font-black px-2.5 py-1.5"
+                          >
+                            💰 Collect
+                          </motion.button>
+                        ) : (
+                          booking.customer_name !== "Offline Booking" && (
+                            <motion.button
+                              whileTap={{ scale: 0.96 }}
+                              onClick={() => resetPayment(booking)}
+                              className="bg-neutral-900 border border-neutral-800 text-amber-400 text-[10px] font-mono uppercase font-black px-2.5 py-1.5"
+                            >
+                              🔄 Reset
+                            </motion.button>
+                          )
+                        )}
+
+                        <motion.button
+                          whileTap={{ scale: 0.96 }}
+                          onClick={() => {
+                            setSelectedManageBooking(booking);
+                            setManageMode("options");
+                            setExtendMinutes(30);
+                            const bDate = booking.booking_date?.split("T")[0] || getTodayStr();
+                            const bDur = booking.duration_minutes || 60;
+                            const bCourt = booking.court_number || "Full Court";
+                            setRescheduleDate(bDate);
+                            setRescheduleTime(booking.start_time || "");
+                            setRescheduleDuration(bDur);
+                            setRescheduleCourt(bCourt);
+                            loadRescheduleAvailableSlots(bDate, bDur, bCourt);
+                            setShowManageModal(true);
+                          }}
+                          className="bg-neutral-900 border border-neutral-800 text-fuchsia-400 text-[10px] font-mono uppercase font-black px-2.5 py-1.5"
+                        >
+                          ⚙️ Manage
+                        </motion.button>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
+
+          {/* 💻 DESKTOP VIEW: COMPACT 5-COLUMN TABLE */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[800px]">
               <thead>
                 <tr className="border-b border-neutral-900 bg-neutral-950/40 text-[10px] font-mono uppercase tracking-widest text-neutral-500">
