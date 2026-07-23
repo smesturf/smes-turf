@@ -312,52 +312,64 @@ export default function Home() {
   };
 
   /* -------- Secure Razorpay Intent -------- */
-  const openRazorpay = async () => {
-    if (!name || !phone || !email || !bookingDate || !startTime) {
-      alert("⚠️ Please fill all fields (including Email) and select a valid time slot.");
+const openRazorpay = async () => {
+  if (!name || !phone || !email || !bookingDate || !startTime) {
+    alert("⚠️ Please fill all fields (including Email) and select a valid time slot.");
+    return;
+  }
+  if (phone.length !== 10) {
+    alert("⚠️ Invalid Phone Number: Please enter exactly 10 digits.");
+    return;
+  }
+
+  setIsPaymentLoading(true); 
+
+  try {
+    const response = await fetch("/api/create-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        bookingDate,
+        startTime,
+        duration,
+        bookingType,
+        amount: 205 // ₹200 Advance + ₹5 Razorpay Convenience Fee
+      })
+    });
+
+    const orderData = await response.json();
+
+    if (!response.ok) {
+      setIsPaymentLoading(false);
+      alert(`❌ ${orderData.error || "Slot is no longer available. Please select another time."}`);
+      loadBookedSlots(bookingDate); 
       return;
     }
-    if (phone.length !== 10) {
-      alert("⚠️ Invalid Phone Number: Please enter exactly 10 digits.");
-      return;
-    }
 
-    setIsPaymentLoading(true); 
-
-    try {
-      const response = await fetch("/api/create-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bookingDate,
-          startTime,
-          duration,
-          bookingType,
-          amount: 205 // ₹200 Advance + ₹5 Razorpay Convenience Fee
-        })
-      });
-
-      const orderData = await response.json();
-
-      if (!response.ok) {
-        setIsPaymentLoading(false);
-        alert(`❌ ${orderData.error || "Slot is no longer available. Please select another time."}`);
-        loadBookedSlots(bookingDate); 
-        return;
-      }
-
-      const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-        amount: orderData.amount,
-        currency: orderData.currency,
-        name: "SMES Turf",
-        description: "Advance Booking Payment",
-        order_id: orderData.id,
-        handler: async function (paymentRes: any) {
-          await handleBooking(paymentRes);
-        },
-        prefill: { name, contact: phone },
-      };
+      // ✅ NEW UPDATED CODE
+const options = {
+  key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+  amount: orderData.amount,
+  currency: orderData.currency,
+  name: "SMES Turf",
+  description: "Advance Booking Payment",
+  order_id: orderData.id,
+  handler: async function (paymentRes: any) {
+    await handleBooking(paymentRes);
+  },
+  // ⚡ AUTOFILL NAME, EMAIL & PHONE
+  prefill: {
+    name: name,
+    email: email,
+    contact: phone,
+  },
+  // ⚡ LOCK FIELDS SO USER ONLY HAS TO ENTER CARD DETAILS
+  readonly: {
+    name: true,
+    email: true,
+    contact: true,
+  },
+};
 
       if ((window as any).Razorpay) {
         const razor = new (window as any).Razorpay(options);
@@ -1440,7 +1452,7 @@ export default function Home() {
                 </div>
 
                 <p className="text-[10px] text-neutral-500 font-mono mt-2 leading-relaxed">
-                  A confirmation message has been sent to you EMAIL. Please arrive 10 minutes prior to kickoff.
+                  A confirmation message has been sent to your EMAIL. Please arrive 10 minutes prior to kickoff.
                 </p>
 
                 <motion.button
