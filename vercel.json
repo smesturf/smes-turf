@@ -5,11 +5,11 @@
       "schedule": "0 2 1 * *"
     },
     {
-      "path": "/api/cron/match-reminders",
+      "path": "/api/cron/match-reminder",
       "schedule": "0,30 * * * *"
     },
     {
-      "path": "/api/cron/coaching-reminders",
+      "path": "/api/cron/coaching-reminder",
       "schedule": "0 10 28 * *"
     }
   ]
