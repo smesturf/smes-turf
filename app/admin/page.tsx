@@ -25,7 +25,7 @@ const rowItem = {
   show: { opacity: 1, x: 0, transition: { duration: 0.35, ease: easeOut } },
 };
 
-// ⚙️ Midnight Rollover Helpers (Option 4)
+// ⚙️ Midnight Rollover Helpers 
 const getTodayStr = () => {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 };
@@ -40,6 +40,7 @@ export default function AdminPage() {
 
   const [bookings, setBookings] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [filterDate, setFilterDate] = useState<string>(""); // ⚙️ New Date Filter State
   const [blockedSlots, setBlockedSlots] = useState<any[]>([]);
   const [todaySlots, setTodaySlots] = useState(0);
   const [tomorrowSlots, setTomorrowSlots] = useState(0);
@@ -51,7 +52,7 @@ export default function AdminPage() {
   const [todayUpiCollection, setTodayUpiCollection] = useState(0);
   const [todayTotalCollection, setTodayTotalCollection] = useState(0);
   const [showManageSlots, setShowManageSlots] = useState(false);
-  const [activeDate, setActiveDate] = useState(getTodayStr()); // ⚙️ Tracks daily rollover
+  const [activeDate, setActiveDate] = useState(getTodayStr());
 
   // 🏆 Academy Coaching Toggled State Parameters
   const [showCoachingPanel, setShowCoachingPanel] = useState(false);
@@ -66,7 +67,7 @@ export default function AdminPage() {
   const [adminExistingMethod, setAdminExistingMethod] = useState("UPI");
   const [isSendingEmails, setIsSendingEmails] = useState(false);
 
-  // ⚙️ Manage Booking Pop-Up States
+  // ⚙️ Manage Booking Pop-Up States (Master Admin - 4 Options)
   const [showManageModal, setShowManageModal] = useState(false);
   const [selectedManageBooking, setSelectedManageBooking] = useState<any>(null);
   const [manageMode, setManageMode] = useState<"options" | "reschedule" | "extend">("options");
@@ -107,7 +108,7 @@ export default function AdminPage() {
 
   const [slotDate, setSlotDate] = useState("");
   
-  // ⚙️ Hardcoded Time Slots (Option 1 Fix - Protects against browser formatting bugs)
+  // ⚙️ Hardcoded Time Slots 
   const adminTimeSlots = [
     "12:00 AM", "12:30 AM", "01:00 AM", "01:30 AM", "02:00 AM", "02:30 AM",
     "03:00 AM", "03:30 AM", "04:00 AM", "04:30 AM", "05:00 AM", "05:30 AM",
@@ -180,7 +181,6 @@ export default function AdminPage() {
     const verifyAuth = async () => {
       const loggedIn = localStorage.getItem("adminLoggedIn");
       
-      // ⚙️ Server-Side Session check (Option 2 Fix)
       const { data } = await supabase.auth.getSession();
       
       if (loggedIn !== "true" || !data.session) {
@@ -222,7 +222,12 @@ export default function AdminPage() {
     };
   }, [router]);
 
-  /* -------- Midnight Auto-Rollover (Option 4 Fix) -------- */
+  /* -------- Fetch historical data seamlessly if filter changes -------- */
+  useEffect(() => {
+    loadBookings();
+  }, [filterDate]);
+
+  /* -------- Midnight Auto-Rollover -------- */
   useEffect(() => {
     const now = new Date();
     const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
@@ -230,7 +235,7 @@ export default function AdminPage() {
 
     const timer = setTimeout(() => {
       setActiveDate(getTodayStr());
-      loadBookings(); // Automatically refresh data for the new day
+      loadBookings(); 
     }, msUntilMidnight + 1000);
 
     return () => clearTimeout(timer);
@@ -404,10 +409,16 @@ export default function AdminPage() {
     const todayStr = getTodayStr();
     const tomorrowStr = getTomorrowStr();
 
+    // ⚙️ Core Logic: Load everything active OR exactly the filter date
+    let orQuery = `booking_date.gte.${todayStr},balance_amount.gt.0,payment_date.eq.${todayStr}`;
+    if (filterDate && filterDate < todayStr) {
+      orQuery += `,booking_date.eq.${filterDate}`;
+    }
+
     const { data, error } = await supabase
       .from("bookings")
       .select("*")
-      .or(`booking_date.gte.${todayStr},balance_amount.gt.0,payment_date.eq.${todayStr}`)
+      .or(orQuery)
       .order("booking_date", { ascending: true })
       .order("start_time", { ascending: true });
 
@@ -620,7 +631,7 @@ export default function AdminPage() {
         cash_received: cashReceived,
         upi_received: upiReceived,
         payment_completed: true,
-        payment_date: getTodayStr(), // ⚙️ Dynamic Date Fetch
+        payment_date: getTodayStr(), 
       }]);
       if (error) { alert(error.message); return; }
 
@@ -654,6 +665,7 @@ export default function AdminPage() {
 
   // ⚙️ MANAGE OPERATIONS HANDLERS
 
+  // 1. Cancel with Refund Advance
   const handleCancelWithRefund = async () => {
     if (!selectedManageBooking) return;
     const advanceAmount = selectedManageBooking.advance_amount || 0;
@@ -675,6 +687,7 @@ export default function AdminPage() {
     loadBookings();
   };
 
+  // 2. Reschedule Booking
   const handleRescheduleBooking = async () => {
     if (!selectedManageBooking || !rescheduleDate || !rescheduleTime) {
       alert("Please select both Date and Time for rescheduling.");
@@ -707,6 +720,7 @@ export default function AdminPage() {
       return;
     }
 
+    // Proportional Price Calculation
     const originalDur = selectedManageBooking.duration_minutes || 60;
     const originalTotal = selectedManageBooking.total_amount || 0;
     const pricePerMin = originalTotal / originalDur;
@@ -734,6 +748,7 @@ export default function AdminPage() {
     loadBookings();
   };
 
+  // 3. Cancel without Refund
   const handleCancelWithoutRefund = async () => {
     if (!selectedManageBooking) return;
     const confirmCancel = confirm(
@@ -754,6 +769,7 @@ export default function AdminPage() {
     loadBookings();
   };
 
+  // 4. Extend Slot
   const checkAndExtendBooking = async () => {
     if (!selectedManageBooking) return;
 
@@ -787,6 +803,7 @@ export default function AdminPage() {
       return;
     }
 
+    // Price Update Calculation
     const currentTotal = selectedManageBooking.total_amount || 0;
     const currentBalance = selectedManageBooking.balance_amount || 0;
     
@@ -892,7 +909,7 @@ export default function AdminPage() {
     const moneyInHand = totalAdvance + totalCollection;
 
     const workbook = XLSX.utils.book_new();
-    const todayStr = getTodayStr(); // ⚙️ Dynamic Date Fetch
+    const todayStr = getTodayStr(); 
 
     const worksheet = XLSX.utils.aoa_to_sheet([
       ["SMES TURF BOOKING REPORT"],
@@ -1047,7 +1064,7 @@ export default function AdminPage() {
         payment_method: paymentType,
         payment_completed: true,
         balance_amount: 0,
-        payment_date: getTodayStr(), // ⚙️ Dynamic Date Fetch
+        payment_date: getTodayStr(), 
       })
       .eq("id", selectedBooking.id);
     if (error) { alert(error.message); return; }
@@ -1089,14 +1106,39 @@ export default function AdminPage() {
     loadBookings();
   };
 
-  const filteredBookings = bookings.filter((booking) => {
-    const search = searchTerm.toLowerCase();
-    return (
-      booking.customer_name?.toLowerCase().includes(search) ||
-      booking.phone?.toLowerCase().includes(search) ||
-      booking.booking_date?.toLowerCase().includes(search)
-    );
-  });
+  // ⚙️ UPDATED SEARCH LOGIC: Filter by Email, Ref ID, Date and Exact Booking ID Preference
+  const filteredBookings = bookings
+    .filter((booking) => {
+      // 1. Date Filter Logic
+      if (filterDate && booking.booking_date?.split("T")[0] !== filterDate) {
+        return false;
+      }
+      
+      // 2. Text Search Logic
+      const search = searchTerm.toLowerCase().trim();
+      if (!search) return true;
+      return (
+        booking.customer_name?.toLowerCase().includes(search) ||
+        booking.phone?.toLowerCase().includes(search) ||
+        booking.email?.toLowerCase().includes(search) ||
+        booking.booking_date?.toLowerCase().includes(search) ||
+        booking.booking_reference?.toLowerCase().includes(search) ||
+        booking.id?.toString().includes(search) 
+      );
+    })
+    .sort((a, b) => {
+      // Priority sorting: Exact ID match goes to the top
+      const search = searchTerm.trim();
+      if (!search) return 0;
+      
+      const aIsExactId = a.id?.toString() === search;
+      const bIsExactId = b.id?.toString() === search;
+      
+      if (aIsExactId && !bIsExactId) return -1;
+      if (!aIsExactId && bIsExactId) return 1;
+      
+      return 0; // Maintain natural time-based order otherwise
+    });
 
   const statCards = useMemo(() => [
     { label: "Gross Orders", value: bookings.length, accent: "text-white", tag: "01" },
@@ -1212,9 +1254,10 @@ export default function AdminPage() {
           className="flex flex-col md:flex-row items-stretch justify-between gap-4 mb-6"
         >
           <div className="w-full md:w-96 relative">
+            {/* ⚙️ Placeholder Updated */}
             <input
               type="text"
-              placeholder="🔍 Filter by name, phone or date..."
+              placeholder="🔍 Filter by ID, name, email, phone..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full p-4 bg-neutral-900/60 text-white border border-neutral-800 focus:border-lime-400 outline-none placeholder:text-neutral-600 text-sm font-mono transition-colors"
@@ -1226,7 +1269,11 @@ export default function AdminPage() {
               whileHover={{ y: -2 }}
               whileTap={{ scale: 0.97 }}
               className="bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-mono text-xs uppercase tracking-widest px-5 py-4 font-black transition-colors"
-              onClick={() => setShowManageSlots(true)}
+              onClick={() => {
+                setShowManageSlots(true);
+                setSlotDate(getTodayStr()); // Auto-set to today
+                loadAvailableAdminSlots(getTodayStr()); // Auto-load today's time slots
+              }}
             >
               ⚙️ Manage Slots
             </motion.button>
@@ -1586,7 +1633,7 @@ export default function AdminPage() {
           // Showing {filteredBookings.length} booking(s) active
         </p>
 
-        {/* ---------- Bookings Table ---------- */}
+        {/* ---------- COMPACT BOOKINGS TABLE (Scrolls on mobile natively) ---------- */}
         <motion.section
           variants={fadeUp}
           initial="hidden"
@@ -1594,29 +1641,48 @@ export default function AdminPage() {
           viewport={{ once: true, amount: 0.05 }}
           className="border border-neutral-900 bg-neutral-900/30 backdrop-blur overflow-hidden"
         >
-          <div className="p-4 border-b border-neutral-900">
-            <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block">
-              01 — Bookings Matrix
-            </span>
-            <h2 className="text-base font-black uppercase text-white mt-0.5">
-              Active Orders · <span className="text-lime-400">Live Feed</span>
-            </h2>
+          {/* ⚙️ Header with Date Filter Button */}
+          <div className="p-4 border-b border-neutral-900 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block">
+                01 — Bookings Matrix
+              </span>
+              <h2 className="text-base font-black uppercase text-white mt-0.5">
+                Active Orders · <span className="text-lime-400">Live Feed</span>
+              </h2>
+            </div>
+            
+            {/* ⚙️ Interactive Date Filter */}
+            <div className="flex items-center gap-2 bg-neutral-950 border border-neutral-800 p-1.5 px-3">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+                📅 Date Sort:
+              </span>
+              <input
+                type="date"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                style={{ colorScheme: "dark" }}
+                className="bg-transparent text-white text-xs font-mono outline-none cursor-pointer"
+              />
+              {filterDate && (
+                <button
+                  onClick={() => setFilterDate("")}
+                  className="text-[10px] uppercase font-black tracking-widest text-red-400 hover:text-red-300 ml-2"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
+          
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[1200px]">
+            <table className="w-full text-left border-collapse min-w-[800px]">
               <thead>
                 <tr className="border-b border-neutral-900 bg-neutral-950/40 text-[10px] font-mono uppercase tracking-widest text-neutral-500">
-                  <th className="p-4">Client</th>
-                  <th className="p-4">Phone</th>
-                  <th className="p-4">Schedule</th>
-                  <th className="p-4">Time Range</th>
-                  <th className="p-4">Length</th>
-                  <th className="p-4">Sport</th>
-                  <th className="p-4">Scale</th>
-                  <th className="p-4">Court</th>
-                  <th className="p-4">Total</th>
-                  <th className="p-4">Advance</th>
-                  <th className="p-4">Due Balance</th>
+                  <th className="p-4">Order & Client</th>
+                  <th className="p-4">Schedule Info</th>
+                  <th className="p-4">Arena Details</th>
+                  <th className="p-4">Financials</th>
                   <th className="p-4 text-center">Operations</th>
                 </tr>
               </thead>
@@ -1640,55 +1706,101 @@ export default function AdminPage() {
                         layout
                         className={`${rowColor} hover:bg-white/[0.03] transition-colors`}
                       >
-                        <td className="p-4 font-black text-white whitespace-nowrap">{booking.customer_name}</td>
-                        <td className="p-4 font-mono text-xs whitespace-nowrap text-neutral-400">{booking.phone}</td>
-                        <td className="p-4 font-mono text-xs whitespace-nowrap">
-                          <span className="text-neutral-200">{new Date(bookingDate).toLocaleDateString("en-GB")}</span>
-                          {bookingDate === getTodayStr() && (
-                            <span className="ml-2 px-2 py-0.5 bg-lime-400/10 border border-lime-400/30 text-lime-400 text-[9px] font-black uppercase tracking-widest">
-                              Today
+                        {/* 1. COMPACT COLUMN: Client, Booking ID & Reference */}
+                        <td className="p-4 align-top">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-black text-white text-sm whitespace-nowrap">{booking.customer_name}</span>
+                              <span className="px-1.5 py-0.5 bg-neutral-900 border border-neutral-800 text-[9px] font-mono text-neutral-400 uppercase whitespace-nowrap">
+                                #{booking.id} {booking.booking_reference ? `| REF: ${booking.booking_reference}` : ""}
+                              </span>
+                            </div>
+                            <span className="font-mono text-[11px] text-neutral-400 truncate max-w-[200px]">
+                              {booking.email || "No Email Provided"}
                             </span>
-                          )}
-                          {bookingDate === getTomorrowStr() && (
-                            <span className="ml-2 px-2 py-0.5 bg-amber-400/10 border border-amber-400/30 text-amber-400 text-[9px] font-black uppercase tracking-widest">
-                              Tomorrow
+                            <span className="font-mono text-xs text-neutral-500 whitespace-nowrap">
+                              {booking.phone}
                             </span>
-                          )}
+                          </div>
                         </td>
-                        <td className="p-4 font-mono text-xs text-white whitespace-nowrap">
-                          {getTimeRangeLabel(booking.start_time, booking.duration_minutes || 60)}
-                        </td>
-                        <td className="p-4 text-xs whitespace-nowrap font-mono">{booking.duration_minutes || 60} mins</td>
-                        <td className="p-4 text-xs uppercase tracking-widest font-black text-neutral-400 whitespace-nowrap">{booking.sport}</td>
-                        <td className="p-4 whitespace-nowrap">
-                          <span className={`px-2.5 py-0.5 text-[10px] font-mono uppercase tracking-widest ${
-                            booking.booking_type === "Half Court"
-                              ? "bg-cyan-500/10 border border-cyan-500/30 text-cyan-400"
-                              : "bg-fuchsia-500/10 border border-fuchsia-500/30 text-fuchsia-400"
-                          }`}>
-                            {booking.booking_type || "Full Court"}
-                          </span>
-                        </td>
-                        <td className="p-4 font-mono text-xs text-neutral-400 whitespace-nowrap">{booking.court_number || "-"}</td>
-                        <td className="p-4 text-neutral-200 font-mono whitespace-nowrap">₹{booking.total_amount}</td>
-                        <td className="p-4 text-emerald-400 font-mono whitespace-nowrap">₹{booking.advance_amount || 0}</td>
-                        <td className="p-4 font-mono whitespace-nowrap">
-                          {booking.balance_amount > 0 ? (
-                            <span className="text-red-400 font-black">₹{booking.balance_amount}</span>
-                          ) : (
-                            <span className="px-2 py-0.5 bg-lime-400/10 border border-lime-400/30 text-lime-400 text-[10px] font-mono uppercase tracking-widest">
-                              Paid
+
+                        {/* 2. COMPACT COLUMN: Schedule & Time */}
+                        <td className="p-4 align-top">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2 whitespace-nowrap">
+                              <span className="text-neutral-200 font-mono text-xs">
+                                {new Date(bookingDate).toLocaleDateString("en-GB")}
+                              </span>
+                              {bookingDate === getTodayStr() && (
+                                <span className="px-2 py-0.5 bg-lime-400/10 border border-lime-400/30 text-lime-400 text-[9px] font-black uppercase tracking-widest">
+                                  Today
+                               </span>
+                              )}
+                              {bookingDate === getTomorrowStr() && (
+                                <span className="px-2 py-0.5 bg-amber-400/10 border border-amber-400/30 text-amber-400 text-[9px] font-black uppercase tracking-widest">
+                                  Tomorrow
+                               </span>
+                              )}
+                            </div>
+                            <span className="font-mono text-xs text-white whitespace-nowrap">
+                              {getTimeRangeLabel(booking.start_time, booking.duration_minutes || 60)}
                             </span>
-                          )}
+                            <span className="text-[11px] text-neutral-500 font-mono whitespace-nowrap">
+                              {booking.duration_minutes || 60} mins
+                            </span>
+                          </div>
                         </td>
-                        <td className="p-4 whitespace-nowrap text-center">
-                          <div className="flex items-center justify-center gap-2">
+
+                        {/* 3. COMPACT COLUMN: Arena Details */}
+                        <td className="p-4 align-top">
+                          <div className="flex flex-col gap-1 items-start whitespace-nowrap">
+                            <span className="text-xs uppercase tracking-widest font-black text-neutral-300">
+                              {booking.sport}
+                            </span>
+                            <span className={`px-2 py-0.5 text-[9px] font-mono uppercase tracking-widest ${
+                              booking.booking_type === "Half Court"
+                                ? "bg-cyan-500/10 border border-cyan-500/30 text-cyan-400"
+                                : "bg-fuchsia-500/10 border border-fuchsia-500/30 text-fuchsia-400"
+                            }`}>
+                              {booking.booking_type || "Full Court"}
+                            </span>
+                            <span className="font-mono text-[11px] text-neutral-500">
+                              {booking.court_number || "-"}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* 4. COMPACT COLUMN: Financials */}
+                        <td className="p-4 align-top">
+                          <div className="flex flex-col gap-1 font-mono text-xs min-w-[120px] whitespace-nowrap">
+                            <div className="flex justify-between">
+                              <span className="text-neutral-500">Total:</span> 
+                              <span className="text-neutral-200">₹{booking.total_amount}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-neutral-500">Adv:</span> 
+                              <span className="text-emerald-400">₹{booking.advance_amount || 0}</span>
+                            </div>
+                            <div className="flex justify-between border-t border-neutral-800 pt-1 mt-0.5">
+                              <span className="text-neutral-500">Due:</span> 
+                              {booking.balance_amount > 0 ? (
+                                <span className="text-red-400 font-black">₹{booking.balance_amount}</span>
+                              ) : (
+                                <span className="text-lime-400 font-black">₹0</span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 5. COMPACT COLUMN: Operations */}
+                        <td className="p-4 align-top text-center">
+                          <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
                             {booking.balance_amount > 0 ? (
                               <motion.button
                                 whileHover={{ y: -1 }}
                                 whileTap={{ scale: 0.96 }}
                                 onClick={() => { setSelectedBooking(booking); setShowPaymentModal(true); }}
-                                className="bg-lime-400 hover:bg-lime-300 text-black text-xs font-mono uppercase font-black px-3 py-1.5 transition-colors"
+                                className="bg-lime-400 hover:bg-lime-300 text-black text-xs font-mono uppercase font-black px-3 py-1.5 transition-colors whitespace-nowrap"
                               >
                                 💰 Collect
                               </motion.button>
@@ -1698,14 +1810,14 @@ export default function AdminPage() {
                                   whileHover={{ y: -1 }}
                                   whileTap={{ scale: 0.96 }}
                                   onClick={() => resetPayment(booking)}
-                                  className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-amber-400 text-xs font-mono uppercase font-black px-3 py-1.5 transition-colors"
+                                  className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-amber-400 text-xs font-mono uppercase font-black px-3 py-1.5 transition-colors whitespace-nowrap"
                                 >
                                   🔄 Reset
                                 </motion.button>
                               )
                             )}
 
-                            {/* ⚙️ MANAGE BUTTON */}
+                            {/* ⚙️ MASTER ADMIN MANAGE BUTTON */}
                             <motion.button
                               whileHover={{ y: -1 }}
                               whileTap={{ scale: 0.96 }}
@@ -1714,7 +1826,7 @@ export default function AdminPage() {
                                 setManageMode("options");
                                 setExtendMinutes(30);
 
-                                const bDate = booking.booking_date?.split("T")[0] || getTodayStr(); // ⚙️ Dynamic Date Fetch
+                                const bDate = booking.booking_date?.split("T")[0] || getTodayStr();
                                 const bDur = booking.duration_minutes || 60;
                                 const bCourt = booking.court_number || "Full Court";
 
@@ -1726,7 +1838,7 @@ export default function AdminPage() {
                                 loadRescheduleAvailableSlots(bDate, bDur, bCourt);
                                 setShowManageModal(true);
                               }}
-                              className="bg-neutral-900 hover:bg-fuchsia-950 border border-neutral-800 hover:border-fuchsia-800 text-fuchsia-400 hover:text-white text-xs font-mono uppercase font-black px-3 py-1.5 transition-colors"
+                              className="bg-neutral-900 hover:bg-fuchsia-950 border border-neutral-800 hover:border-fuchsia-800 text-fuchsia-400 hover:text-white text-xs font-mono uppercase font-black px-3 py-1.5 transition-colors whitespace-nowrap"
                             >
                               ⚙️ Manage
                             </motion.button>
@@ -1943,7 +2055,7 @@ export default function AdminPage() {
                     <label className="text-[10px] font-mono uppercase text-neutral-400">New Date</label>
                     <input
                       type="date"
-                      min={getTodayStr()} // ⚙️ Dynamic Date Fetch
+                      min={getTodayStr()}
                       value={rescheduleDate}
                       onChange={(e) => {
                         const newDate = e.target.value;
@@ -2261,11 +2373,14 @@ export default function AdminPage() {
                   <label className="text-[10px] font-mono uppercase text-neutral-400">Date</label>
                   <input
                     type="date"
-                    min={getTodayStr()} // ⚙️ Dynamic Date Fetch
+                    min={getTodayStr()} 
                     value={slotDate}
                     onChange={(e) => {
                       setSlotDate(e.target.value);
-                      if (e.target.value) loadAvailableAdminSlots(e.target.value);
+                      if (e.target.value) {
+                        loadAvailableAdminSlots(e.target.value);
+                        loadAvailableCourts(e.target.value, slotTime);
+                      }
                     }}
                     style={{ colorScheme: "dark" }}
                     className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
