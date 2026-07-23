@@ -92,9 +92,12 @@ export default function BookingLookup() {
           <h1 className="text-3xl sm:text-5xl font-black uppercase tracking-tight text-white">
             My Match Passes
           </h1>
-          <p className="text-neutral-400 text-xs sm:text-sm font-mono">
-            Enter your registered 10-digit mobile number to view your official arena booking passes.
+          <p className="text-neutral-400 text-xs sm:text-sm font-mono mb-2">
+            Enter your registered 10-digit mobile number to view your official verified arena booking passes.
           </p>
+          <div className="p-2 bg-red-500/10 border border-red-500/30 text-[10px] font-mono text-red-400 uppercase tracking-widest inline-block">
+            🛡️ Security Policy: Screenshots are restricted. Please display pass directly via active phone lookup at venue counter.
+          </div>
         </div>
 
         {/* Direct Phone Search Form */}
@@ -214,94 +217,103 @@ export default function BookingLookup() {
                   >
                     <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-lime-400 to-emerald-500" />
                     
-                    <div className="flex justify-between items-start pb-6 border-b border-neutral-800 pointer-events-none">
-                      <div>
-                        <span className="text-[10px] font-mono text-lime-400 uppercase tracking-[0.2em] font-bold block mb-1">
-                          Official Arena Pass
-                        </span>
-                        <h2 className="text-2xl font-black uppercase text-white tracking-tight">SMES Sports Turf</h2>
-                        
-                        {/* IDs Display */}
-                        <div className="mt-2 space-y-0.5 font-mono text-[10px] uppercase">
-                          <p className="text-neutral-400">
-                            Ref ID: <strong className="text-lime-400 font-bold">{selectedBooking.booking_reference || "N/A"}</strong>
-                          </p>
-                          <p className="text-neutral-400">
-                            Booking ID: <strong className="text-white font-bold">{formatBookingId(selectedBooking.id)}</strong>
-                          </p>
-                        </div>
-                      </div>
-                      <div className="w-12 h-12 bg-neutral-900 border border-neutral-800 flex items-center justify-center shrink-0">
-                        <span className="text-lime-400 text-2xl font-black">
-                          {selectedBooking.sport === "Cricket" ? "🏏" : "⚽"}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="py-6 grid grid-cols-2 gap-y-4 gap-x-6 text-left border-b border-neutral-800 pointer-events-none">
-                      <div>
-                        <span className="text-[9px] font-mono text-neutral-500 uppercase block mb-1">Player Name</span>
-                        <span className="text-sm font-bold text-white uppercase">{selectedBooking.customer_name}</span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] font-mono text-neutral-500 uppercase block mb-1">Contact</span>
-                        <span className="text-sm font-mono font-bold text-neutral-300">{selectedBooking.phone}</span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] font-mono text-neutral-500 uppercase block mb-1">Match Schedule</span>
-                        <span className="text-xs font-bold text-lime-400 uppercase">
-                          {new Date(selectedBooking.booking_date).toLocaleDateString("en-GB")}<br />
-                          {getTimeRangeLabel(selectedBooking.start_time, selectedBooking.duration_minutes)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] font-mono text-neutral-500 uppercase block mb-1">Scale / Court</span>
-                        <span className="text-xs font-bold text-white uppercase">
-                          {selectedBooking.sport || "Football"} ({selectedBooking.court_number || selectedBooking.booking_type || "Full Court"})
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="py-5 space-y-2 border-b border-neutral-800 pointer-events-none">
-                      <div className="flex justify-between items-center text-xs font-mono">
-                        <span className="text-neutral-500 uppercase">Total Booking Value</span>
-                        <span className="text-neutral-300 font-bold">₹{selectedBooking.total_amount}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs font-mono">
-                        <span className="text-neutral-500 uppercase">Advance Amount Paid</span>
-                        <span className="text-emerald-400 font-bold">₹{selectedBooking.advance_amount || 200}</span>
-                      </div>
-                      <div className="flex justify-between items-center pt-2 border-t border-neutral-900">
-                        <span className="text-xs font-mono uppercase font-bold text-white">Balance Due at Venue</span>
-                        <span className="text-base font-black text-red-400 font-mono">
-                          ₹{selectedBooking.balance_amount || 0}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Barcode Display */}
-                    <div className="pt-6 flex flex-col items-center opacity-80 pointer-events-none">
-                      <div className="w-full h-10 flex justify-between items-end gap-[2px]">
-                        {Array.from({ length: 42 }).map((_, i) => {
-                          const heights = [40, 80, 60, 100, 50, 90, 70, 30, 85, 95];
-                          const h = heights[i % heights.length];
-                          return (
-                            <div
-                              key={i}
-                              className="bg-white rounded-t-sm"
-                              style={{ width: `${(i % 3) + 1.5}px`, height: `${h}%` }}
-                            />
-                          );
-                        })}
-                      </div>
-                      <span className="text-[9px] font-mono text-neutral-400 tracking-[0.3em] mt-2 uppercase">
-                        {selectedBooking.booking_reference || formatBookingId(selectedBooking.id)}
+                    {/* Security Watermark */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.04] rotate-[-25deg] select-none z-0">
+                      <span className="text-3xl sm:text-4xl font-black font-mono tracking-widest text-white uppercase whitespace-nowrap">
+                        SMES OFFICIAL VERIFIED PASS
                       </span>
                     </div>
 
-                    <p className="text-[9px] font-mono text-neutral-500 text-center mt-4 pointer-events-none">
-                      📍 SMES Sports Academy, Mysuru • Please present this pass at the counter.
-                    </p>
+                    <div className="relative z-10">
+                      <div className="flex justify-between items-start pb-6 border-b border-neutral-800 pointer-events-none">
+                        <div>
+                          <span className="text-[10px] font-mono text-lime-400 uppercase tracking-[0.2em] font-bold block mb-1">
+                            Official Arena Pass
+                          </span>
+                          <h2 className="text-2xl font-black uppercase text-white tracking-tight">SMES Sports Turf</h2>
+                          
+                          {/* IDs Display */}
+                          <div className="mt-2 space-y-0.5 font-mono text-[10px] uppercase">
+                            <p className="text-neutral-400">
+                              Ref ID: <strong className="text-lime-400 font-bold">{selectedBooking.booking_reference || "N/A"}</strong>
+                            </p>
+                            <p className="text-neutral-400">
+                              Booking ID: <strong className="text-white font-bold">{formatBookingId(selectedBooking.id)}</strong>
+                            </p>
+                          </div>
+                        </div>
+                        <div className="w-12 h-12 bg-neutral-900 border border-neutral-800 flex items-center justify-center shrink-0">
+                          <span className="text-lime-400 text-2xl font-black">
+                            {selectedBooking.sport === "Cricket" ? "🏏" : "⚽"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="py-6 grid grid-cols-2 gap-y-4 gap-x-6 text-left border-b border-neutral-800 pointer-events-none">
+                        <div>
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block mb-1">Player Name</span>
+                          <span className="text-sm font-bold text-white uppercase">{selectedBooking.customer_name}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block mb-1">Contact</span>
+                          <span className="text-sm font-mono font-bold text-neutral-300">{selectedBooking.phone}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block mb-1">Match Schedule</span>
+                          <span className="text-xs font-bold text-lime-400 uppercase">
+                            {new Date(selectedBooking.booking_date).toLocaleDateString("en-GB")}<br />
+                            {getTimeRangeLabel(selectedBooking.start_time, selectedBooking.duration_minutes)}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block mb-1">Scale / Court</span>
+                          <span className="text-xs font-bold text-white uppercase">
+                            {selectedBooking.sport || "Football"} ({selectedBooking.court_number || selectedBooking.booking_type || "Full Court"})
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="py-5 space-y-2 border-b border-neutral-800 pointer-events-none">
+                        <div className="flex justify-between items-center text-xs font-mono">
+                          <span className="text-neutral-500 uppercase">Total Booking Value</span>
+                          <span className="text-neutral-300 font-bold">₹{selectedBooking.total_amount}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-xs font-mono">
+                          <span className="text-neutral-500 uppercase">Advance Amount Paid</span>
+                          <span className="text-emerald-400 font-bold">₹{selectedBooking.advance_amount || 200}</span>
+                        </div>
+                        <div className="flex justify-between items-center pt-2 border-t border-neutral-900">
+                          <span className="text-xs font-mono uppercase font-bold text-white">Balance Due at Venue</span>
+                          <span className="text-base font-black text-red-400 font-mono">
+                            ₹{selectedBooking.balance_amount || 0}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Barcode Display */}
+                      <div className="pt-6 flex flex-col items-center opacity-80 pointer-events-none">
+                        <div className="w-full h-10 flex justify-between items-end gap-[2px]">
+                          {Array.from({ length: 42 }).map((_, i) => {
+                            const heights = [40, 80, 60, 100, 50, 90, 70, 30, 85, 95];
+                            const h = heights[i % heights.length];
+                            return (
+                              <div
+                                key={i}
+                                className="bg-white rounded-t-sm"
+                                style={{ width: `${(i % 3) + 1.5}px`, height: `${h}%` }}
+                              />
+                            );
+                          })}
+                        </div>
+                        <span className="text-[9px] font-mono text-neutral-400 tracking-[0.3em] mt-2 uppercase">
+                          {selectedBooking.booking_reference || formatBookingId(selectedBooking.id)}
+                        </span>
+                      </div>
+
+                      <p className="text-[9px] font-mono text-neutral-500 text-center mt-4 pointer-events-none">
+                        📍 SMES Sports Academy, Mysuru • Please present this live pass at the counter.
+                      </p>
+                    </div>
                   </div>
                 </div>
               ) : null}
