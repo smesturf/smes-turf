@@ -147,21 +147,22 @@ export default function CoachPage() {
 
     loadCoachData();
 
+    // Minor fix: Wrapped in anonymous arrow functions to secure context execution 
     const bookingsChannel = supabase
       .channel("coach-b-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, loadCoachData)
+      .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, () => loadCoachData())
       .subscribe();
     const blockedChannel = supabase
       .channel("coach-bl-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "blocked_slots" }, loadCoachData)
+      .on("postgres_changes", { event: "*", schema: "public", table: "blocked_slots" }, () => loadCoachData())
       .subscribe();
     const studentsChannel = supabase
       .channel("coach-st-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "students" }, loadCoachData)
+      .on("postgres_changes", { event: "*", schema: "public", table: "students" }, () => loadCoachData())
       .subscribe();
     const paymentsChannel = supabase
       .channel("coach-p-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "student_payments" }, loadCoachData)
+      .on("postgres_changes", { event: "*", schema: "public", table: "student_payments" }, () => loadCoachData())
       .subscribe();
 
     return () => {
@@ -611,10 +612,8 @@ export default function CoachPage() {
                 />
               </div>
 
-              {/* RESPONSIVE TABLE CONTAINER: Removed overflow-x-auto & min-w to prevent horizontal scrolling */}
               <div className="w-full">
                 <table className="w-full text-left border-collapse">
-                  {/* Hide standard table headers on mobile screens */}
                   <thead className="hidden md:table-header-group">
                     <tr className="border-b border-neutral-900 text-[10px] font-mono uppercase tracking-widest text-neutral-500 bg-neutral-950/40">
                       <th className="p-4">Student Info</th>
@@ -655,14 +654,15 @@ export default function CoachPage() {
                               key={student.id}
                               variants={rowItem}
                               layout
-                              /* MOBILE CARD LAYOUT: Turns row into flex column on small screens */
-                              className={`flex flex-col md:table-row transition-colors p-3 md:p-0 border-b md:border-none border-neutral-900/50 ${
+                              /* COMPACT MOBILE GRID LAYOUT: Forces elements into a horizontal 2x2 rectangle */
+                              className={`grid grid-cols-[1fr_auto] md:table-row items-center p-3 md:p-0 border-b md:border-none border-neutral-900/50 transition-colors gap-x-2 gap-y-1.5 ${
                                 isUnpaid
                                   ? "bg-red-500/[0.05] hover:bg-red-500/[0.10]"
                                   : "hover:bg-lime-400/[0.03]"
                               }`}
                             >
-                              <td className="py-2 md:p-4 block md:table-cell">
+                              {/* 1. Name & DOB (Top Left on Mobile) */}
+                              <td className="block md:table-cell order-1 md:order-none py-1 md:p-4">
                                 <div className={`font-bold flex items-center gap-2 ${
                                   isUnpaid ? "text-red-300" : "text-white"
                                 }`}>
@@ -677,45 +677,40 @@ export default function CoachPage() {
                                     </motion.span>
                                   )}
                                 </div>
-                                <div className="text-[11px] text-neutral-500 font-mono mt-0.5">
-                                  DOB:{" "}
-                                  {student.dob
-                                    ? new Date(student.dob).toLocaleDateString("en-GB")
-                                    : "-"}
+                                <div className="text-[10px] text-neutral-500 font-mono mt-0.5">
+                                  DOB: {student.dob ? new Date(student.dob).toLocaleDateString("en-GB") : "-"}
                                 </div>
                               </td>
                               
-                              <td className="py-1 md:p-4 block md:table-cell space-y-0.5">
-                                <div className="font-mono text-neutral-300 text-xs">
+                              {/* 2. Contact Details (Bottom Left on Mobile) */}
+                              <td className="block md:table-cell order-3 md:order-none py-1 md:p-4 space-y-0.5">
+                                <div className="font-mono text-neutral-300 text-[11px] md:text-xs">
                                   {student.phone}
                                 </div>
-                                <div className="text-xs text-neutral-500 truncate max-w-full md:max-w-[200px]">
+                                <div className="text-[11px] md:text-xs text-neutral-500 truncate max-w-[150px] md:max-w-[200px]">
                                   {student.email || "-"}
                                 </div>
                               </td>
                               
-                              <td className="py-3 md:p-4 flex justify-between items-center md:table-cell font-mono text-white mt-2 md:mt-0 border-t border-neutral-900/40 md:border-none">
-                                {/* Mobile Label */}
-                                <span className="md:hidden text-[10px] font-mono text-neutral-500 uppercase tracking-widest">
+                              {/* 3. Fee (Bottom Right on Mobile) */}
+                              <td className="flex justify-end md:justify-start items-center md:table-cell order-4 md:order-none py-1 md:p-4 font-mono text-white text-xs md:text-sm">
+                                <span className="md:hidden text-[9px] font-mono text-neutral-500 uppercase tracking-widest mr-1.5">
                                   Fee:
                                 </span>
                                 ₹{student.monthly_fee || FIXED_COACHING_FEE}
                               </td>
                               
-                              <td className="pb-2 md:p-4 flex justify-between items-center md:table-cell md:text-center">
-                                {/* Mobile Label */}
-                                <span className="md:hidden text-[10px] font-mono text-neutral-500 uppercase tracking-widest">
-                                  Status:
-                                </span>
+                              {/* 4. Status (Top Right on Mobile) */}
+                              <td className="flex justify-end md:table-cell md:text-center order-2 md:order-none py-1 md:p-4">
                                 {student.payment_status === "settled" ? (
-                                  <span className="px-3 py-1 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 whitespace-nowrap inline-flex items-center gap-1 justify-center">
+                                  <span className="px-2.5 py-1 text-[9px] md:text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 whitespace-nowrap inline-flex items-center gap-1 justify-center">
                                     ✅ Paid
                                   </span>
                                 ) : (
                                   <motion.span
                                     animate={{ opacity: [1, 0.5, 1] }}
                                     transition={{ duration: 2, repeat: Infinity }}
-                                    className="px-3 py-1 text-[10px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black whitespace-nowrap inline-flex items-center gap-1 justify-center"
+                                    className="px-2.5 py-1 text-[9px] md:text-[10px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black whitespace-nowrap inline-flex items-center gap-1 justify-center"
                                   >
                                     ⚠️ Unpaid
                                   </motion.span>
