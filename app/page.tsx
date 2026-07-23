@@ -33,8 +33,9 @@ const slotItem = {
 export default function Home() {
   const router = useRouter();
 
-  const [name, setName] = useState("");
+ const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [sport, setSport] = useState("Football");
   const [bookingDate, setBookingDate] = useState("");
 
@@ -312,8 +313,8 @@ export default function Home() {
 
   /* -------- Secure Razorpay Intent -------- */
   const openRazorpay = async () => {
-    if (!name || !phone || !bookingDate || !startTime) {
-      alert("⚠️ Please fill all fields and select a valid time slot.");
+    if (!name || !phone || !email || !bookingDate || !startTime) {
+      alert("⚠️ Please fill all fields (including Email) and select a valid time slot.");
       return;
     }
     if (phone.length !== 10) {
@@ -384,7 +385,7 @@ export default function Home() {
         body: JSON.stringify({
           paymentData,
           bookingDetails: {
-            name, phone, sport, bookingType, bookingDate, startTime, duration, totalAmount
+            name, phone, email, sport, bookingType, bookingDate, startTime, duration, totalAmount
           }
         }),
       });
@@ -714,8 +715,8 @@ export default function Home() {
             </motion.div>
 
             <div className="space-y-4 sm:space-y-6">
-              {/* Name + Phone */}
-              <motion.div variants={fadeUp} className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+              {/* Name + Phone + Email */}
+              <motion.div variants={fadeUp} className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
                 <div className="space-y-2">
                    <label className="text-xs font-mono uppercase text-neutral-400">Full Name</label>
                   <input
@@ -733,12 +734,24 @@ export default function Home() {
                   <input
                     suppressHydrationWarning={true}
                     type="tel"
-                    placeholder="Active phone contact"
+                    placeholder="Active contact"
                     value={phone}
                     onChange={(e) => {
                       const sanitized = e.target.value.replace(/\D/g, "");
                       if (sanitized.length <= 10) setPhone(sanitized);
                     }}
+                    className="w-full p-4 bg-neutral-900/50 text-white font-mono border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all text-base md:text-sm"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-mono uppercase text-neutral-400">Email Address</label>
+                  <input
+                    suppressHydrationWarning={true}
+                    type="email"
+                    placeholder="For pass & reminders"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     className="w-full p-4 bg-neutral-900/50 text-white font-mono border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all text-base md:text-sm"
                   />
                 </div>
@@ -1098,21 +1111,21 @@ export default function Home() {
 
             <motion.button
               suppressHydrationWarning={true}
-              whileHover={startTime && name && phone.length === 10 ?
+              whileHover={startTime && name && email && phone.length === 10 ?
                 { y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.35)" } : {}}
-              whileTap={startTime && name && phone.length === 10 ?
+              whileTap={startTime && name && email && phone.length === 10 ?
                 { scale: 0.97 } : {}}
               type="button"
               onClick={() => setShowConfirmModal(true)}
-              disabled={!startTime || !name || phone.length !== 10}
+              disabled={!startTime || !name || !email || phone.length !== 10}
               className={`w-full mt-4 font-mono text-xs sm:text-sm uppercase tracking-widest py-4 sm:py-5 transition-all font-black shadow-lg flex items-center justify-center gap-3 ${
-                !startTime || !name || phone.length !== 10
+                !startTime || !name || !email || phone.length !== 10
                   ? "bg-neutral-900 border border-neutral-800 text-neutral-600 cursor-not-allowed"
                   : "bg-lime-400 hover:bg-lime-300 text-black border border-lime-400 shadow-lime-400/20"
               }`}
             >
-              {!name || phone.length !== 10 
-                ? "Enter Name & 10-Digit Phone" 
+              {!name || !email || phone.length !== 10 
+                ? "Enter Name, Email & Phone" 
                 : !startTime 
                 ? "Select Kickoff Time" 
                 : "⚡ Confirm Match Slot"}
@@ -1427,7 +1440,7 @@ export default function Home() {
                 </div>
 
                 <p className="text-[10px] text-neutral-500 font-mono mt-2 leading-relaxed">
-                  A confirmation message has been sent to your WhatsApp. Please arrive 10 minutes prior to kickoff.
+                  A confirmation message has been sent to your EMAIL. Please arrive 10 minutes prior to kickoff.
                 </p>
 
                 <motion.button

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
+import nodemailer from "nodemailer";
 import { convert12to24, findCourtAvailability, timeToMinutes } from "../../lib/booking-rules";
 
 const supabase = createClient(
@@ -85,9 +86,10 @@ export async function POST(req: Request) {
 
     const { data: insertedData, error } = await supabase.from("bookings").insert([
       {
-        booking_reference: bookingReference, // <-- Only the new barcode is added here
+        booking_reference: bookingReference,
         customer_name: bookingDetails.name,
         phone: bookingDetails.phone,
+        email: bookingDetails.email, // <-- Added Email Save
         booking_type: bookingDetails.bookingType,
         court_number: availability.court,
         sport: bookingDetails.sport,
@@ -104,6 +106,68 @@ export async function POST(req: Request) {
     ]).select();
 
     if (error) throw error;
+
+    // 6. SEND CONFIRMATION EMAIL VIA NODEMAILER
+    if (bookingDetails.email) {
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_APP_PASSWORD,
+        },
+      });
+
+      const mailOptions = {
+        from: `"SMES Sports Turf" <${process.env.EMAIL_USER}>`,
+        to: bookingDetails.email,
+        subject: "🎟️ Your SMES Turf Booking is Confirmed!",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 500px; margin: auto; background-color: #0a0a0a; color: #ffffff; padding: 30px; border-top: 5px solid #a3e635;">
+            <h2 style="color: #ffffff; text-transform: uppercase; letter-spacing: 2px;">SMES Sports Academy</h2>
+            <p style="color: #a3a3a3; font-size: 14px;">Booking Confirmed</p>
+            
+            <div style="background-color: #171717; padding: 20px; border-left: 4px solid #a3e635; margin-top: 25px;">
+              <h3 style="margin-top: 0; color: #ffffff;">Hello ${bookingDetails.name},</h3>
+              <p style="color: #d4d4d4; line-height: 1.6;">
+                Your turf slot has been successfully locked and verified. Please find your match details below.
+              </p>
+            </div>
+
+            <table style="width: 100%; margin-top: 25px; border-collapse: collapse;">
+              <tr style="background-color: #171717; border-bottom: 1px solid #262626;">
+                <td style="padding: 15px; color: #a3a3a3; text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Date</td>
+                <td style="padding: 15px; font-weight: bold; color: #ffffff; text-align: right;">${new Date(bookingDetails.bookingDate).toLocaleDateString("en-GB")}</td>
+              </tr>
+              <tr style="background-color: #171717; border-bottom: 1px solid #262626;">
+                <td style="padding: 15px; color: #a3a3a3; text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Kickoff Time</td>
+                <td style="padding: 15px; font-weight: bold; color: #ffffff; text-align: right;">${bookingDetails.startTime} (${bookingDetails.duration} Mins)</td>
+              </tr>
+              <tr style="background-color: #171717; border-bottom: 1px solid #262626;">
+                <td style="padding: 15px; color: #a3a3a3; text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Advance Paid</td>
+                <td style="padding: 15px; font-weight: bold; color: #a3e635; text-align: right;">₹200</td>
+              </tr>
+              <tr style="background-color: #171717;">
+                <td style="padding: 15px; color: #a3a3a3; text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Balance Due</td>
+                <td style="padding: 15px; font-weight: bold; color: #ef4444; font-size: 18px; text-align: right;">₹${bookingDetails.totalAmount - 200}</td>
+              </tr>
+            </table>
+
+            <p style="color: #a3a3a3; font-size: 13px; margin-top: 30px; line-height: 1.5;">
+              ⚠️ <strong>Rules:</strong> Please arrive 10 minutes prior to kickoff. Balance must be cleared at the desk before entering the pitch. Non-marking turf shoes only.
+            </p>
+            
+            <hr style="border: 0; height: 1px; background-color: #262626; margin: 30px 0;" />
+            <p style="color: #525252; font-size: 11px; text-align: center; text-transform: uppercase; letter-spacing: 1px;">
+              Ref ID: ${bookingReference}<br/><br/>
+              📍 SMES Sports Academy, Mysuru
+            </p>
+          </div>
+        `,
+      };
+
+      // Send asynchronously so it doesn't block the user's booking success screen
+      transporter.sendMail(mailOptions).catch(err => console.error("Email dispatch failed:", err));
+    }
 
     return NextResponse.json({ success: true, booking: insertedData[0] });
 

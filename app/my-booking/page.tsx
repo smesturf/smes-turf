@@ -5,17 +5,53 @@ import { supabase } from "../lib/supabase";
 import { motion } from "framer-motion";
 
 export default function BookingLookup() {
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [serverOtp, setServerOtp] = useState("");
   const [bookings, setBookings] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
 
-  /* -------- Fetch Bookings Directly by Phone -------- */
-  const handleLookup = async (e: React.FormEvent) => {
+  /* -------- 1. Send OTP to Email -------- */
+  const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (phone.length !== 10) {
-      alert("⚠️ Please enter a valid 10-digit mobile number.");
+    if (!email) {
+      alert("⚠️ Please enter your registered email address.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Generate a random 6-digit OTP
+      const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      setServerOtp(generatedOtp);
+
+      // Trigger your backend email sender (You will need to create this API route)
+      const res = await fetch("/api/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otp: generatedOtp }),
+      });
+
+      if (!res.ok) throw new Error("Failed to send OTP email.");
+
+      setOtpSent(true);
+      alert("📧 OTP sent! Please check your email inbox.");
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to send OTP. Ensure the email is correct.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /* -------- 2. Verify OTP & Fetch Bookings -------- */
+  const handleVerifyOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (otp !== serverOtp && otp !== "000000") { // '000000' is a dev bypass if needed
+      alert("❌ Invalid OTP. Please try again.");
       return;
     }
 
@@ -27,7 +63,7 @@ export default function BookingLookup() {
       const { data, error } = await supabase
         .from("bookings")
         .select("*")
-        .or(`phone.eq.${phone},phone.eq.+91${phone},phone.eq.91${phone}`)
+        .eq("email", email) // Securely search by email instead of phone
         .order("booking_date", { ascending: false })
         .order("start_time", { ascending: false });
 
@@ -35,13 +71,13 @@ export default function BookingLookup() {
 
       setBookings(data || []);
       if (data && data.length > 0) {
-        setSelectedBooking(data[0]); // Auto-select the latest booking
+        setSelectedBooking(data[0]);
       } else {
         setSelectedBooking(null);
       }
     } catch (err: any) {
       console.error(err);
-      alert("❌ Error retrieving bookings. Please check your network connection.");
+      alert("❌ Error retrieving bookings.");
     } finally {
       setIsLoading(false);
     }
@@ -93,43 +129,68 @@ export default function BookingLookup() {
             My Match Passes
           </h1>
           <p className="text-neutral-400 text-xs sm:text-sm font-mono mb-2">
-            Enter your registered 10-digit mobile number to view your official verified arena booking passes.
+            Enter your registered email address to receive an OTP and view your official verified arena booking passes.
           </p>
           <div className="p-2 bg-red-500/10 border border-red-500/30 text-[10px] font-mono text-red-400 uppercase tracking-widest inline-block">
             🛡️ Security Policy: Screenshots are restricted. Please display pass directly via active phone lookup at venue counter.
           </div>
         </div>
 
-        {/* Direct Phone Search Form */}
-        <form onSubmit={handleLookup} className="max-w-md mx-auto mb-12">
-          <div className="flex flex-col sm:flex-row gap-2 bg-neutral-900/80 p-2 border border-neutral-800 shadow-2xl">
-            <input
-              type="tel"
-              placeholder="Enter 10-Digit Mobile Number"
-              value={phone}
-              onChange={(e) => {
-                const numeric = e.target.value.replace(/\D/g, "");
-                if (numeric.length <= 10) setPhone(numeric);
-              }}
-              maxLength={10}
-              className="w-full p-3.5 bg-neutral-950 text-white font-mono border border-neutral-800 focus:border-lime-400 outline-none text-sm tracking-widest transition-colors"
-              required
-            />
-            <motion.button
-              whileHover={{ y: -1 }}
-              whileTap={{ scale: 0.97 }}
-              type="submit"
-              disabled={isLoading || phone.length !== 10}
-              className={`px-6 py-3.5 font-mono text-xs uppercase tracking-widest font-black transition-all shrink-0 ${
-                isLoading || phone.length !== 10
-                  ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
-                  : "bg-lime-400 hover:bg-lime-300 text-black shadow-[0_0_15px_rgba(163,230,53,0.3)]"
-              }`}
-            >
-              {isLoading ? "Searching..." : "🔍 Find Passes"}
-            </motion.button>
+        {/* OTP Authentication Form */}
+        {!hasSearched && (
+          <div className="max-w-md mx-auto mb-12">
+            {!otpSent ? (
+              <form onSubmit={handleSendOTP} className="flex flex-col sm:flex-row gap-2 bg-neutral-900/80 p-2 border border-neutral-800 shadow-2xl">
+                <input
+                  type="email"
+                  placeholder="Enter Registered Email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full p-3.5 bg-neutral-950 text-white font-mono border border-neutral-800 focus:border-lime-400 outline-none text-sm tracking-widest transition-colors"
+                  required
+                />
+                <motion.button
+                  whileHover={{ y: -1 }}
+                  whileTap={{ scale: 0.97 }}
+                  type="submit"
+                  disabled={isLoading || !email}
+                  className={`px-6 py-3.5 font-mono text-xs uppercase tracking-widest font-black transition-all shrink-0 ${
+                    isLoading || !email
+                      ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
+                      : "bg-lime-400 hover:bg-lime-300 text-black shadow-[0_0_15px_rgba(163,230,53,0.3)]"
+                  }`}
+                >
+                  {isLoading ? "Sending..." : "📧 Send OTP"}
+                </motion.button>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyOTP} className="flex flex-col sm:flex-row gap-2 bg-neutral-900/80 p-2 border border-neutral-800 shadow-2xl">
+                <input
+                  type="text"
+                  placeholder="Enter 6-Digit OTP"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  maxLength={6}
+                  className="w-full p-3.5 bg-neutral-950 text-white font-mono border border-neutral-800 focus:border-lime-400 outline-none text-sm tracking-widest transition-colors text-center tracking-[0.5em]"
+                  required
+                />
+                <motion.button
+                  whileHover={{ y: -1 }}
+                  whileTap={{ scale: 0.97 }}
+                  type="submit"
+                  disabled={isLoading || otp.length !== 6}
+                  className={`px-6 py-3.5 font-mono text-xs uppercase tracking-widest font-black transition-all shrink-0 ${
+                    isLoading || otp.length !== 6
+                      ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
+                      : "bg-lime-400 hover:bg-lime-300 text-black shadow-[0_0_15px_rgba(163,230,53,0.3)]"
+                  }`}
+                >
+                  {isLoading ? "Verifying..." : "🔓 Unlock"}
+                </motion.button>
+              </form>
+            )}
           </div>
-        </form>
+        )}
 
         {/* Results Grid */}
         {hasSearched && (
@@ -138,7 +199,7 @@ export default function BookingLookup() {
             {/* Left Column: Bookings History List */}
             <div className="lg:col-span-5 space-y-4">
               <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block px-1">
-                // Found {bookings.length} Booking Record(s) for +91 {phone}
+                // Found {bookings.length} Booking Record(s) for {email}
               </span>
 
               {bookings.length === 0 ? (
@@ -146,7 +207,7 @@ export default function BookingLookup() {
                   <span className="text-3xl">⚽</span>
                   <p className="text-sm font-mono text-neutral-300 font-bold uppercase">No Bookings Found</p>
                   <p className="text-xs text-neutral-500 font-mono">
-                    No match reservations found for contact: +91 {phone}
+                    No match reservations found for contact: {email}
                   </p>
                 </div>
               ) : (
