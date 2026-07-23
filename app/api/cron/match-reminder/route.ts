@@ -61,7 +61,7 @@ export async function GET(request: Request) {
       // Calculate time difference
       const minutesUntilMatch = startMinsFromMidnight - currentMinsFromMidnight;
 
-      // ⚡ UPDATED: Check if match starts in the next 0 to 45 minutes (Targets 30 mins prior)
+      // ⚡ UPDATED: Check if match starts in the next 0 to 45 minutes (Targets 45 mins prior)
       if (minutesUntilMatch > 0 && minutesUntilMatch <= 45) {
         
         // 1. Format the Email
@@ -73,7 +73,7 @@ export async function GET(request: Request) {
             <div style="background-color: #171717; padding: 20px; border-left: 4px solid #fbbf24; margin-top: 25px;">
               <h3 style="margin-top: 0; color: #ffffff;">Hello ${b.customer_name},</h3>
               <p style="color: #d4d4d4; line-height: 1.6;">
-                It's almost time! Your scheduled match at SMES Turf is starting in approximately <strong>30 Minutes</strong>.
+                It's almost time! Your scheduled match at SMES Turf is starting in approximately <strong>45 Minutes</strong>.
               </p>
             </div>
 
@@ -105,7 +105,7 @@ export async function GET(request: Request) {
           transporter.sendMail({
             from: `"SMES Turf Alerts" <${process.env.EMAIL_USER}>`,
             to: b.email,
-            subject: "⏳ Reminder: Your match starts in 30 minutes!",
+            subject: "⏳ Reminder: Your match starts in 45 minutes!",
             html: htmlContent,
           }).then(() => {
             // 2. Mark reminder as sent so we don't email them again on the next cron loop

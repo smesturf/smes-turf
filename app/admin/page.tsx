@@ -25,6 +25,16 @@ const rowItem = {
   show: { opacity: 1, x: 0, transition: { duration: 0.35, ease: easeOut } },
 };
 
+// ⚙️ Midnight Rollover Helpers (Option 4)
+const getTodayStr = () => {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+};
+const getTomorrowStr = () => {
+  const tomorrowDate = new Date();
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  return tomorrowDate.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+};
+
 export default function AdminPage() {
   const router = useRouter();
 
@@ -41,6 +51,7 @@ export default function AdminPage() {
   const [todayUpiCollection, setTodayUpiCollection] = useState(0);
   const [todayTotalCollection, setTodayTotalCollection] = useState(0);
   const [showManageSlots, setShowManageSlots] = useState(false);
+  const [activeDate, setActiveDate] = useState(getTodayStr()); // ⚙️ Tracks daily rollover
 
   // 🏆 Academy Coaching Toggled State Parameters
   const [showCoachingPanel, setShowCoachingPanel] = useState(false);
@@ -54,6 +65,17 @@ export default function AdminPage() {
   const [adminSelectedStudentId, setAdminSelectedStudentId] = useState("");
   const [adminExistingMethod, setAdminExistingMethod] = useState("UPI");
   const [isSendingEmails, setIsSendingEmails] = useState(false);
+
+  // ⚙️ Manage Booking Pop-Up States
+  const [showManageModal, setShowManageModal] = useState(false);
+  const [selectedManageBooking, setSelectedManageBooking] = useState<any>(null);
+  const [manageMode, setManageMode] = useState<"options" | "reschedule" | "extend">("options");
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleTime, setRescheduleTime] = useState("");
+  const [rescheduleDuration, setRescheduleDuration] = useState(60);
+  const [rescheduleCourt, setRescheduleCourt] = useState("Full Court");
+  const [availableRescheduleSlots, setAvailableRescheduleSlots] = useState<string[]>([]);
+  const [extendMinutes, setExtendMinutes] = useState(30);
 
   const FIXED_COACHING_FEE = 3500;
   const currentMonthYear = new Date().toISOString().slice(0, 7);
@@ -84,18 +106,18 @@ export default function AdminPage() {
   };
 
   const [slotDate, setSlotDate] = useState("");
-  const adminTimeSlots = Array.from({ length: 48 }, (_, i) => {
-    const hours = Math.floor(i / 2);
-    const minutes = i % 2 === 0 ? "00" : "30";
-    const date = new Date();
-    date.setHours(hours);
-    date.setMinutes(Number(minutes));
-    return date.toLocaleTimeString("en-IN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
-  });
+  
+  // ⚙️ Hardcoded Time Slots (Option 1 Fix - Protects against browser formatting bugs)
+  const adminTimeSlots = [
+    "12:00 AM", "12:30 AM", "01:00 AM", "01:30 AM", "02:00 AM", "02:30 AM",
+    "03:00 AM", "03:30 AM", "04:00 AM", "04:30 AM", "05:00 AM", "05:30 AM",
+    "06:00 AM", "06:30 AM", "07:00 AM", "07:30 AM", "08:00 AM", "08:30 AM",
+    "09:00 AM", "09:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM",
+    "12:00 PM", "12:30 PM", "01:00 PM", "01:30 PM", "02:00 PM", "02:30 PM",
+    "03:00 PM", "03:30 PM", "04:00 PM", "04:30 PM", "05:00 PM", "05:30 PM",
+    "06:00 PM", "06:30 PM", "07:00 PM", "07:30 PM", "08:00 PM", "08:30 PM",
+    "09:00 PM", "09:30 PM", "10:00 PM", "10:30 PM", "11:00 PM", "11:30 PM"
+  ];
 
   const [slotReason, setSlotReason] = useState("OFFLINE BOOKING");
   const [slotTime, setSlotTime] = useState("");
@@ -153,23 +175,24 @@ export default function AdminPage() {
   const [cashAmount, setCashAmount] = useState("");
   const [upiAmount, setUpiAmount] = useState("");
 
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-  };
-
-  const today = formatDate(new Date());
-  const tomorrowDate = new Date();
-  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-  const tomorrow = formatDate(tomorrowDate);
-
+  /* -------- Security Auth & Realtime Loader -------- */
   useEffect(() => {
-    const loggedIn = localStorage.getItem("adminLoggedIn");
-    if (loggedIn !== "true") {
-      router.push("/staff");
-      return;
-    }
-    loadBookings();
-    loadAcademyData();
+    const verifyAuth = async () => {
+      const loggedIn = localStorage.getItem("adminLoggedIn");
+      
+      // ⚙️ Server-Side Session check (Option 2 Fix)
+      const { data } = await supabase.auth.getSession();
+      
+      if (loggedIn !== "true" || !data.session) {
+        router.push("/staff");
+        return;
+      }
+      
+      loadBookings();
+      loadAcademyData();
+    };
+
+    verifyAuth();
 
     const bookingsChannel = supabase
       .channel("bookings-realtime")
@@ -199,10 +222,24 @@ export default function AdminPage() {
     };
   }, [router]);
 
+  /* -------- Midnight Auto-Rollover (Option 4 Fix) -------- */
+  useEffect(() => {
+    const now = new Date();
+    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
+    const msUntilMidnight = midnight.getTime() - now.getTime();
+
+    const timer = setTimeout(() => {
+      setActiveDate(getTodayStr());
+      loadBookings(); // Automatically refresh data for the new day
+    }, msUntilMidnight + 1000);
+
+    return () => clearTimeout(timer);
+  }, [activeDate]);
+
   /* -------- Inactivity Auto-Logout Timer -------- */
   useEffect(() => {
     let timeout: NodeJS.Timeout;
-    const INACTIVITY_LIMIT = 15 * 60 * 1000; // 15 Minutes Inactivity Limit
+    const INACTIVITY_LIMIT = 15 * 60 * 1000;
 
     const resetTimer = () => {
       clearTimeout(timeout);
@@ -218,16 +255,16 @@ export default function AdminPage() {
     const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
     events.forEach((event) => window.addEventListener(event, resetTimer));
     
-    resetTimer(); // Initialize timer on mount
+    resetTimer();
 
     return () => {
       clearTimeout(timeout);
       events.forEach((event) => window.removeEventListener(event, resetTimer));
     };
   }, [router]);
-/* -------- Automated Email Reminders -------- */
+
+  /* -------- Automated Email Reminders -------- */
   const sendEmailReminders = async () => {
-    // 1. Filter students who are unpaid AND have an email address provided
     const pendingStudents = academyStudents.filter(s => s.payment_status !== "settled" && s.email);
     const noEmailStudents = academyStudents.filter(s => s.payment_status !== "settled" && !s.email);
 
@@ -243,7 +280,6 @@ export default function AdminPage() {
 
     setIsSendingEmails(true);
     try {
-      // 2. Trigger the secure backend API
       const response = await fetch("/api/send-reminders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -264,6 +300,7 @@ export default function AdminPage() {
       setIsSendingEmails(false);
     }
   };
+
   const loadAcademyData = async () => {
     const { data: stData } = await supabase
       .from("students")
@@ -334,21 +371,6 @@ export default function AdminPage() {
     loadAcademyData();
   };
 
-  const clearStudentFeeInline = async (student: any, method: string) => {
-    if (student.payment_record_id) {
-      await supabase
-        .from("student_payments")
-        .update({ status: "settled", amount_paid: FIXED_COACHING_FEE, payment_method: method, updated_at: new Date().toISOString() })
-        .eq("id", student.payment_record_id);
-    } else {
-      await supabase
-        .from("student_payments")
-        .insert([{ student_id: student.id, month_year: currentMonthYear, status: "settled", amount_paid: FIXED_COACHING_FEE, payment_method: method }]);
-    }
-    alert("✅ Balance Ledger Cleared");
-    loadAcademyData();
-  };
-
   const deleteStudent = async (studentId: string, studentName: string) => {
     const confirmDelete = window.confirm(
       `⚠️ CRITICAL WARNING:\n\nAre you sure you want to completely delete "${studentName}"?\n\nThis will permanently destroy this student's profile and delete their entire multi-month payment history from the master system. This action cannot be undone.`
@@ -379,10 +401,13 @@ export default function AdminPage() {
   };
 
   const loadBookings = async () => {
+    const todayStr = getTodayStr();
+    const tomorrowStr = getTomorrowStr();
+
     const { data, error } = await supabase
       .from("bookings")
       .select("*")
-      .or(`booking_date.gte.${today},balance_amount.gt.0,payment_date.eq.${today}`)
+      .or(`booking_date.gte.${todayStr},balance_amount.gt.0,payment_date.eq.${todayStr}`)
       .order("booking_date", { ascending: true })
       .order("start_time", { ascending: true });
 
@@ -406,13 +431,13 @@ export default function AdminPage() {
     const { data: blockedData } = await supabase
       .from("blocked_slots")
       .select("*")
-      .gte("booking_date", today)
+      .gte("booking_date", todayStr)
       .order("booking_date", { ascending: true })
       .order("start_time", { ascending: true });
 
     setBlockedSlots(blockedData || []);
-    const todaysBookings = data?.filter((booking) => booking.booking_date?.split("T")[0] === today) || [];
-    const tomorrowsBookings = data?.filter((booking) => booking.booking_date?.split("T")[0] === tomorrow) || [];
+    const todaysBookings = data?.filter((booking) => booking.booking_date?.split("T")[0] === todayStr) || [];
+    const tomorrowsBookings = data?.filter((booking) => booking.booking_date?.split("T")[0] === tomorrowStr) || [];
 
     setTodaySlots(todaysBookings.length);
     setTomorrowSlots(tomorrowsBookings.length);
@@ -421,8 +446,8 @@ export default function AdminPage() {
     let upiNodes = 0;
 
     data?.forEach((booking) => {
-      const createdToday = booking.created_at?.split("T")[0] === today;
-      const paidToday = booking.payment_date === today;
+      const createdToday = booking.created_at?.split("T")[0] === todayStr;
+      const paidToday = booking.payment_date === todayStr;
 
       if (paidToday) {
         if (booking.payment_method === "Full Cash") {
@@ -485,6 +510,57 @@ export default function AdminPage() {
     setAvailableAdminSlots(availableTimes);
   };
 
+  // ⚙️ Load Reschedule Available Slots (Range-based & Court-aware)
+  const loadRescheduleAvailableSlots = async (
+    date: string,
+    duration: number = rescheduleDuration,
+    court: string = rescheduleCourt
+  ) => {
+    if (!date) return;
+
+    const { data: bookings } = await supabase
+      .from("bookings")
+      .select("id,start_time,duration_minutes,booking_type,court_number")
+      .eq("booking_date", date);
+
+    const { data: blocked } = await supabase
+      .from("blocked_slots")
+      .select("start_time,duration_minutes,court_number")
+      .eq("booking_date", date);
+
+    const allBusy = [
+      ...(bookings || []).filter((b: any) => !selectedManageBooking || b.id !== selectedManageBooking.id),
+      ...(blocked || [])
+    ];
+
+    const availableTimes: string[] = [];
+
+    adminTimeSlots.forEach((slot) => {
+      const slotStart = convertToMins(slot);
+      const slotEnd = slotStart + duration;
+
+      const isConflict = allBusy.some((b: any) => {
+        const bStart = convertToMins(b.start_time);
+        const bEnd = bStart + (b.duration_minutes || 60);
+
+        const timeOverlaps = slotStart < bEnd && slotEnd > bStart;
+        if (!timeOverlaps) return false;
+
+        const bIsFull = b.booking_type === "Full Court" || b.court_number === "Full Court" || b.court_number === "Both Courts";
+        const targetIsFull = court === "Full Court" || court === "Both Courts";
+
+        if (targetIsFull || bIsFull) return true;
+        return b.court_number === court;
+      });
+
+      if (!isConflict) {
+        availableTimes.push(slot);
+      }
+    });
+
+    setAvailableRescheduleSlots(availableTimes);
+  };
+
   const saveBlockedSlot = async () => {
     if (!slotDate || !slotTime) { alert("Please select date and time"); return; }
 
@@ -544,7 +620,7 @@ export default function AdminPage() {
         cash_received: cashReceived,
         upi_received: upiReceived,
         payment_completed: true,
-        payment_date: today,
+        payment_date: getTodayStr(), // ⚙️ Dynamic Date Fetch
       }]);
       if (error) { alert(error.message); return; }
 
@@ -576,25 +652,178 @@ export default function AdminPage() {
     setShowManageSlots(false);
   };
 
-  const deleteBooking = async (id: number) => {
-    const confirmed = confirm("Cancel this booking?");
-    if (!confirmed) return;
-    const { error } = await supabase.from("bookings").delete().eq("id", id);
+  // ⚙️ MANAGE OPERATIONS HANDLERS
+
+  const handleCancelWithRefund = async () => {
+    if (!selectedManageBooking) return;
+    const advanceAmount = selectedManageBooking.advance_amount || 0;
+    const confirmCancel = confirm(
+      `Are you sure you want to cancel booking for "${selectedManageBooking.customer_name}"?\n\n💰 Advance Refund to return: ₹${advanceAmount}`
+    );
+    if (!confirmCancel) return;
+
+    const { error } = await supabase
+      .from("bookings")
+      .delete()
+      .eq("id", selectedManageBooking.id);
+
     if (error) { alert(error.message); return; }
+
+    alert(`✅ Booking Cancelled. Refund of ₹${advanceAmount} marked to be returned.`);
+    setShowManageModal(false);
+    setSelectedManageBooking(null);
+    loadBookings();
+  };
+
+  const handleRescheduleBooking = async () => {
+    if (!selectedManageBooking || !rescheduleDate || !rescheduleTime) {
+      alert("Please select both Date and Time for rescheduling.");
+      return;
+    }
+
+    const { data: existingBookings } = await supabase.from("bookings").select("*").eq("booking_date", rescheduleDate);
+    const { data: existingBlocks } = await supabase.from("blocked_slots").select("*").eq("booking_date", rescheduleDate);
+
+    const selectedStart = convertToMins(rescheduleTime);
+    const selectedEnd = selectedStart + Number(rescheduleDuration);
+
+    const allBusyItems = [
+      ...(existingBookings || []).filter((b: any) => b.id !== selectedManageBooking.id),
+      ...(existingBlocks || [])
+    ];
+
+    const isOverlapping = allBusyItems.some((item) => {
+      const itemStart = convertToMins(item.start_time);
+      const itemEnd = itemStart + (item.duration_minutes || 60);
+      const overlaps = selectedStart < itemEnd && selectedEnd > itemStart;
+      if (!overlaps) return false;
+      if (rescheduleCourt === "Full Court" || rescheduleCourt === "Both Courts") return true;
+      if (item.booking_type === "Full Court" || item.court_number === "Full Court" || item.court_number === "Both Courts") return true;
+      return item.court_number === rescheduleCourt;
+    });
+
+    if (isOverlapping) {
+      alert("⚠️ The selected slot or court is already booked/blocked. Please select another time or court.");
+      return;
+    }
+
+    const originalDur = selectedManageBooking.duration_minutes || 60;
+    const originalTotal = selectedManageBooking.total_amount || 0;
+    const pricePerMin = originalTotal / originalDur;
+    const newTotal = Math.round(pricePerMin * rescheduleDuration);
+    const priceDiff = newTotal - originalTotal;
+    const newBalance = (selectedManageBooking.balance_amount || 0) + priceDiff;
+
+    const { error } = await supabase
+      .from("bookings")
+      .update({
+        booking_date: rescheduleDate,
+        start_time: rescheduleTime,
+        duration_minutes: rescheduleDuration,
+        court_number: rescheduleCourt,
+        total_amount: newTotal,
+        balance_amount: newBalance,
+      })
+      .eq("id", selectedManageBooking.id);
+
+    if (error) { alert(error.message); return; }
+
+    alert("✅ Booking Rescheduled Successfully with updated rates!");
+    setShowManageModal(false);
+    setSelectedManageBooking(null);
+    loadBookings();
+  };
+
+  const handleCancelWithoutRefund = async () => {
+    if (!selectedManageBooking) return;
+    const confirmCancel = confirm(
+      `Are you sure you want to cancel the booking for "${selectedManageBooking.customer_name}" WITHOUT issuing a refund?`
+    );
+    if (!confirmCancel) return;
+
+    const { error } = await supabase
+      .from("bookings")
+      .delete()
+      .eq("id", selectedManageBooking.id);
+
+    if (error) { alert(error.message); return; }
+
+    alert("✅ Booking Cancelled (No Refund Issued).");
+    setShowManageModal(false);
+    setSelectedManageBooking(null);
+    loadBookings();
+  };
+
+  const checkAndExtendBooking = async () => {
+    if (!selectedManageBooking) return;
+
+    const bDate = selectedManageBooking.booking_date?.split("T")[0];
+    const startMins = convertToMins(selectedManageBooking.start_time);
+    const currentDur = selectedManageBooking.duration_minutes || 60;
+    const extensionStart = startMins + currentDur;
+    const extensionEnd = extensionStart + Number(extendMinutes);
+
+    const { data: existingBookings } = await supabase.from("bookings").select("*").eq("booking_date", bDate);
+    const { data: existingBlocks } = await supabase.from("blocked_slots").select("*").eq("booking_date", bDate);
+
+    const allBusyItems = [
+      ...(existingBookings || []).filter((b: any) => b.id !== selectedManageBooking.id),
+      ...(existingBlocks || [])
+    ];
+
+    const isOverlapping = allBusyItems.some((item) => {
+      const itemStart = convertToMins(item.start_time);
+      const itemEnd = itemStart + (item.duration_minutes || 60);
+      const overlaps = extensionStart < itemEnd && extensionEnd > itemStart;
+      if (!overlaps) return false;
+      const court = selectedManageBooking.court_number || "Full Court";
+      if (court === "Full Court" || court === "Both Courts") return true;
+      if (item.booking_type === "Full Court" || item.court_number === "Full Court" || item.court_number === "Both Courts") return true;
+      return item.court_number === court;
+    });
+
+    if (isOverlapping) {
+      alert("⚠️ Extension Failed: The target extended time slot is already booked or blocked.");
+      return;
+    }
+
+    const currentTotal = selectedManageBooking.total_amount || 0;
+    const currentBalance = selectedManageBooking.balance_amount || 0;
+    
+    const pricePerMin = currentTotal / currentDur;
+    const addedPrice = Math.round(pricePerMin * Number(extendMinutes));
+    
+    const newDuration = currentDur + Number(extendMinutes);
+    const newTotal = currentTotal + addedPrice;
+    const newBalance = currentBalance + addedPrice;
+
+    const { error } = await supabase
+      .from("bookings")
+      .update({
+        duration_minutes: newDuration,
+        total_amount: newTotal,
+        balance_amount: newBalance,
+      })
+      .eq("id", selectedManageBooking.id);
+
+    if (error) { alert(error.message); return; }
+
+    alert(`✅ Slot Extended! Duration: ${newDuration} mins, New Price: ₹${newTotal}.`);
+    setShowManageModal(false);
+    setSelectedManageBooking(null);
     loadBookings();
   };
 
   const todaysAdvance = bookings
-    .filter((booking) => booking.created_at?.split("T")[0] === today)
+    .filter((booking) => booking.created_at?.split("T")[0] === getTodayStr())
     .reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
   const todaysBalance = bookings
-    .filter((booking) => booking.booking_date?.split("T")[0] === today)
+    .filter((booking) => booking.booking_date?.split("T")[0] === getTodayStr())
     .reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
 
   const exportToExcel = async () => {
     const XLSX = await import("xlsx");
     
-    // 1. FORMATTED DATA (Includes new Barcode)
     const exportData = bookings.map((booking) => ({
       "Booking ID": booking.id,
       "Barcode": booking.booking_reference || "N/A",
@@ -638,7 +867,7 @@ export default function AdminPage() {
       const joinDate = new Date(s.created_at);
       const isNew = joinDate.getMonth() === currentMonthNum && joinDate.getFullYear() === currentYearNum;
       const row: any = {
-        "S.No.": index + 1, // <-- Added Serial Number
+        "S.No.": index + 1,
         "Student Name": s.name + (isNew ? " (NEW)" : ""),
         "Phone Number": s.phone,
         "Date of Birth": s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-",
@@ -663,9 +892,8 @@ export default function AdminPage() {
     const moneyInHand = totalAdvance + totalCollection;
 
     const workbook = XLSX.utils.book_new();
-    const todayStr = new Date().toISOString().split("T")[0];
-    
-    // --- MAIN BOOKINGS SHEET ---
+    const todayStr = getTodayStr(); // ⚙️ Dynamic Date Fetch
+
     const worksheet = XLSX.utils.aoa_to_sheet([
       ["SMES TURF BOOKING REPORT"],
       [`Export Date: ${new Date().toLocaleString("en-IN")}`],
@@ -682,10 +910,7 @@ export default function AdminPage() {
     ]);
     XLSX.utils.sheet_add_json(worksheet, exportData, { origin: "A14" });
     
-    // ✅ NEW: Apply Auto-Filters so the table can be searched and sorted instantly in Excel
     worksheet["!autofilter"] = { ref: `A14:R${14 + exportData.length}` };
-    
-    // ✅ NEW: Perfectly spaced columns so data isn't cut off
     worksheet["!cols"] = [
       { wch: 12 }, { wch: 22 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, 
       { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, 
@@ -693,7 +918,6 @@ export default function AdminPage() {
     ];
     XLSX.utils.book_append_sheet(workbook, worksheet, "Bookings");
 
-    // --- TODAY SHEET ---
     const todayBookings = bookings.filter((booking) => booking.booking_date?.split("T")[0] === todayStr);
     const todayRevenue = todaysAdvance + todaysBalance;
     const todayAdvance = todaysAdvance;
@@ -717,7 +941,6 @@ export default function AdminPage() {
     ]);
     XLSX.utils.book_append_sheet(workbook, todaySheet, "Today");
 
-    // --- MONTHLY SHEET ---
     const monthlyCash = bookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
     const monthlyUpi = bookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
     const monthlyCollection = monthlyCash + monthlyUpi;
@@ -737,7 +960,6 @@ export default function AdminPage() {
     ]);
     XLSX.utils.book_append_sheet(workbook, monthlySheet, "Monthly");
 
-    // --- DAILY SUMMARY SHEET ---
     const dailyStats: Record<string, any> = {};
     bookings.forEach(b => {
       const d = b.booking_date?.split("T")[0] || "Unknown";
@@ -775,23 +997,20 @@ export default function AdminPage() {
     })).sort((a: any, b: any) => a.Date.localeCompare(b.Date));
     const dailySheet = XLSX.utils.json_to_sheet(dailySummaryArray);
     
-    // ✅ NEW: Auto-filters on Daily Summary
     dailySheet["!autofilter"] = { ref: `A1:J${1 + dailySummaryArray.length}` };
     dailySheet["!cols"] = [
       { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 28 }, { wch: 38 }, { wch: 20 }
     ];
     XLSX.utils.book_append_sheet(workbook, dailySheet, "Daily Summary");
 
-    // --- COACHING SHEET ---
     const academySheet = XLSX.utils.json_to_sheet(academyWorksheetData);
     
-    // Dynamically calculate the final column letter so ALL months get the dropdown arrow
     const totalColumns = 7 + uniqueMonths.length; 
     const endColumnChar = String.fromCharCode(64 + totalColumns); 
     
     academySheet["!autofilter"] = { ref: `A1:${endColumnChar}${1 + academyWorksheetData.length}` }; 
     academySheet["!cols"] = [
-      { wch: 8 }, // Width for S.No.
+      { wch: 8 },
       { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 15 }, { wch: 18 },
       ...uniqueMonths.map(() => ({ wch: 22 }))
     ];
@@ -828,7 +1047,7 @@ export default function AdminPage() {
         payment_method: paymentType,
         payment_completed: true,
         balance_amount: 0,
-        payment_date: today,
+        payment_date: getTodayStr(), // ⚙️ Dynamic Date Fetch
       })
       .eq("id", selectedBooking.id);
     if (error) { alert(error.message); return; }
@@ -837,27 +1056,6 @@ export default function AdminPage() {
     setShowPaymentModal(false);
     setCashAmount("");
     setUpiAmount("");
-    loadBookings();
-  };
-
-  const fontAwesomeIcons = async (booking: any) => {
-    const confirmed = confirm("Reset this payment?");
-    if (!confirmed) return;
-    const originalBalance = (booking.total_amount || 0) - (booking.advance_amount || 0);
-    const { error = null } = await supabase
-      .from("bookings")
-      .update({
-        cash_received: 0,
-        upi_received: 0,
-        payment_method: null,
-        payment_completed: false,
-        balance_amount: originalBalance,
-        payment_date: null,
-      })
-      .eq("id", booking.id);
-    if (error) { alert(error.message); return; }
-
-    alert("✅ Payment Reset");
     loadBookings();
   };
 
@@ -1418,7 +1616,7 @@ export default function AdminPage() {
                   <th className="p-4">Court</th>
                   <th className="p-4">Total</th>
                   <th className="p-4">Advance</th>
-                  <th className="p-4 'text-red-400'">Due Balance</th>
+                  <th className="p-4">Due Balance</th>
                   <th className="p-4 text-center">Operations</th>
                 </tr>
               </thead>
@@ -1432,8 +1630,8 @@ export default function AdminPage() {
                   {filteredBookings.map((booking) => {
                     const bookingDate = booking.booking_date?.split("T")[0];
                     let rowColor = "bg-transparent";
-                    if (bookingDate === today) rowColor = "bg-lime-500/[0.05]";
-                    else if (bookingDate === tomorrow) rowColor = "bg-amber-500/[0.04]";
+                    if (bookingDate === getTodayStr()) rowColor = "bg-lime-500/[0.05]";
+                    else if (bookingDate === getTomorrowStr()) rowColor = "bg-amber-500/[0.04]";
 
                     return (
                       <motion.tr
@@ -1446,12 +1644,12 @@ export default function AdminPage() {
                         <td className="p-4 font-mono text-xs whitespace-nowrap text-neutral-400">{booking.phone}</td>
                         <td className="p-4 font-mono text-xs whitespace-nowrap">
                           <span className="text-neutral-200">{new Date(bookingDate).toLocaleDateString("en-GB")}</span>
-                          {bookingDate === today && (
+                          {bookingDate === getTodayStr() && (
                             <span className="ml-2 px-2 py-0.5 bg-lime-400/10 border border-lime-400/30 text-lime-400 text-[9px] font-black uppercase tracking-widest">
                               Today
                             </span>
                           )}
-                          {bookingDate === tomorrow && (
+                          {bookingDate === getTomorrowStr() && (
                             <span className="ml-2 px-2 py-0.5 bg-amber-400/10 border border-amber-400/30 text-amber-400 text-[9px] font-black uppercase tracking-widest">
                               Tomorrow
                             </span>
@@ -1506,13 +1704,31 @@ export default function AdminPage() {
                                 </motion.button>
                               )
                             )}
+
+                            {/* ⚙️ MANAGE BUTTON */}
                             <motion.button
                               whileHover={{ y: -1 }}
                               whileTap={{ scale: 0.96 }}
-                              onClick={() => deleteBooking(booking.id)}
-                              className="bg-neutral-900 hover:bg-red-950 border border-neutral-800 hover:border-red-900 text-red-400 hover:text-white text-xs font-mono uppercase font-black px-3 py-1.5 transition-colors"
+                              onClick={() => {
+                                setSelectedManageBooking(booking);
+                                setManageMode("options");
+                                setExtendMinutes(30);
+
+                                const bDate = booking.booking_date?.split("T")[0] || getTodayStr(); // ⚙️ Dynamic Date Fetch
+                                const bDur = booking.duration_minutes || 60;
+                                const bCourt = booking.court_number || "Full Court";
+
+                                setRescheduleDate(bDate);
+                                setRescheduleTime(booking.start_time || "");
+                                setRescheduleDuration(bDur);
+                                setRescheduleCourt(bCourt);
+
+                                loadRescheduleAvailableSlots(bDate, bDur, bCourt);
+                                setShowManageModal(true);
+                              }}
+                              className="bg-neutral-900 hover:bg-fuchsia-950 border border-neutral-800 hover:border-fuchsia-800 text-fuchsia-400 hover:text-white text-xs font-mono uppercase font-black px-3 py-1.5 transition-colors"
                             >
-                              ❌ Cancel
+                              ⚙️ Manage
                             </motion.button>
                           </div>
                         </td>
@@ -1599,6 +1815,305 @@ export default function AdminPage() {
           // SMES Sports Academy · Admin Terminal · Live Sync Enabled
         </div>
       </div>
+
+      {/* ---------- MANAGE BOOKING MODAL (INTEGRATED POP-UP) ---------- */}
+      <AnimatePresence>
+        {showManageModal && selectedManageBooking && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 12, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.9, y: 12, opacity: 0 }}
+              transition={{ duration: 0.3, ease: easeOut }}
+              className="bg-neutral-950 border border-neutral-800 p-6 w-full max-w-md space-y-5 relative overflow-hidden"
+            >
+              <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-fuchsia-500/10 to-transparent pointer-events-none" />
+
+              {/* Modal Header */}
+              <div className="relative">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-fuchsia-400 block mb-1">
+                  // Order Management Node
+                </span>
+                <h2 className="text-xl font-black uppercase tracking-tight text-white">
+                  ⚙️ Manage Booking
+                </h2>
+                <p className="text-neutral-400 text-xs mt-1 font-mono">
+                  Client: <span className="text-white font-bold">{selectedManageBooking.customer_name}</span> ({selectedManageBooking.phone})
+                </p>
+              </div>
+
+              {/* Mode Switcher */}
+              {manageMode === "options" ? (
+                <div className="space-y-2.5 relative">
+                  <div className="p-3 bg-neutral-900/80 border border-neutral-800 text-xs font-mono space-y-1">
+                    <div className="flex justify-between text-neutral-400">
+                      <span>Total Amount:</span>
+                      <span className="text-white font-bold">₹{selectedManageBooking.total_amount}</span>
+                    </div>
+                    <div className="flex justify-between text-emerald-400 font-bold">
+                      <span>Advance Paid:</span>
+                      <span>₹{selectedManageBooking.advance_amount || 0}</span>
+                    </div>
+                  </div>
+
+                  {/* Option 1: Cancel and Refund Advance */}
+                  <motion.button
+                    whileHover={{ scale: 1.01, borderColor: "rgba(239, 68, 68, 0.6)" }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleCancelWithRefund}
+                    className="w-full text-left p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-red-950/40 transition-colors group"
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-black uppercase text-red-400 group-hover:text-red-300">
+                        ❌ Cancel & Refund Advance
+                      </span>
+                      <span className="text-xs font-mono text-emerald-400 font-black">
+                        Refund: ₹{selectedManageBooking.advance_amount || 0}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">
+                      Cancels order completely & returns advance payment.
+                    </p>
+                  </motion.button>
+
+                  {/* Option 2: Reschedule Time Slot */}
+                  <motion.button
+                    whileHover={{ scale: 1.01, borderColor: "rgba(163, 230, 53, 0.6)" }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setManageMode("reschedule")}
+                    className="w-full text-left p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-lime-950/30 transition-colors group"
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-black uppercase text-lime-400 group-hover:text-lime-300">
+                        📅 Reschedule Time Slot
+                      </span>
+                      <span className="text-xs font-mono text-neutral-400">Change slot →</span>
+                    </div>
+                    <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">
+                      Shift this booking to a new time slot or date.
+                    </p>
+                  </motion.button>
+
+                  {/* Option 3: Cancel Without Refund */}
+                  <motion.button
+                    whileHover={{ scale: 1.01, borderColor: "rgba(245, 158, 11, 0.6)" }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleCancelWithoutRefund}
+                    className="w-full text-left p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-amber-950/30 transition-colors group"
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-black uppercase text-amber-400 group-hover:text-amber-300">
+                        ⛔ Cancel Without Refund
+                      </span>
+                      <span className="text-xs font-mono text-amber-400">Forfeit advance</span>
+                    </div>
+                    <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">
+                      Cancels order but retains advance deposit.
+                    </p>
+                  </motion.button>
+
+                  {/* Option 4: Extend Slot (Check & Extend) */}
+                  <motion.button
+                    whileHover={{ scale: 1.01, borderColor: "rgba(6, 182, 212, 0.6)" }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setManageMode("extend")}
+                    className="w-full text-left p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-cyan-950/30 transition-colors group"
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-black uppercase text-cyan-400 group-hover:text-cyan-300">
+                        ⏱️ Extend Slot (Check & Extend)
+                      </span>
+                      <span className="text-xs font-mono text-cyan-400">Extend →</span>
+                    </div>
+                    <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">
+                      Check next slot availability and extend match duration.
+                    </p>
+                  </motion.button>
+                </div>
+              ) : manageMode === "reschedule" ? (
+                /* Reschedule View */
+                <div className="space-y-3 relative">
+                  {/* Field 1: Date */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono uppercase text-neutral-400">New Date</label>
+                    <input
+                      type="date"
+                      min={getTodayStr()} // ⚙️ Dynamic Date Fetch
+                      value={rescheduleDate}
+                      onChange={(e) => {
+                        const newDate = e.target.value;
+                        setRescheduleDate(newDate);
+                        if (newDate) loadRescheduleAvailableSlots(newDate, rescheduleDuration, rescheduleCourt);
+                      }}
+                      style={{ colorScheme: "dark" }}
+                      className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
+                    />
+                  </div>
+
+                  {/* Fields 2 & 3: Court and Duration */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Court</label>
+                      <select
+                        value={rescheduleCourt}
+                        onChange={(e) => {
+                          const newCourt = e.target.value;
+                          setRescheduleCourt(newCourt);
+                          if (rescheduleDate) loadRescheduleAvailableSlots(rescheduleDate, rescheduleDuration, newCourt);
+                        }}
+                        className="w-full p-3 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                      >
+                        <option value="Full Court">Full Court</option>
+                        <option value="Court 1">Court 1</option>
+                        <option value="Court 2">Court 2</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Duration</label>
+                      <select
+                        value={rescheduleDuration}
+                        onChange={(e) => {
+                          const newDur = Number(e.target.value);
+                          setRescheduleDuration(newDur);
+                          if (rescheduleDate) loadRescheduleAvailableSlots(rescheduleDate, newDur, rescheduleCourt);
+                        }}
+                        className="w-full p-3 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                      >
+                        <option value={30}>30 mins</option>
+                        <option value={60}>60 mins</option>
+                        <option value={90}>90 mins</option>
+                        <option value={120}>120 mins</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Field 4: Time Slot */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono uppercase text-neutral-400">New Time Slot</label>
+                    <select
+                      value={rescheduleTime}
+                      onChange={(e) => setRescheduleTime(e.target.value)}
+                      className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                    >
+                      <option value="">-- Select Time Slot --</option>
+                      {availableRescheduleSlots.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Projected Reschedule Pricing Box */}
+                  <div className="p-3 bg-lime-950/30 border border-lime-800/50 text-xs font-mono text-lime-400">
+                    Calculated New Price Matrix:<br />
+                    <span className="font-bold text-white text-sm">
+                      Total: ₹{Math.round((selectedManageBooking.total_amount / (selectedManageBooking.duration_minutes || 60)) * rescheduleDuration)} | Pending Due: ₹{(selectedManageBooking.balance_amount || 0) + (Math.round((selectedManageBooking.total_amount / (selectedManageBooking.duration_minutes || 60)) * rescheduleDuration) - selectedManageBooking.total_amount)}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <motion.button
+                      whileHover={{ y: -1 }}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={handleRescheduleBooking}
+                      className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors"
+                    >
+                      Confirm Reschedule
+                    </motion.button>
+
+                    <button
+                      type="button"
+                      onClick={() => setManageMode("options")}
+                      className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-400 font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors"
+                    >
+                      ← Back
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Extend Slot View */
+                <div className="space-y-3 relative">
+                  <div className="p-3 bg-neutral-900 border border-neutral-800 text-xs font-mono space-y-1">
+                    <div className="flex justify-between text-neutral-400">
+                      <span>Current Slot Range:</span>
+                      <span className="text-white font-bold">
+                        {getTimeRangeLabel(selectedManageBooking.start_time, selectedManageBooking.duration_minutes || 60)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-neutral-400">
+                      <span>Current Duration:</span>
+                      <span className="text-cyan-400 font-bold">{selectedManageBooking.duration_minutes || 60} mins</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono uppercase text-neutral-400">Extend Duration By</label>
+                    <select
+                      value={extendMinutes}
+                      onChange={(e) => setExtendMinutes(Number(e.target.value))}
+                      className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-cyan-400 outline-none text-sm font-mono font-medium transition-colors"
+                    >
+                      <option value={30}>+ 30 minutes</option>
+                      <option value={60}>+ 60 minutes (1 hour)</option>
+                      <option value={90}>+ 90 minutes (1.5 hours)</option>
+                      <option value={120}>+ 120 minutes (2 hours)</option>
+                    </select>
+                  </div>
+
+                  <div className="p-3 bg-cyan-950/30 border border-cyan-800/50 text-xs font-mono text-cyan-300">
+                    Projected Target Range:<br />
+                    <span className="font-bold text-white text-sm">
+                      {getTimeRangeLabel(
+                        selectedManageBooking.start_time,
+                        (selectedManageBooking.duration_minutes || 60) + Number(extendMinutes)
+                      )}
+                    </span>
+                    <br /><br />
+                    Projected Added Cost:<br />
+                    <span className="font-bold text-white text-sm">
+                       + ₹{Math.round((selectedManageBooking.total_amount / (selectedManageBooking.duration_minutes || 60)) * Number(extendMinutes))}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <motion.button
+                      whileHover={{ y: -1 }}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={checkAndExtendBooking}
+                      className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors"
+                    >
+                      Check & Extend
+                    </motion.button>
+
+                    <button
+                      type="button"
+                      onClick={() => setManageMode("options")}
+                      className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-400 font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors"
+                    >
+                      ← Back
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Close Button */}
+              <div className="pt-2 border-t border-neutral-900 flex justify-end">
+                <button
+                  onClick={() => { setShowManageModal(false); setSelectedManageBooking(null); }}
+                  className="text-xs font-mono uppercase text-neutral-500 hover:text-white transition-colors"
+                >
+                  Close Modal
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ---------- Payment Modal ---------- */}
       <AnimatePresence>
@@ -1746,7 +2261,7 @@ export default function AdminPage() {
                   <label className="text-[10px] font-mono uppercase text-neutral-400">Date</label>
                   <input
                     type="date"
-                    min={today}
+                    min={getTodayStr()} // ⚙️ Dynamic Date Fetch
                     value={slotDate}
                     onChange={(e) => {
                       setSlotDate(e.target.value);

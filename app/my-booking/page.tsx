@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import Link from "next/link";
 import { supabase } from "../lib/supabase";
 import { motion } from "framer-motion";
 
@@ -14,9 +15,35 @@ export default function BookingLookup() {
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
 
-  /* -------- 1. Send OTP to Email -------- */
-  const handleSendOTP = async (e: React.FormEvent) => {
-    e.preventDefault();
+  /* -------- Resend Cooldown Timer Logic -------- */
+  const [countdown, setCountdown] = useState(30);
+  const [canResend, setCanResend] = useState(false);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (otpSent && countdown > 0) {
+      timer = setInterval(() => {
+        setCountdown((prev) => prev - 1);
+      }, 1000);
+    } else if (countdown === 0) {
+      setCanResend(true);
+    }
+    return () => clearInterval(timer);
+  }, [otpSent, countdown]);
+
+  /* -------- Reset Search State (Back Action) -------- */
+  const handleResetSearch = () => {
+    setHasSearched(false);
+    setOtpSent(false);
+    setOtp("");
+    setBookings([]);
+    setSelectedBooking(null);
+  };
+
+  /* -------- 1. Send / Resend OTP to Email -------- */
+  const handleSendOTP = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    
     if (!email) {
       alert("⚠️ Please enter your registered email address.");
       return;
@@ -28,7 +55,7 @@ export default function BookingLookup() {
       const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
       setServerOtp(generatedOtp);
 
-      // Trigger your backend email sender (You will need to create this API route)
+      // Trigger backend email sender
       const res = await fetch("/api/send-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -37,7 +64,10 @@ export default function BookingLookup() {
 
       if (!res.ok) throw new Error("Failed to send OTP email.");
 
+      // Reset Timer & Set State
       setOtpSent(true);
+      setCountdown(30);
+      setCanResend(false);
       alert("📧 OTP sent! Please check your email inbox.");
     } catch (err) {
       console.error(err);
@@ -50,7 +80,7 @@ export default function BookingLookup() {
   /* -------- 2. Verify OTP & Fetch Bookings -------- */
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (otp !== serverOtp && otp !== "000000") { // '000000' is a dev bypass if needed
+    if (otp !== serverOtp && otp !== "000000") { // '000000' is a dev bypass
       alert("❌ Invalid OTP. Please try again.");
       return;
     }
@@ -63,7 +93,7 @@ export default function BookingLookup() {
       const { data, error } = await supabase
         .from("bookings")
         .select("*")
-        .eq("email", email) // Securely search by email instead of phone
+        .eq("email", email)
         .order("booking_date", { ascending: false })
         .order("start_time", { ascending: false });
 
@@ -117,8 +147,41 @@ export default function BookingLookup() {
         />
       </div>
 
-      <div className="relative z-10 max-w-6xl mx-auto px-4 py-10 sm:py-16">
+      <div className="relative z-10 max-w-6xl mx-auto px-4 py-8 sm:py-12">
         
+        {/* Top Navigation Bar - ALWAYS VISIBLE */}
+        <div className="mb-8 flex items-center justify-between border-b border-neutral-900 pb-4">
+          {hasSearched ? (
+            /* Button visible after unlocking passes with OTP */
+            <motion.button
+              whileHover={{ x: -3 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={handleResetSearch}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded bg-neutral-900 border border-neutral-800 hover:border-lime-400 text-neutral-300 hover:text-lime-400 font-mono text-xs uppercase tracking-widest transition-all shadow-lg"
+            >
+              <span className="text-lime-400 font-bold text-sm">←</span> Back to Search
+            </motion.button>
+          ) : (
+            /* Back button visible on the main OTP / email landing page */
+            <Link href="/">
+              <motion.div
+                whileHover={{ x: -3 }}
+                whileTap={{ scale: 0.95 }}
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded bg-neutral-900 border border-neutral-800 hover:border-lime-400 text-neutral-300 hover:text-lime-400 font-mono text-xs uppercase tracking-widest transition-all shadow-lg cursor-pointer"
+              >
+                <span className="text-lime-400 font-bold text-sm">←</span> Back to Arena
+              </motion.div>
+            </Link>
+          )}
+
+          <Link
+            href="/"
+            className="font-mono text-xs text-neutral-500 hover:text-neutral-300 uppercase tracking-widest underline transition-colors"
+          >
+            Arena Home ↗
+          </Link>
+        </div>
+
         {/* Header */}
         <div className="text-center max-w-xl mx-auto space-y-3 mb-10">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-900 border border-neutral-800 text-[10px] font-mono uppercase tracking-widest text-lime-400">
@@ -164,30 +227,63 @@ export default function BookingLookup() {
                 </motion.button>
               </form>
             ) : (
-              <form onSubmit={handleVerifyOTP} className="flex flex-col sm:flex-row gap-2 bg-neutral-900/80 p-2 border border-neutral-800 shadow-2xl">
-                <input
-                  type="text"
-                  placeholder="Enter 6-Digit OTP"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value)}
-                  maxLength={6}
-                  className="w-full p-3.5 bg-neutral-950 text-white font-mono border border-neutral-800 focus:border-lime-400 outline-none text-sm tracking-widest transition-colors text-center tracking-[0.5em]"
-                  required
-                />
-                <motion.button
-                  whileHover={{ y: -1 }}
-                  whileTap={{ scale: 0.97 }}
-                  type="submit"
-                  disabled={isLoading || otp.length !== 6}
-                  className={`px-6 py-3.5 font-mono text-xs uppercase tracking-widest font-black transition-all shrink-0 ${
-                    isLoading || otp.length !== 6
-                      ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
-                      : "bg-lime-400 hover:bg-lime-300 text-black shadow-[0_0_15px_rgba(163,230,53,0.3)]"
-                  }`}
-                >
-                  {isLoading ? "Verifying..." : "🔓 Unlock"}
-                </motion.button>
-              </form>
+              <div className="bg-neutral-900/80 p-4 border border-neutral-800 shadow-2xl space-y-3">
+                <form onSubmit={handleVerifyOTP} className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    placeholder="6-Digit OTP"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value)}
+                    maxLength={6}
+                    className="w-full p-3.5 bg-neutral-950 text-white font-mono border border-neutral-800 focus:border-lime-400 outline-none text-sm tracking-[0.5em] text-center transition-colors"
+                    required
+                  />
+                  <motion.button
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.97 }}
+                    type="submit"
+                    disabled={isLoading || otp.length !== 6}
+                    className={`px-6 py-3.5 font-mono text-xs uppercase tracking-widest font-black transition-all shrink-0 ${
+                      isLoading || otp.length !== 6
+                        ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
+                        : "bg-lime-400 hover:bg-lime-300 text-black shadow-[0_0_15px_rgba(163,230,53,0.3)]"
+                    }`}
+                  >
+                    {isLoading ? "Verifying..." : "🔓 Unlock"}
+                  </motion.button>
+                </form>
+
+                {/* Resend OTP & Change Email Options */}
+                <div className="flex justify-between items-center px-1 font-mono text-[11px] border-t border-neutral-800/60 pt-2.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOtpSent(false);
+                      setOtp("");
+                    }}
+                    className="text-neutral-500 hover:text-neutral-300 transition-colors underline"
+                  >
+                    ← Change Email
+                  </button>
+
+                  <div>
+                    {canResend ? (
+                      <button
+                        type="button"
+                        onClick={() => handleSendOTP()}
+                        disabled={isLoading}
+                        className="text-lime-400 font-bold hover:text-lime-300 transition-colors underline"
+                      >
+                        Resend OTP
+                      </button>
+                    ) : (
+                      <span className="text-neutral-500">
+                        Resend OTP in <strong className="text-neutral-300 font-bold">{countdown}s</strong>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         )}
