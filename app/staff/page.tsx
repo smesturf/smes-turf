@@ -15,12 +15,13 @@ export default function StaffPortal() {
     e.preventDefault();
     setIsLoading(true);
 
+    // 1. Map role to correct email address (Fixed @smesturf.com domain)
     let staffEmail = "";
-    if (staffRole === "Admin") staffEmail = "sports+admin@smestuff.com";
-    if (staffRole === "Sub-Admin") staffEmail = "sports+subadmin@smestuff.com";
-    if (staffRole === "Coach") staffEmail = "sports+coach@smestuff.com";
+    if (staffRole === "Admin") staffEmail = "sports+admin@smesturf.com";
+    if (staffRole === "Sub-Admin") staffEmail = "sports+subadmin@smesturf.com";
+    if (staffRole === "Coach") staffEmail = "sports+coach@smesturf.com";
 
-    // 1. Authenticate securely with Supabase
+    // 2. Authenticate securely with Supabase
     const { data, error } = await supabase.auth.signInWithPassword({
       email: staffEmail,
       password: staffPassword,
@@ -32,14 +33,14 @@ export default function StaffPortal() {
       return;
     }
 
-    // 2. Route the user. Supabase has already saved the secure session token!
+    // 3. Perform hard browser navigation to avoid session cookie lag
     if (data.session) {
       if (staffRole === "Admin") {
-        router.push("/admin");
+        window.location.href = "/admin";
       } else if (staffRole === "Sub-Admin") {
-        router.push("/subadmin");
+        window.location.href = "/subadmin";
       } else if (staffRole === "Coach") {
-        router.push("/coach");
+        window.location.href = "/coach";
       }
     }
   };
