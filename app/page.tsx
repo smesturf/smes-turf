@@ -415,26 +415,6 @@ export default function Home() {
         }),
       });
 
-      // 4. NEW: Send Customer Notification via Meta Template API
-      await fetch("/api/whatsapp/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone: phone,
-          customerName: name,
-          bookingId: verifyData.booking?.id || "N/A",
-          bookingRef: referenceId,
-          sport: sport,
-          court: bookingType,
-          bookingDate: bookingDate,
-          startTime: startT || startTime,
-          endTime: endT || `${duration} Mins`,
-          totalAmount: totalAmount,
-          advanceAmount: advancePaid,
-          balanceAmount: balanceAmount
-        }),
-      });
-
       setIsProcessingBooking(false);
 
       // Set success data to trigger your Arena Pass[cite: 1]
