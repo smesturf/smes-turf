@@ -393,26 +393,51 @@ export default function Home() {
         return;
       }
 
+      // 1. Calculate values for the API
       const balanceAmount = totalAmount - 200;
       const bookingId = verifyData.booking?.id ? `#${verifyData.booking.id}` : "#----";
       const referenceId = verifyData.booking?.booking_reference || paymentData.razorpay_payment_id || "N/A";
       const advancePaid = 200;
       
-      const clientText = `🏟️ *SMES Sports Academy Booking Confirmed*\n\nHello ${name},\n\nYour booking has been successfully confirmed.\n\n📅 *Date:* ${bookingDate}\n🕒 *Time:* ${startTime}\n⏱ *Duration:* ${duration} Minutes\n🏏 *Sport:* ${sport}\n🏟 *Court:* ${bookingType}\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200\n💳 *Balance Due:* ₹${balanceAmount}\n\n📍 *Location:*\nSMES Sports Academy, Mysuru\n\n⚠️ Please arrive 10 minutes before your slot.\n⚠️ Balance payment must be completed before play starts.\n\nThank you for choosing SMES Sports Academy.\n\n📞 *Support:* 8453095258`;
-      const adminText = `🔔 *NEW BOOKING RECEIVED*\n\n*SMES Sports Academy*\n\n👤 *Customer:* ${name}\n📞 *Phone:* ${phone}\n\n📅 *Date:* ${bookingDate}\n🕒 *Time:* ${startTime}\n⏱ *Duration:* ${duration} Minutes\n\n🏟 *Court:* ${verifyData.booking?.court_number || bookingType}\n🏏 *Sport:* ${sport}\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200\n💳 *Balance:* ₹${balanceAmount}\n\n💳 *Payment Status:* PAID\n\n*Booking ID:* ${bookingId}`;
+      // Calculate end time using your existing helper function
+      const formattedTimeSlot = getTimeRangeLabel(startTime, duration);
+      const [startT, endT] = formattedTimeSlot.split(" - "); 
 
+      // 2. Updated admin notification text with Email and Ref ID
+      const adminText = `🔔 *NEW BOOKING RECEIVED*\n\n*SMES Sports Academy*\n\n👤 *Customer:* ${name}\n📞 *Phone:* ${phone}\n📧 *Email:* ${email}\n\n📅 *Date:* ${bookingDate}\n🕒 *Time:* ${startTime}\n⏱ *Duration:* ${duration} Minutes\n\n🏟 *Court:* ${verifyData.booking?.court_number || bookingType}\n🏏 *Sport:* ${sport}\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200\n💳 *Balance:* ₹${balanceAmount}\n\n💳 *Payment Status:* PAID\n\n*Booking ID:* ${bookingId}\n*Ref ID:* ${referenceId}`;
+
+      // 3. Send Admin Notification (assuming your old route still handles this)
       await fetch("/api/whatsapp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          customerPhone: `91${phone}`,
-          customerMessage: clientText,
           adminMessage: adminText,
+        }),
+      });
+
+      // 4. NEW: Send Customer Notification via Meta Template API
+      await fetch("/api/whatsapp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: phone,
+          customerName: name,
+          bookingId: verifyData.booking?.id || "N/A",
+          bookingRef: referenceId,
+          sport: sport,
+          court: bookingType,
+          bookingDate: bookingDate,
+          startTime: startT || startTime,
+          endTime: endT || `${duration} Mins`,
+          totalAmount: totalAmount,
+          advanceAmount: advancePaid,
+          balanceAmount: balanceAmount
         }),
       });
 
       setIsProcessingBooking(false);
 
+      // Set success data to trigger your Arena Pass[cite: 1]
       setSuccessData({
         bookingId,
         referenceId,
@@ -428,6 +453,7 @@ export default function Home() {
         balance: balanceAmount
       });
 
+      // Reset form state[cite: 1]
       setName("");
       setPhone("");
       setBookingDate("");
