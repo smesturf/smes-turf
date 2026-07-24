@@ -178,10 +178,10 @@ export default function AdminPage() {
   /* -------- Security Auth & Realtime Loader -------- */
   useEffect(() => {
     const verifyAuth = async () => {
-      const loggedIn = localStorage.getItem("subadminLoggedIn");
+      // ✅ Now we ONLY check the secure Supabase session
+      const { data, error } = await supabase.auth.getSession();
       
-      // Fixed: Removed strict !data.session requirement causing redirects on staff login & multi-device usage
-      if (loggedIn !== "true") {
+      if (error || !data.session) {
         router.push("/staff");
         return;
       }
@@ -191,6 +191,13 @@ export default function AdminPage() {
     };
 
     verifyAuth();
+
+    // Listen for logout events across tabs
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        router.push("/staff");
+      }
+    });
 
     const bookingsChannel = supabase
       .channel("bookings-realtime")
@@ -213,6 +220,7 @@ export default function AdminPage() {
       .subscribe();
 
     return () => {
+      subscription.unsubscribe(); // ✅ Clean up the auth listener
       supabase.removeChannel(bookingsChannel);
       supabase.removeChannel(blockedChannel);
       supabase.removeChannel(studentsChannel);
@@ -242,8 +250,7 @@ export default function AdminPage() {
     const resetTimer = () => {
       clearTimeout(timeout);
       timeout = setTimeout(async () => {
-        await supabase.auth.signOut();
-        localStorage.removeItem("subadminLoggedIn");
+        await supabase.auth.signOut(); // 🛑 Securely logs out of Supabase
         alert("⚠️ Session expired due to inactivity. Please log in again.");
         router.push("/staff");
       }, INACTIVITY_LIMIT);
@@ -781,9 +788,8 @@ export default function AdminPage() {
     .filter((booking) => booking.booking_date?.split("T")[0] === getTodayStr())
     .reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
 
-  const handleLogout = () => {
-    localStorage.removeItem("subadminLoggedIn");
-    localStorage.removeItem("adminLoginTime");
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     router.push("/staff");
   };
 
@@ -859,10 +865,10 @@ export default function AdminPage() {
       return (
         booking.customer_name?.toLowerCase().includes(search) ||
         booking.phone?.toLowerCase().includes(search) ||
-        booking.email?.toLowerCase().includes(search) || // Email search added
+        booking.email?.toLowerCase().includes(search) || 
         booking.booking_date?.toLowerCase().includes(search) ||
         booking.booking_reference?.toLowerCase().includes(search) ||
-        booking.id?.toString().includes(search) // Booking ID search added
+        booking.id?.toString().includes(search) 
       );
     })
     .sort((a, b) => {
