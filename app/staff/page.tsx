@@ -237,61 +237,33 @@ export default function StaffPortal() {
 
 
           <div className="grid grid-cols-2 gap-3 pt-3">
-
             <motion.button
-
               whileHover={{ y: -1 }}
-
               whileTap={{ scale: 0.97 }}
-
-              type="submit"
-
-              disabled={isLoading || !staffPassword}
-
-              className={`w-full font-mono text-xs uppercase tracking-wider py-3.5 font-black transition-all rounded-xl flex items-center justify-center min-h-[44px] ${
-
-                isLoading || !staffPassword
-
-                  ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
-
-                  : "bg-gradient-to-r from-lime-400 to-lime-300 text-neutral-950 shadow-[0_0_15px_rgba(163,230,53,0.2)]"
-
-              }`}
-
-            >
-
-              {isLoading ? (
-
-                <span className="w-4 h-4 border-2 border-neutral-500 border-t-transparent rounded-full animate-spin"></span>
-
-              ) : (
-
-                "Authorize"
-
-              )}
-
-            </motion.button>
-
-           
-
-            <motion.button
-
-              whileHover={{ y: -1 }}
-
-              whileTap={{ scale: 0.97 }}
-
               type="button"
-
               onClick={() => router.push("/")}
-
               className="w-full bg-neutral-800 hover:bg-neutral-700 text-slate-300 font-mono text-xs uppercase tracking-wider py-3.5 rounded-xl transition-colors min-h-[44px]"
-
             >
-
               Cancel
-
             </motion.button>
 
+            <motion.button
+              whileHover={{ y: -1 }}
+              whileTap={{ scale: 0.97 }}
+              type="submit"
+              disabled={isLoading || !staffPassword}
+              className={`w-full font-mono text-xs uppercase tracking-wider py-3.5 font-black transition-all rounded-xl flex items-center justify-center min-h-[44px] ${
+                isLoading || !staffPassword
+                  ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
+                  : "bg-gradient-to-r from-lime-400 to-lime-300 text-neutral-950 shadow-[0_0_15px_rgba(163,230,53,0.2)]"
+              }`}
+            >
+              {isLoading ? (
+                <span className="w-4 h-4 border-2 border-neutral-500 border-t-transparent rounded-full animate-spin"></span>
+              ) : (
+                "Authorize"
+              )}
+            </motion.button>
           </div>
 
         </form>
