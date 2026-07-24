@@ -180,9 +180,8 @@ export default function AdminPage() {
     const verifyAuth = async () => {
       const loggedIn = localStorage.getItem("subadminLoggedIn");
       
-      const { data } = await supabase.auth.getSession();
-      
-      if (loggedIn !== "true" || !data.session) {
+      // Fixed: Removed strict !data.session requirement causing redirects on staff login & multi-device usage
+      if (loggedIn !== "true") {
         router.push("/staff");
         return;
       }

@@ -6,7 +6,7 @@ import { supabase } from "../lib/supabase";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 
 /* ------------------------------------------------------------------ */
-/* Motion Presets                                                    */
+/* Motion Presets                                                     */
 /* ------------------------------------------------------------------ */
 const easeOut = [0.22, 1, 0.36, 1] as const;
 
@@ -178,21 +178,18 @@ export default function AdminPage() {
 
   /* -------- Security Auth & Realtime Loader -------- */
   useEffect(() => {
-    const verifyAuth = async () => {
-      const loggedIn = localStorage.getItem("adminLoggedIn");
-      
-      const { data } = await supabase.auth.getSession();
-      
-      if (loggedIn !== "true" || !data.session) {
+    // ⚙️ Adaptive Auth State Subscription (Fixes Phone vs Laptop Multi-Device Conflicts)
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        localStorage.removeItem("adminLoggedIn");
+        localStorage.removeItem("adminLoginTime");
         router.push("/staff");
-        return;
+      } else {
+        localStorage.setItem("adminLoggedIn", "true");
+        loadBookings();
+        loadAcademyData();
       }
-      
-      loadBookings();
-      loadAcademyData();
-    };
-
-    verifyAuth();
+    });
 
     const bookingsChannel = supabase
       .channel("bookings-realtime")
@@ -215,6 +212,7 @@ export default function AdminPage() {
       .subscribe();
 
     return () => {
+      authListener.subscription.unsubscribe();
       supabase.removeChannel(bookingsChannel);
       supabase.removeChannel(blockedChannel);
       supabase.removeChannel(studentsChannel);
@@ -249,7 +247,8 @@ export default function AdminPage() {
     const resetTimer = () => {
       clearTimeout(timeout);
       timeout = setTimeout(async () => {
-        await supabase.auth.signOut();
+        // Scoped to local session to avoid logging out active session on laptop/phone
+        await supabase.auth.signOut({ scope: "local" });
         localStorage.removeItem("adminLoggedIn");
         localStorage.removeItem("adminLoginTime");
         alert("⚠️ Session expired due to inactivity. Please log in again.");
@@ -409,7 +408,6 @@ export default function AdminPage() {
     const todayStr = getTodayStr();
     const tomorrowStr = getTomorrowStr();
 
-    // ⚙️ Core Logic: Load everything active OR exactly the filter date
     let orQuery = `booking_date.gte.${todayStr},balance_amount.gt.0,payment_date.eq.${todayStr}`;
     if (filterDate && filterDate < todayStr) {
       orQuery += `,booking_date.eq.${filterDate}`;
@@ -521,7 +519,6 @@ export default function AdminPage() {
     setAvailableAdminSlots(availableTimes);
   };
 
-  // ⚙️ Load Reschedule Available Slots (Range-based & Court-aware)
   const loadRescheduleAvailableSlots = async (
     date: string,
     duration: number = rescheduleDuration,
@@ -662,8 +659,6 @@ export default function AdminPage() {
     setSlotReason("OFFLINE BOOKING"); setSlotCourt("Full Court");
     setShowManageSlots(false);
   };
-
-  // ⚙️ MANAGE OPERATIONS HANDLERS
 
   const handleCancelWithRefund = async () => {
     if (!selectedManageBooking) return;
@@ -832,7 +827,6 @@ export default function AdminPage() {
     .filter((booking) => booking.booking_date?.split("T")[0] === getTodayStr())
     .reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
 
-  // ⚙️ UPDATED EXCEL EXPORT (Contains S.No, Email, Reference ID, correctly formatted)
   const exportToExcel = async () => {
     const XLSX = await import("xlsx");
     
@@ -924,29 +918,12 @@ export default function AdminPage() {
     ]);
     XLSX.utils.sheet_add_json(worksheet, exportData, { origin: "A14" });
     
-    // Auto-filter now spans columns A to T
     worksheet["!autofilter"] = { ref: `A14:T${14 + exportData.length}` };
     worksheet["!cols"] = [
-      { wch: 8 },  // S.No
-      { wch: 12 }, // Booking ID
-      { wch: 18 }, // Ref ID
-      { wch: 22 }, // Name
-      { wch: 25 }, // Email
-      { wch: 15 }, // Phone
-      { wch: 15 }, // Date
-      { wch: 12 }, // Time
-      { wch: 15 }, // Duration
-      { wch: 12 }, // Sport
-      { wch: 15 }, // Type
-      { wch: 12 }, // Court
-      { wch: 12 }, // Total
-      { wch: 12 }, // Advance
-      { wch: 12 }, // Balance
-      { wch: 12 }, // Status
-      { wch: 18 }, // Pay Method
-      { wch: 18 }, // Cash
-      { wch: 18 }, // UPI
-      { wch: 15 }, // Pay Status
+      { wch: 8 }, { wch: 12 }, { wch: 18 }, { wch: 22 }, { wch: 25 },
+      { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 },
+      { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+      { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 15 },
     ];
     XLSX.utils.book_append_sheet(workbook, worksheet, "Bookings");
 
@@ -969,7 +946,7 @@ export default function AdminPage() {
       ["UPI Collected (₹)", todayUpi],
       ["Total Collected (Cash + UPI) (₹)", todayCollection],
       ["Actual Money In Hand (Adv + Cash + UPI) (₹)", todayMoneyInHand],
-      ["Setlement Status", todayBalance > 0 ? `⚠️ ₹${todayBalance} DUE` : "✅ SETTLED"],
+      ["Settlement Status", todayBalance > 0 ? `⚠️ ₹${todayBalance} DUE` : "✅ SETTLED"],
     ]);
     XLSX.utils.book_append_sheet(workbook, todaySheet, "Today");
 
@@ -1031,27 +1008,27 @@ export default function AdminPage() {
     
     dailySheet["!autofilter"] = { ref: `A1:J${1 + dailySummaryArray.length}` };
     dailySheet["!cols"] = [
-      { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 28 }, { wch: 38 }, { wch: 20 }
+      { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 20 },
+      { wch: 20 }, { wch: 20 }, { wch: 28 }, { wch: 38 }, { wch: 20 }
     ];
     XLSX.utils.book_append_sheet(workbook, dailySheet, "Daily Summary");
 
     const academySheet = XLSX.utils.json_to_sheet(academyWorksheetData);
-    
     const totalColumns = 7 + uniqueMonths.length; 
     const endColumnChar = String.fromCharCode(64 + totalColumns); 
     
     academySheet["!autofilter"] = { ref: `A1:${endColumnChar}${1 + academyWorksheetData.length}` }; 
     academySheet["!cols"] = [
-      { wch: 8 },
-      { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 15 }, { wch: 18 },
-      ...uniqueMonths.map(() => ({ wch: 22 }))
+      { wch: 8 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 25 },
+      { wch: 15 }, { wch: 18 }, ...uniqueMonths.map(() => ({ wch: 22 }))
     ];
     XLSX.utils.book_append_sheet(workbook, academySheet, "Football Coaching");
 
     XLSX.writeFile(workbook, `SMES_Master_Report_${todayStr}.xlsx`);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut({ scope: "local" });
     localStorage.removeItem("adminLoggedIn");
     localStorage.removeItem("adminLoginTime");
     router.push("/staff");
@@ -1121,15 +1098,12 @@ export default function AdminPage() {
     loadBookings();
   };
 
-  // ⚙️ UPDATED SEARCH LOGIC: Filter by Email, Ref ID, Date and Exact Booking ID Preference
   const filteredBookings = bookings
     .filter((booking) => {
-      // 1. Date Filter Logic
       if (filterDate && booking.booking_date?.split("T")[0] !== filterDate) {
         return false;
       }
       
-      // 2. Text Search Logic
       const search = searchTerm.toLowerCase().trim();
       if (!search) return true;
       return (
@@ -1142,7 +1116,6 @@ export default function AdminPage() {
       );
     })
     .sort((a, b) => {
-      // Priority sorting: Exact ID match goes to the top
       const search = searchTerm.trim();
       if (!search) return 0;
       
@@ -1152,7 +1125,7 @@ export default function AdminPage() {
       if (aIsExactId && !bIsExactId) return -1;
       if (!aIsExactId && bIsExactId) return 1;
       
-      return 0; // Maintain natural time-based order otherwise
+      return 0;
     });
 
   const statCards = useMemo(() => [
@@ -1285,8 +1258,8 @@ export default function AdminPage() {
               className="bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-mono text-xs uppercase tracking-widest px-5 py-4 font-black transition-colors"
               onClick={() => {
                 setShowManageSlots(true);
-                setSlotDate(getTodayStr()); // Auto-set to today
-                loadAvailableAdminSlots(getTodayStr()); // Auto-load today's time slots
+                setSlotDate(getTodayStr());
+                loadAvailableAdminSlots(getTodayStr());
               }}
             >
               ⚙️ Manage Slots
@@ -1647,7 +1620,7 @@ export default function AdminPage() {
           // Showing {filteredBookings.length} booking(s) active
         </p>
 
-        {/* ---------- COMPACT BOOKINGS TABLE (Now scrolls on mobile natively) ---------- */}
+        {/* ---------- COMPACT BOOKINGS TABLE ---------- */}
         <motion.section
           variants={fadeUp}
           initial="hidden"
@@ -1655,7 +1628,6 @@ export default function AdminPage() {
           viewport={{ once: true, amount: 0.05 }}
           className="border border-neutral-900 bg-neutral-900/30 backdrop-blur overflow-hidden"
         >
-          {/* ⚙️ Header with Date Filter Button */}
           <div className="p-4 border-b border-neutral-900 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div>
               <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block">
@@ -1666,7 +1638,6 @@ export default function AdminPage() {
               </h2>
             </div>
             
-            {/* ⚙️ Interactive Date Filter */}
             <div className="flex items-center gap-2 bg-neutral-950 border border-neutral-800 p-1.5 px-3">
               <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
                 📅 Date Sort:
@@ -1720,7 +1691,6 @@ export default function AdminPage() {
                         layout
                         className={`${rowColor} hover:bg-white/[0.03] transition-colors`}
                       >
-                        {/* 1. COMPACT COLUMN: Client, Booking ID & Reference */}
                         <td className="p-4 align-top">
                           <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -1738,7 +1708,6 @@ export default function AdminPage() {
                           </div>
                         </td>
 
-                        {/* 2. COMPACT COLUMN: Schedule & Time */}
                         <td className="p-4 align-top">
                           <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-2 whitespace-nowrap">
@@ -1765,7 +1734,6 @@ export default function AdminPage() {
                           </div>
                         </td>
 
-                        {/* 3. COMPACT COLUMN: Arena Details */}
                         <td className="p-4 align-top">
                           <div className="flex flex-col gap-1 items-start whitespace-nowrap">
                             <span className="text-xs uppercase tracking-widest font-black text-neutral-300">
@@ -1784,7 +1752,6 @@ export default function AdminPage() {
                           </div>
                         </td>
 
-                        {/* 4. COMPACT COLUMN: Financials */}
                         <td className="p-4 align-top">
                           <div className="flex flex-col gap-1 font-mono text-xs min-w-[120px] whitespace-nowrap">
                             <div className="flex justify-between">
@@ -1806,7 +1773,6 @@ export default function AdminPage() {
                           </div>
                         </td>
 
-                        {/* 5. COMPACT COLUMN: Operations */}
                         <td className="p-4 align-top text-center">
                           <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
                             {booking.balance_amount > 0 ? (
@@ -1831,7 +1797,6 @@ export default function AdminPage() {
                               )
                             )}
 
-                            {/* ⚙️ MASTER ADMIN MANAGE BUTTON (4 Options) */}
                             <motion.button
                               whileHover={{ y: -1 }}
                               whileTap={{ scale: 0.96 }}
@@ -1942,7 +1907,7 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* ---------- MANAGE BOOKING MODAL (INTEGRATED POP-UP) ---------- */}
+      {/* ---------- MANAGE BOOKING MODAL ---------- */}
       <AnimatePresence>
         {showManageModal && selectedManageBooking && (
           <motion.div
@@ -1960,7 +1925,6 @@ export default function AdminPage() {
             >
               <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-fuchsia-500/10 to-transparent pointer-events-none" />
 
-              {/* Modal Header */}
               <div className="relative">
                 <span className="text-[10px] font-mono uppercase tracking-widest text-fuchsia-400 block mb-1">
                   // Order Management Node
@@ -1973,7 +1937,6 @@ export default function AdminPage() {
                 </p>
               </div>
 
-              {/* Mode Switcher */}
               {manageMode === "options" ? (
                 <div className="space-y-2.5 relative">
                   <div className="p-3 bg-neutral-900/80 border border-neutral-800 text-xs font-mono space-y-1">
@@ -1987,7 +1950,6 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  {/* Option 1: Cancel and Refund Advance */}
                   <motion.button
                     whileHover={{ scale: 1.01, borderColor: "rgba(239, 68, 68, 0.6)" }}
                     whileTap={{ scale: 0.98 }}
@@ -2007,7 +1969,6 @@ export default function AdminPage() {
                     </p>
                   </motion.button>
 
-                  {/* Option 2: Reschedule Time Slot */}
                   <motion.button
                     whileHover={{ scale: 1.01, borderColor: "rgba(163, 230, 53, 0.6)" }}
                     whileTap={{ scale: 0.98 }}
@@ -2025,7 +1986,6 @@ export default function AdminPage() {
                     </p>
                   </motion.button>
 
-                  {/* Option 3: Cancel Without Refund */}
                   <motion.button
                     whileHover={{ scale: 1.01, borderColor: "rgba(245, 158, 11, 0.6)" }}
                     whileTap={{ scale: 0.98 }}
@@ -2043,7 +2003,6 @@ export default function AdminPage() {
                     </p>
                   </motion.button>
 
-                  {/* Option 4: Extend Slot (Check & Extend) */}
                   <motion.button
                     whileHover={{ scale: 1.01, borderColor: "rgba(6, 182, 212, 0.6)" }}
                     whileTap={{ scale: 0.98 }}
@@ -2062,14 +2021,12 @@ export default function AdminPage() {
                   </motion.button>
                 </div>
               ) : manageMode === "reschedule" ? (
-                /* Reschedule View */
                 <div className="space-y-3 relative">
-                  {/* Field 1: Date */}
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-mono uppercase text-neutral-400">New Date</label>
                     <input
                       type="date"
-                      min={getTodayStr()} // ⚙️ Dynamic Date Fetch
+                      min={getTodayStr()}
                       value={rescheduleDate}
                       onChange={(e) => {
                         const newDate = e.target.value;
@@ -2081,7 +2038,6 @@ export default function AdminPage() {
                     />
                   </div>
 
-                  {/* Fields 2 & 3: Court and Duration */}
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-mono uppercase text-neutral-400">Court</label>
@@ -2119,7 +2075,6 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  {/* Field 4: Time Slot */}
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-mono uppercase text-neutral-400">New Time Slot</label>
                     <select
@@ -2134,7 +2089,6 @@ export default function AdminPage() {
                     </select>
                   </div>
 
-                  {/* Projected Reschedule Pricing Box */}
                   <div className="p-3 bg-lime-950/30 border border-lime-800/50 text-xs font-mono text-lime-400">
                     Calculated New Price Matrix:<br />
                     <span className="font-bold text-white text-sm">
@@ -2162,7 +2116,6 @@ export default function AdminPage() {
                   </div>
                 </div>
               ) : (
-                /* Extend Slot View */
                 <div className="space-y-3 relative">
                   <div className="p-3 bg-neutral-900 border border-neutral-800 text-xs font-mono space-y-1">
                     <div className="flex justify-between text-neutral-400">
@@ -2227,7 +2180,6 @@ export default function AdminPage() {
                 </div>
               )}
 
-              {/* Close Button */}
               <div className="pt-2 border-t border-neutral-900 flex justify-end">
                 <button
                   onClick={() => { setShowManageModal(false); setSelectedManageBooking(null); }}
@@ -2387,7 +2339,7 @@ export default function AdminPage() {
                   <label className="text-[10px] font-mono uppercase text-neutral-400">Date</label>
                   <input
                     type="date"
-                    min={getTodayStr()} // ⚙️ Dynamic Date Fetch
+                    min={getTodayStr()}
                     value={slotDate}
                     onChange={(e) => {
                       setSlotDate(e.target.value);
@@ -2413,28 +2365,47 @@ export default function AdminPage() {
                   >
                     <option value="">-- Select Time --</option>
                     {availableAdminSlots.map((t) => (
-                      <option key={t} value={t}>{t}</option>
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
                     ))}
                   </select>
                 </div>
 
-                {(slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE") ? (
-                  <div className="space-y-1.5">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400">Court Section</label>
+                  <select
+                    value={slotCourt}
+                    onChange={(e) => setSlotCourt(e.target.value)}
+                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                  >
+                    {availableCourts.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE" ? (
+                  <div className="space-y-1.5 sm:col-span-2">
                     <label className="text-[10px] font-mono uppercase text-neutral-400">End Time</label>
                     <select
                       value={slotEndTime}
                       onChange={(e) => setSlotEndTime(e.target.value)}
                       className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
                     >
-                      <option value="">-- Select End --</option>
+                      <option value="">-- Select End Time --</option>
                       {adminTimeSlots.map((t) => (
-                        <option key={t} value={t}>{t}</option>
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
                       ))}
                     </select>
                   </div>
                 ) : (
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-mono uppercase text-neutral-400">Duration (mins)</label>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <label className="text-[10px] font-mono uppercase text-neutral-400">Duration (Minutes)</label>
                     <select
                       value={slotDuration}
                       onChange={(e) => setSlotDuration(Number(e.target.value))}
@@ -2447,82 +2418,60 @@ export default function AdminPage() {
                     </select>
                   </div>
                 )}
-
-                <div className="space-y-1.5 sm:col-span-2">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Court</label>
-                  <select
-                    value={slotCourt}
-                    onChange={(e) => setSlotCourt(e.target.value)}
-                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
-                  >
-                    {availableCourts.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {slotReason === "OFFLINE BOOKING" && (
-                  <>
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <label className="text-[10px] font-mono uppercase text-neutral-400">Payment Method</label>
-                      <select
-                        value={offlinePaymentMethod}
-                        onChange={(e) => setOfflinePaymentMethod(e.target.value)}
-                        className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
-                      >
-                        <option value="Cash">Cash</option>
-                        <option value="UPI">UPI</option>
-                        <option value="Cash + UPI">Cash + UPI</option>
-                      </select>
-                    </div>
-
-                    {offlinePaymentMethod === "Cash + UPI" ? (
-                      <>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-mono uppercase text-neutral-400">Cash Amount</label>
-                          <input
-                            type="number"
-                            placeholder="₹"
-                            value={offlineCashAmount}
-                            onChange={(e) => setOfflineCashAmount(e.target.value)}
-                            className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-mono uppercase text-neutral-400">UPI Amount</label>
-                          <input
-                            type="number"
-                            placeholder="₹"
-                            value={offlineUpiAmount}
-                            onChange={(e) => setOfflineUpiAmount(e.target.value)}
-                            className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                          />
-                        </div>
-                      </>
-                    ) : (
-                      <div className="space-y-1.5 sm:col-span-2">
-                        <label className="text-[10px] font-mono uppercase text-neutral-400">Amount Received</label>
-                        <input
-                          type="number"
-                          placeholder="₹"
-                          value={offlineAmount}
-                          onChange={(e) => setOfflineAmount(e.target.value)}
-                          className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                        />
-                      </div>
-                    )}
-                  </>
-                )}
               </div>
+
+              {slotReason === "OFFLINE BOOKING" && (
+                <div className="p-3 bg-neutral-900 border border-neutral-800 space-y-3 relative">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono uppercase text-neutral-400">Payment Route</label>
+                    <select
+                      value={offlinePaymentMethod}
+                      onChange={(e) => setOfflinePaymentMethod(e.target.value)}
+                      className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors"
+                    >
+                      <option value="Cash">Cash</option>
+                      <option value="UPI">UPI</option>
+                      <option value="Cash + UPI">Cash + UPI</option>
+                    </select>
+                  </div>
+
+                  {offlinePaymentMethod === "Cash + UPI" ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="number"
+                        placeholder="Cash Amount (₹)"
+                        value={offlineCashAmount}
+                        onChange={(e) => setOfflineCashAmount(e.target.value)}
+                        className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                      />
+                      <input
+                        type="number"
+                        placeholder="UPI Amount (₹)"
+                        value={offlineUpiAmount}
+                        onChange={(e) => setOfflineUpiAmount(e.target.value)}
+                        className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                      />
+                    </div>
+                  ) : (
+                    <input
+                      type="number"
+                      placeholder="Total Amount Received (₹)"
+                      value={offlineAmount}
+                      onChange={(e) => setOfflineAmount(e.target.value)}
+                      className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                    />
+                  )}
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3 pt-2 relative">
                 <motion.button
-                  whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.3)" }}
+                  whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(217,70,239,0.3)" }}
                   whileTap={{ scale: 0.97 }}
                   onClick={saveBlockedSlot}
-                  className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
+                  className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
                 >
-                  Save Slot
+                  Save Field Block
                 </motion.button>
                 <motion.button
                   whileTap={{ scale: 0.97 }}
@@ -2536,6 +2485,7 @@ export default function AdminPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
     </main>
   );
 }
