@@ -407,11 +407,25 @@ export default function Home() {
       const adminText = `🔔 *NEW BOOKING RECEIVED*\n\n*SMES Sports Academy*\n\n👤 *Customer:* ${name}\n📞 *Phone:* ${phone}\n📧 *Email:* ${email}\n\n📅 *Date:* ${bookingDate}\n🕒 *Time:* ${startTime}\n⏱ *Duration:* ${duration} Minutes\n\n🏟 *Court:* ${verifyData.booking?.court_number || bookingType}\n🏏 *Sport:* ${sport}\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200\n💳 *Balance:* ₹${balanceAmount}\n\n💳 *Payment Status:* PAID\n\n*Booking ID:* ${bookingId}\n*Ref ID:* ${referenceId}`;
 
       // 3. Send Admin Notification (assuming your old route still handles this)
+      // 3. Send ALL Notifications (Admin Whapi + Customer Meta)
       await fetch("/api/whatsapp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          adminMessage: adminText,
+          // For Whapi (Admin/Owner)
+          adminMessage: adminText, 
+          
+          // For Meta Cloud API (Customer Template)
+          customerPhone: phone,    
+          customerName: name, 
+          date: bookingDate,
+          timeRange: formattedTimeSlot, // uses your getTimeRangeLabel helper
+          sportAndCourt: `${sport} (${verifyData.booking?.court_number || bookingType})`,
+          bookingId: bookingId,
+          refId: referenceId,
+          totalAmount: `${totalAmount}`,
+          advancePaid: "200",
+          balanceDue: `${balanceAmount}`
         }),
       });
 
