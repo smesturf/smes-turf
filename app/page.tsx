@@ -408,26 +408,29 @@ export default function Home() {
 
       // 3. Send Admin Notification (assuming your old route still handles this)
       // 3. Send ALL Notifications (Admin Whapi + Customer Meta)
-      await fetch("/api/whatsapp", {
+      const whatsappRes = await fetch("/api/whatsapp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          // For Whapi (Admin/Owner)
-          adminMessage: adminText, 
-          
-          // For Meta Cloud API (Customer Template)
           customerPhone: phone,    
           customerName: name, 
           date: bookingDate,
-          timeRange: formattedTimeSlot, // uses your getTimeRangeLabel helper
-          sportAndCourt: `${sport} (${verifyData.booking?.court_number || bookingType})`,
+          time: formattedTimeSlot, 
+          sport: `${sport} (${verifyData.booking?.court_number || bookingType})`,
           bookingId: bookingId,
-          refId: referenceId,
-          totalAmount: `${totalAmount}`,
-          advancePaid: "200",
-          balanceDue: `${balanceAmount}`
+          referenceId: referenceId,
+          totalAmount: totalAmount,
+          advanceAmount: advancePaid,
+          balanceAmount: balanceAmount
         }),
       });
+
+      // Optional: You can check if the customer message sent successfully 
+      // without breaking the rest of the flow
+      const whatsappData = await whatsappRes.json();
+      if (!whatsappData.metaSent) {
+        console.warn("Admin notified, but customer WhatsApp failed:", whatsappData.metaError);
+      }
 
       setIsProcessingBooking(false);
 
