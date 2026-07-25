@@ -60,11 +60,31 @@ export async function POST(req: NextRequest) {
 
           // Route the logic based on which button they tapped
           if (buttonId === "btn_book") {
-            console.log("Triggering booking flow...");
+            // Step 1 of Booking: Send Football/Cricket buttons
+            await sendSportSelection(phoneNumberId, from);
+            
+          } else if (buttonId === "btn_sport_football" || buttonId === "btn_sport_cricket") {
+            // Step 2 of Booking: Acknowledge sport and prep for time slots
+            const chosenSport = buttonId === "btn_sport_football" ? "Football" : "Cricket";
+            await sendTextMessage(
+              phoneNumberId, 
+              from, 
+              `You chose ${chosenSport}! 🏆\n\nNext, we will show you available time slots.`
+            );
+            
           } else if (buttonId === "btn_my_bookings") {
-            console.log("Triggering lookup flow...");
+            await sendTextMessage(
+              phoneNumberId, 
+              from, 
+              "Let me check the system for your recent bookings... ⏳\n\n(Database lookup coming soon!)"
+            );
+            
           } else if (buttonId === "btn_support") {
-            console.log("Triggering support flow...");
+            await sendTextMessage(
+              phoneNumberId, 
+              from, 
+              "Our support team is here to help! 🛠️\n\nPlease call us at +91 XXXXX XXXXX or email support@smesturf.com."
+            );
           }
         }
       }
@@ -81,7 +101,7 @@ export async function POST(req: NextRequest) {
 }
 
 // ==========================================
-// 3. Helper: Sends Interactive Button Menu
+// 3. Helper: Sends Main Interactive Menu
 // ==========================================
 async function sendInteractiveMenu(phoneNumberId: string, to: string) {
   const token = process.env.META_ACCESS_TOKEN;
@@ -136,13 +156,97 @@ async function sendInteractiveMenu(phoneNumberId: string, to: string) {
       }
     );
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error("Failed to send message:", errorData);
-    } else {
-      console.log("✅ Interactive menu sent successfully!");
-    }
+    if (!response.ok) console.error("Failed to send menu:", await response.json());
   } catch (error) {
     console.error("Error sending WhatsApp API request:", error);
+  }
+}
+
+// ==========================================
+// 4. Helper: Sends Standard Text Messages
+// ==========================================
+async function sendTextMessage(phoneNumberId: string, to: string, text: string) {
+  const token = process.env.META_ACCESS_TOKEN;
+
+  const data = {
+    messaging_product: "whatsapp",
+    to: to,
+    type: "text",
+    text: {
+      body: text,
+    },
+  };
+
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      }
+    );
+
+    if (!response.ok) console.error("Failed to send text message:", await response.json());
+  } catch (error) {
+    console.error("Error sending text message:", error);
+  }
+}
+
+// ==========================================
+// 5. Helper: Sends Sport Selection (Step 1)
+// ==========================================
+async function sendSportSelection(phoneNumberId: string, to: string) {
+  const token = process.env.META_ACCESS_TOKEN;
+
+  const data = {
+    messaging_product: "whatsapp",
+    to: to,
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: {
+        text: "Great! Which sport would you like to book? ⚽🏏",
+      },
+      action: {
+        buttons: [
+          {
+            type: "reply",
+            reply: {
+              id: "btn_sport_football",
+              title: "Football",
+            },
+          },
+          {
+            type: "reply",
+            reply: {
+              id: "btn_sport_cricket",
+              title: "Cricket",
+            },
+          },
+        ],
+      },
+    },
+  };
+
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      }
+    );
+
+    if (!response.ok) console.error("Failed to send sport selection:", await response.json());
+  } catch (error) {
+    console.error("Error sending sport selection:", error);
   }
 }
