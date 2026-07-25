@@ -26,41 +26,10 @@ export async function POST(req: NextRequest) {
       const phoneNumberId = body.entry[0].changes[0].value.metadata.phone_number_id;
       const from = message.from; 
 
-      // --- 2A. HANDLE TEXT INPUTS (Trigger Main Menu) ---
+      // --- TRIGGER THE TEMPLATE ON ANY TEXT MESSAGE ---
       if (message.type === "text") {
-        const textBody = message.text.body.toLowerCase();
-
-        // Trigger the menu on greeting
-        if (textBody === "hi" || textBody === "hello") {
-          await sendButtonMessage(phoneNumberId, from, "Welcome to SMES Turf! ⚽🏏 What would you like to do?", [
-            { id: "btn_book", title: "Book Now" },
-            { id: "btn_call", title: "Call Now" }
-          ]);
-        }
-      }
-
-      // --- 2B. HANDLE INTERACTIVE BUTTON CLICKS ---
-      if (message.type === "interactive" && message.interactive.type === "button_reply") {
-        const buttonId = message.interactive.button_reply.id;
-
-        if (buttonId === "btn_book") {
-          // Send the Website Link (WhatsApp makes URLs clickable automatically)
-          await sendTextMessage(
-            phoneNumberId, 
-            from, 
-            "Great! Click the link below to view availability and book your turf instantly:\n\n🌐 https://smesturf.com"
-          );
-        } 
-        
-        else if (buttonId === "btn_call") {
-          // Send the Phone Number (WhatsApp makes numbers tappable to dial automatically)
-          // ⚠️ Be sure to replace the placeholder number below with your actual phone number!
-          await sendTextMessage(
-            phoneNumberId, 
-            from, 
-            "We would love to speak with you! Tap the number below to call us directly:\n\n📞 +91 8073064676"
-          );
-        }
+        // Fires the template you just created in the Meta dashboard
+        await sendTemplateMessage(phoneNumberId, from, "smes_welcome_menu");
       }
 
       return NextResponse.json({ status: "success" }, { status: 200 });
@@ -76,24 +45,22 @@ export async function POST(req: NextRequest) {
 // HELPER FUNCTIONS 
 // ==========================================
 
-// 1. Send Text Message
-async function sendTextMessage(phoneId: string, to: string, text: string) {
+// Send WhatsApp Template Message (with direct URL and Call CTA buttons)
+async function sendTemplateMessage(phoneId: string, to: string, templateName: string) {
   await fetch(`https://graph.facebook.com/v19.0/${phoneId}/messages`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${process.env.META_ACCESS_TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ messaging_product: "whatsapp", to, type: "text", text: { body: text } })
-  });
-}
-
-// 2. Send Interactive Buttons (Max 3 buttons per message)
-async function sendButtonMessage(phoneId: string, to: string, text: string, buttons: {id: string, title: string}[]) {
-  const actionButtons = buttons.map(btn => ({ type: "reply", reply: { id: btn.id, title: btn.title } }));
-  await fetch(`https://graph.facebook.com/v19.0/${phoneId}/messages`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${process.env.META_ACCESS_TOKEN}`, "Content-Type": "application/json" },
+    headers: { 
+      Authorization: `Bearer ${process.env.META_ACCESS_TOKEN}`, 
+      "Content-Type": "application/json" 
+    },
     body: JSON.stringify({
-      messaging_product: "whatsapp", to, type: "interactive",
-      interactive: { type: "button", body: { text }, action: { buttons: actionButtons } }
+      messaging_product: "whatsapp", 
+      to: to, 
+      type: "template", 
+      template: { 
+        name: templateName, 
+        language: { code: "en" } // Make sure this perfectly matches the language you chose in Meta
+      }
     })
   });
 }
