@@ -9,6 +9,10 @@ export async function GET(req: Request) {
   const token = url.searchParams.get("hub.verify_token");
   const challenge = url.searchParams.get("hub.challenge");
 
+  // 🚨 DEBUGGING LOGS: This will reveal the token mismatch in Vercel!
+  console.log("Token sent by Meta:", token);
+  console.log("Token stored in Vercel:", process.env.META_WEBHOOK_VERIFY_TOKEN);
+
   if (mode === "subscribe" && token === process.env.META_WEBHOOK_VERIFY_TOKEN) {
     console.log("✅ Tokens Match! Handshake successful.");
     return new NextResponse(challenge, { 
