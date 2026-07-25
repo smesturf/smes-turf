@@ -753,8 +753,19 @@ export default function Home() {
                     placeholder="Active contact"
                     value={phone}
                     onChange={(e) => {
-                      const sanitized = e.target.value.replace(/\D/g, "");
-                      if (sanitized.length <= 10) setPhone(sanitized);
+                      let sanitized = e.target.value.replace(/\D/g, "");
+                      
+                      // Auto-correct leading '0' from Google Autofill
+                      if (sanitized.startsWith("0") && sanitized.length > 10) {
+                        sanitized = sanitized.slice(1);
+                      } 
+                      // Auto-correct leading '91' from Google Autofill
+                      else if (sanitized.startsWith("91") && sanitized.length > 10) {
+                        sanitized = sanitized.slice(2);
+                      }
+
+                      // Set state and forcefully limit to 10 digits
+                      setPhone(sanitized.slice(0, 10));
                     }}
                     className="w-full p-4 bg-neutral-900/50 text-white font-mono border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all text-base md:text-sm"
                   />
