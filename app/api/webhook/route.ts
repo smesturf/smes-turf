@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
           await sendTextMessage(
             phoneNumberId, 
             from, 
-            "We would love to speak with you! Tap the number below to call us directly:\n\n📞 +91 99999 99999"
+            "We would love to speak with you! Tap the number below to call us directly:\n\n📞 +91 8073064676"
           );
         }
       }
