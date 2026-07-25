@@ -1,20 +1,20 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 
 // ==========================================
 // 1. GET: Handles the Meta Handshake
 // ==========================================
-export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const mode = url.searchParams.get("hub.mode");
-  const token = url.searchParams.get("hub.verify_token");
-  const challenge = url.searchParams.get("hub.challenge");
+export async function GET(req: NextRequest) {
+  // Using NextRequest's native URL parser prevents Vercel/Next.js from stripping query parameters
+  const mode = req.nextUrl.searchParams.get("hub.mode");
+  const token = req.nextUrl.searchParams.get("hub.verify_token");
+  const challenge = req.nextUrl.searchParams.get("hub.challenge");
 
-  // 🚨 DEBUGGING LOGS: This will reveal the token mismatch in Vercel!
   console.log("Token sent by Meta:", token);
   console.log("Token stored in Vercel:", process.env.META_WEBHOOK_VERIFY_TOKEN);
 
   if (mode === "subscribe" && token === process.env.META_WEBHOOK_VERIFY_TOKEN) {
     console.log("✅ Tokens Match! Handshake successful.");
+    // Meta requires the challenge to be returned as plain text
     return new NextResponse(challenge, { 
       status: 200,
       headers: { "Content-Type": "text/plain" }
@@ -25,82 +25,106 @@ export async function GET(req: Request) {
 }
 
 // ==========================================
-// 2. POST: Handles Incoming WhatsApp Messages
+// 2. POST: Handles incoming WhatsApp messages
 // ==========================================
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // Verify this is a WhatsApp API event
-    if (body.object === "whatsapp_business_account") {
-      const entry = body.entry?.[0];
-      const changes = entry?.changes?.[0];
-      const value = changes?.value;
-      const message = value?.messages?.[0];
+    // Check if this is a WhatsApp status update or a message
+    if (body.object) {
+      if (
+        body.entry &&
+        body.entry[0].changes &&
+        body.entry[0].changes[0] &&
+        body.entry[0].changes[0].value.messages &&
+        body.entry[0].changes[0].value.messages[0]
+      ) {
+        const phoneNumberId = body.entry[0].changes[0].value.metadata.phone_number_id;
+        const from = body.entry[0].changes[0].value.messages[0].from; // sender's phone number
+        const msgBody = body.entry[0].changes[0].value.messages[0].text?.body?.toLowerCase();
 
-      // If a customer sent a message, extract details & respond
-      if (message) {
-        const phone = message.from;
-        const text = message.text?.body?.trim().toLowerCase();
-        
-        console.log(`💬 Incoming message from ${phone}: ${text}`);
-        
-        // Trigger interactive menu for greetings
-        if (text === "hi" || text === "hello" || text === "hey") {
-          await sendInteractiveMenu(phone);
+        console.log(`Received message: "${msgBody}" from ${from}`);
+
+        // If the user says hi, hello, or hey, trigger the interactive menu
+        if (msgBody === "hi" || msgBody === "hello" || msgBody === "hey") {
+          await sendInteractiveMenu(phoneNumberId, from);
         }
       }
-      
-      // Meta strictly requires a 200 OK response to acknowledge receipt
-      return new NextResponse("EVENT_RECEIVED", { status: 200 });
+      // Acknowledge receipt back to Meta immediately
+      return NextResponse.json({ status: "success" }, { status: 200 });
+    } else {
+      return new NextResponse("Not Found", { status: 404 });
     }
-    
-    return new NextResponse("Not Found", { status: 404 });
   } catch (error) {
     console.error("Error processing POST request:", error);
-    return new NextResponse("Internal Error", { status: 500 });
+    return new NextResponse("Internal Server Error", { status: 500 });
   }
 }
 
 // ==========================================
-// 3. HELPER: Send Interactive Menu
+// 3. Helper: Sends Interactive Button Menu
 // ==========================================
-async function sendInteractiveMenu(to: string) {
-  // Uses META_PHONE_NUMBER_ID matching your Vercel settings
-  const url = `https://graph.facebook.com/v20.0/${process.env.META_PHONE_NUMBER_ID}/messages`;
+async function sendInteractiveMenu(phoneNumberId: string, to: string) {
   const token = process.env.META_ACCESS_TOKEN;
 
-  const payload = {
+  const data = {
     messaging_product: "whatsapp",
-    recipient_type: "individual",
     to: to,
     type: "interactive",
     interactive: {
       type: "button",
-      body: { text: "Welcome to SMES Turf! ⚽\n\nHow can we help you today?" },
+      body: {
+        text: "Welcome to SMES Turf! How can we help you today?",
+      },
       action: {
         buttons: [
-          { type: "reply", reply: { id: "BOOK_TURF", title: "📅 Book Turf" } },
-          { type: "reply", reply: { id: "MY_BOOKINGS", title: "📋 My Bookings" } },
-          { type: "reply", reply: { id: "SUPPORT", title: "💬 Support" } }
-        ]
-      }
-    }
+          {
+            type: "reply",
+            reply: {
+              id: "btn_book",
+              title: "Book",
+            },
+          },
+          {
+            type: "reply",
+            reply: {
+              id: "btn_my_bookings",
+              title: "My Bookings",
+            },
+          },
+          {
+            type: "reply",
+            reply: {
+              id: "btn_support",
+              title: "Support",
+            },
+          },
+        ],
+      },
+    },
   };
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
-    
-    const data = await response.json();
-    console.log("📤 Response from Meta API:", data);
+    const response = await fetch(
+      `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("Failed to send message:", errorData);
+    } else {
+      console.log("✅ Interactive menu sent successfully!");
+    }
   } catch (error) {
-    console.error("❌ Failed to send menu:", error);
+    console.error("Error sending WhatsApp API request:", error);
   }
 }
