@@ -425,16 +425,18 @@ export default function Home() {
         }),
       });
 
-      // Optional: You can check if the customer message sent successfully 
-      // without breaking the rest of the flow
       const whatsappData = await whatsappRes.json();
-      if (!whatsappData.metaSent) {
-        console.warn("Admin notified, but customer WhatsApp failed:", whatsappData.metaError);
+      
+      // NEW: Log actual API crashes to your browser console
+      if (!whatsappRes.ok) {
+         console.error("CRITICAL WHATSAPP API ERROR:", whatsappData);
+      } else if (!whatsappData.metaSent) {
+         console.warn("Customer Meta message failed:", whatsappData.metaError);
       }
 
       setIsProcessingBooking(false);
 
-      // Set success data to trigger your Arena Pass[cite: 1]
+      // Set success data to trigger your Arena Pass
       setSuccessData({
         bookingId,
         referenceId,
