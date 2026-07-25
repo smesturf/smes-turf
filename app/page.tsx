@@ -406,17 +406,19 @@ export default function Home() {
       // 2. Updated admin notification text with Email and Ref ID
       const adminText = `🔔 *NEW BOOKING RECEIVED*\n\n*SMES Sports Academy*\n\n👤 *Customer:* ${name}\n📞 *Phone:* ${phone}\n📧 *Email:* ${email}\n\n📅 *Date:* ${bookingDate}\n🕒 *Time:* ${startTime}\n⏱ *Duration:* ${duration} Minutes\n\n🏟 *Court:* ${verifyData.booking?.court_number || bookingType}\n🏏 *Sport:* ${sport}\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200\n💳 *Balance:* ₹${balanceAmount}\n\n💳 *Payment Status:* PAID\n\n*Booking ID:* ${bookingId}\n*Ref ID:* ${referenceId}`;
 
-      // 3. Send Admin Notification (assuming your old route still handles this)
-      // 3. Send ALL Notifications (Admin Whapi + Customer Meta)
+      // 3. Send ALL Notifications (Customer, Admin, Sub-Admin, Owner via Meta)
       const whatsappRes = await fetch("/api/whatsapp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customerPhone: phone,    
           customerName: name, 
+          email: email,                            // New: Required for staff template {{3}}
           date: bookingDate,
           time: formattedTimeSlot, 
-          sport: `${sport} (${verifyData.booking?.court_number || bookingType})`,
+          duration: duration,                      // New: Required for staff template {{6}}
+          sport: sport,                            // Separated for exact template matching
+          court: verifyData.booking?.court_number || bookingType, // Separated for exact template matching
           bookingId: bookingId,
           referenceId: referenceId,
           totalAmount: totalAmount,
