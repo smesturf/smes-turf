@@ -4,7 +4,6 @@ import { NextResponse, NextRequest } from "next/server";
 // 1. GET: Handles the Meta Handshake
 // ==========================================
 export async function GET(req: NextRequest) {
-  // Using NextRequest's native URL parser prevents Vercel/Next.js from stripping query parameters
   const mode = req.nextUrl.searchParams.get("hub.mode");
   const token = req.nextUrl.searchParams.get("hub.verify_token");
   const challenge = req.nextUrl.searchParams.get("hub.challenge");
@@ -14,7 +13,6 @@ export async function GET(req: NextRequest) {
 
   if (mode === "subscribe" && token === process.env.META_WEBHOOK_VERIFY_TOKEN) {
     console.log("✅ Tokens Match! Handshake successful.");
-    // Meta requires the challenge to be returned as plain text
     return new NextResponse(challenge, { 
       status: 200,
       headers: { "Content-Type": "text/plain" }
@@ -31,7 +29,6 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // Check if this is a WhatsApp status update or a message
     if (body.object) {
       if (
         body.entry &&
@@ -40,17 +37,38 @@ export async function POST(req: NextRequest) {
         body.entry[0].changes[0].value.messages &&
         body.entry[0].changes[0].value.messages[0]
       ) {
+        const message = body.entry[0].changes[0].value.messages[0];
         const phoneNumberId = body.entry[0].changes[0].value.metadata.phone_number_id;
-        const from = body.entry[0].changes[0].value.messages[0].from; // sender's phone number
-        const msgBody = body.entry[0].changes[0].value.messages[0].text?.body?.toLowerCase();
+        const from = message.from;
 
-        console.log(`Received message: "${msgBody}" from ${from}`);
+        // --- 2A. HANDLE TEXT MESSAGES ---
+        if (message.type === "text") {
+          const msgBody = message.text?.body?.toLowerCase();
+          console.log(`Received text: "${msgBody}" from ${from}`);
 
-        // If the user says hi, hello, or hey, trigger the interactive menu
-        if (msgBody === "hi" || msgBody === "hello" || msgBody === "hey") {
-          await sendInteractiveMenu(phoneNumberId, from);
+          if (msgBody === "hi" || msgBody === "hello" || msgBody === "hey") {
+            await sendInteractiveMenu(phoneNumberId, from);
+          }
+        }
+
+        // --- 2B. HANDLE BUTTON CLICKS ---
+        if (message.type === "interactive") {
+          const buttonId = message.interactive.button_reply.id;
+          const buttonTitle = message.interactive.button_reply.title;
+          
+          console.log(`User clicked button: ${buttonTitle} (${buttonId})`);
+
+          // Route the logic based on which button they tapped
+          if (buttonId === "btn_book") {
+            console.log("Triggering booking flow...");
+          } else if (buttonId === "btn_my_bookings") {
+            console.log("Triggering lookup flow...");
+          } else if (buttonId === "btn_support") {
+            console.log("Triggering support flow...");
+          }
         }
       }
+      
       // Acknowledge receipt back to Meta immediately
       return NextResponse.json({ status: "success" }, { status: 200 });
     } else {
