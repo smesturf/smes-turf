@@ -20,7 +20,6 @@ export async function GET(req: Request) {
   return new NextResponse("Forbidden", { status: 403 });
 }
 
-
 // ==========================================
 // 2. POST: Handles Incoming WhatsApp Messages
 // ==========================================
@@ -35,15 +34,17 @@ export async function POST(req: Request) {
       const value = changes?.value;
       const message = value?.messages?.[0];
 
-      // If a customer sent a message, extract the details
+      // If a customer sent a message, extract details & respond
       if (message) {
         const phone = message.from;
-        const text = message.text?.body;
+        const text = message.text?.body?.trim().toLowerCase();
         
-        // 🐛 Debugging: This will print the customer's text in Vercel Logs
         console.log(`💬 Incoming message from ${phone}: ${text}`);
         
-        // Next step: We will trigger the interactive menu logic here!
+        // Trigger interactive menu for greetings
+        if (text === "hi" || text === "hello" || text === "hey") {
+          await sendInteractiveMenu(phone);
+        }
       }
       
       // Meta strictly requires a 200 OK response to acknowledge receipt
@@ -54,5 +55,48 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("Error processing POST request:", error);
     return new NextResponse("Internal Error", { status: 500 });
+  }
+}
+
+// ==========================================
+// 3. HELPER: Send Interactive Menu
+// ==========================================
+async function sendInteractiveMenu(to: string) {
+  // Uses META_PHONE_NUMBER_ID matching your Vercel settings
+  const url = `https://graph.facebook.com/v20.0/${process.env.META_PHONE_NUMBER_ID}/messages`;
+  const token = process.env.META_ACCESS_TOKEN;
+
+  const payload = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: to,
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: { text: "Welcome to SMES Turf! ⚽\n\nHow can we help you today?" },
+      action: {
+        buttons: [
+          { type: "reply", reply: { id: "BOOK_TURF", title: "📅 Book Turf" } },
+          { type: "reply", reply: { id: "MY_BOOKINGS", title: "📋 My Bookings" } },
+          { type: "reply", reply: { id: "SUPPORT", title: "💬 Support" } }
+        ]
+      }
+    }
+  };
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+    
+    const data = await response.json();
+    console.log("📤 Response from Meta API:", data);
+  } catch (error) {
+    console.error("❌ Failed to send menu:", error);
   }
 }
