@@ -532,11 +532,11 @@ export default function Home() {
 
               {/* Centered Heading and Location */}
               <div className="flex flex-col items-center text-center">
-                <h1 className="text-5xl sm:text-6xl md:text-8xl font-black tracking-tighter uppercase leading-none text-white whitespace-nowrap">
-                  <span className="inline-block bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-neutral-400">
-                    SMES TURF
-                  </span>
-                </h1>
+                <h1 className="text-6xl sm:text-7xl md:text-8xl font-black tracking-tighter uppercase leading-none text-white whitespace-nowrap">
+  <span className="inline-block bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-neutral-400">
+    SMES TURF
+  </span>
+</h1>
 
                 <div className="flex items-center justify-center gap-1.5 text-xs sm:text-sm font-mono text-lime-400 uppercase tracking-wider mt-1 sm:mt-3 font-bold">
                   <span className="text-sm sm:text-base">📍</span>
