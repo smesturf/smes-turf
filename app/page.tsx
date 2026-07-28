@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Script from "next/script";
+import Image from "next/image";
 import { supabase } from "./lib/supabase";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { getPrice } from "./lib/booking-rules";
@@ -393,32 +394,26 @@ export default function Home() {
         return;
       }
 
-      // 1. Calculate values for the API
       const balanceAmount = totalAmount - 200;
       const bookingId = verifyData.booking?.id ? `#${verifyData.booking.id}` : "#----";
       const referenceId = verifyData.booking?.booking_reference || paymentData.razorpay_payment_id || "N/A";
       const advancePaid = 200;
       
-      // Calculate end time using your existing helper function
       const formattedTimeSlot = getTimeRangeLabel(startTime, duration);
       const [startT, endT] = formattedTimeSlot.split(" - "); 
 
-      // 2. Updated admin notification text with Email and Ref ID
-      const adminText = `🔔 *NEW BOOKING RECEIVED*\n\n*SMES Sports Academy*\n\n👤 *Customer:* ${name}\n📞 *Phone:* ${phone}\n📧 *Email:* ${email}\n\n📅 *Date:* ${bookingDate}\n🕒 *Time:* ${startTime}\n⏱ *Duration:* ${duration} Minutes\n\n🏟 *Court:* ${verifyData.booking?.court_number || bookingType}\n🏏 *Sport:* ${sport}\n\n💰 *Total Amount:* ₹${totalAmount}\n✅ *Advance Paid:* ₹200\n💳 *Balance:* ₹${balanceAmount}\n\n💳 *Payment Status:* PAID\n\n*Booking ID:* ${bookingId}\n*Ref ID:* ${referenceId}`;
-
-      // 3. Send ALL Notifications (Customer, Admin, Sub-Admin, Owner via Meta)
       const whatsappRes = await fetch("/api/whatsapp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customerPhone: phone,    
           customerName: name, 
-          email: email,                            // New: Required for staff template {{3}}
+          email: email,                            
           date: bookingDate,
           time: formattedTimeSlot, 
-          duration: duration,                      // New: Required for staff template {{6}}
-          sport: sport,                            // Separated for exact template matching
-          court: verifyData.booking?.court_number || bookingType, // Separated for exact template matching
+          duration: duration,                      
+          sport: sport,                            
+          court: verifyData.booking?.court_number || bookingType, 
           bookingId: bookingId,
           referenceId: referenceId,
           totalAmount: totalAmount,
@@ -429,7 +424,6 @@ export default function Home() {
 
       const whatsappData = await whatsappRes.json();
       
-      // NEW: Log actual API crashes to your browser console
       if (!whatsappRes.ok) {
          console.error("CRITICAL WHATSAPP API ERROR:", whatsappData);
       } else if (!whatsappData.metaSent) {
@@ -438,7 +432,6 @@ export default function Home() {
 
       setIsProcessingBooking(false);
 
-      // Set success data to trigger your Arena Pass
       setSuccessData({
         bookingId,
         referenceId,
@@ -454,7 +447,6 @@ export default function Home() {
         balance: balanceAmount
       });
 
-      // Reset form state[cite: 1]
       setName("");
       setPhone("");
       setBookingDate("");
@@ -522,7 +514,20 @@ export default function Home() {
         </motion.div>
 
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 sm:gap-8">
-          <div className="text-center lg:text-left">
+          <div className="text-center lg:text-left flex flex-col items-center lg:items-start w-full">
+            
+            {/* Added Brand Logo */}
+            <motion.div variants={fadeUp} className="relative w-20 h-20 mb-4 rounded-full overflow-hidden border-2 border-lime-400/40 shadow-[0_0_20px_rgba(163,230,53,0.15)] bg-neutral-900">
+              <Image 
+                src="/photos/logo.png" 
+                alt="SMES Turf Logo" 
+                fill 
+                className="object-cover" 
+                priority 
+                unoptimized={true} // Add this line!
+              />
+            </motion.div>
+
             <motion.h1
               variants={fadeUp}
               className="text-5xl sm:text-6xl md:text-8xl font-black tracking-tighter uppercase leading-none text-white whitespace-nowrap"
@@ -550,16 +555,18 @@ export default function Home() {
             </motion.p>
           </div>
 
+          {/* Action Buttons Container */}
           <motion.div
             variants={fadeUp}
-            className="grid grid-cols-1 gap-2 w-full max-w-md mx-auto lg:max-w-none lg:mx-0 lg:flex lg:flex-wrap lg:justify-end lg:w-auto lg:gap-3"
+            className="w-full max-w-md mx-auto lg:max-w-sm lg:mx-0 flex flex-col gap-3"
           >
+            {/* Primary Action Button */}
             <motion.button
               whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.35)" }}
               whileTap={{ scale: 0.97 }}
               onClick={scrollToBooking}
               type="button"
-              className="bg-lime-400 hover:bg-lime-300 text-black text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-colors font-black text-center shadow-lg shadow-lime-400/10 cursor-pointer flex items-center justify-center gap-2"
+              className="w-full bg-lime-400 hover:bg-lime-300 text-black text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-colors font-black text-center shadow-lg shadow-lime-400/10 cursor-pointer flex items-center justify-center gap-2"
             >
               <svg className="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24">
                 <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2z"/>
@@ -567,64 +574,74 @@ export default function Home() {
               <span>BOOK NOW</span>
             </motion.button>
 
-            {[
-              { 
-                href: "/my-booking", 
-                label: "My Bookings",
-                icon: (
-                  <svg className="w-4 h-4 fill-lime-400 shrink-0" viewBox="0 0 24 24">
-                    <path d="M22 10V6c0-1.11-.9-2-2-2H4c-1.1 0-1.99.89-1.99 2v4c1.1 0 1.99.9 1.99 2s-.89 2-2 2v4c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2v-4c-1.1 0-2-.9-2-2s.9-2 2-2zm-2-1.46c-1.19.69-2 1.99-2 3.46s.81 2.77 2 3.46V18H4v-2.54c1.19-.69 2-1.99 2-3.46s-.81-2.77-2-3.46V6h16v2.54zM11 7h2v2h-2zm0 4h2v2h-2zm0 4h2v2h-2z"/>
-                  </svg>
-                )
-              },
-              { 
-                href: "https://wa.me/918453095258", 
-                label: "WhatsApp",
-                icon: (
-                  <svg className="w-4 h-4 fill-emerald-400 shrink-0" viewBox="0 0 24 24">
-                    <path d="M12.012 2c-5.506 0-9.969 4.458-9.969 9.968 0 1.764.453 3.487 1.313 5.013l-1.396 5.099 5.234-1.365c1.472.802 3.137 1.222 4.818 1.222l.004-.001c5.505 0 9.967-4.457 9.967-9.968 0-2.663-1.038-5.168-2.923-7.051-1.884-1.884-4.388-2.92-7.048-2.92zm5.834 14.161c-.247.693-1.229 1.272-1.996 1.423-.523.103-1.205.186-3.504-.76-2.942-1.21-4.839-4.204-4.986-4.401-.147-.197-1.198-1.593-1.198-3.038 0-1.445.759-2.158 1.028-2.451.269-.293.587-.366.783-.366.196 0 .392.001.564.01.185.009.434-.07.679.529.245.599.833 2.032.906 2.18.073.148.122.321.024.518-.098.197-.147.321-.293.494-.147.173-.309.387-.441.52-.147.148-.302.309-.13.576.173.268.767 1.267 1.648 2.051 1.134 1.009 2.091 1.321 2.385 1.469.294.148.465.123.637-.074.172-.197.735-.856.932-1.15.196-.294.392-.246.661-.148.269.098 1.714.808 2.008.955.294.148.49.222.563.346.073.123.073.717-.174 1.41z"/>
-                  </svg>
-                )
-              },
-              { 
-                href: "https://instagram.com/smesturf", 
-                label: "Instagram",
-                icon: (
-                  <svg className="w-4 h-4 fill-pink-500 shrink-0" viewBox="0 0 24 24">
-                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
-                  </svg>
-                )
-              }, 
-              { 
-                href: "https://maps.google.com/?q=12.329329,76.612008", 
-                label: "Find Arena",
-                icon: (
-                  <svg className="w-4 h-4 fill-red-400 shrink-0" viewBox="0 0 24 24">
-                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-                  </svg>
-                )
-              },
-              { 
-                href: "tel:+918453095258", 
-                label: "Call Desk",
-                icon: (
-                  <svg className="w-4 h-4 fill-lime-400 shrink-0" viewBox="0 0 24 24">
-                    <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
-                  </svg>
-                )
-              },
-            ].map((btn) => (
+            {/* Secondary Actions Grid (2-Column Grid on Mobile & Laptop) */}
+            <div className="grid grid-cols-2 gap-2 w-full">
               <motion.a
-                key={btn.label}
                 whileHover={{ y: -2, borderColor: "rgba(163,230,53,0.6)" }}
                 whileTap={{ scale: 0.97 }}
-                href={btn.href}
-                className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-colors text-center flex items-center justify-center gap-2"
+                href="/my-booking"
+                className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-[10px] sm:text-xs font-mono uppercase tracking-wider p-3 rounded-none transition-colors text-center flex items-center justify-center gap-2"
               >
-                {btn.icon}
-                <span>{btn.label}</span>
+                <svg className="w-4 h-4 fill-lime-400 shrink-0" viewBox="0 0 24 24">
+                  <path d="M22 10V6c0-1.11-.9-2-2-2H4c-1.1 0-1.99.89-1.99 2v4c1.1 0 1.99.9 1.99 2s-.89 2-2 2v4c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2v-4c-1.1 0-2-.9-2-2s.9-2 2-2zm-2-1.46c-1.19.69-2 1.99-2 3.46s.81 2.77 2 3.46V18H4v-2.54c1.19-.69 2-1.99 2-3.46s-.81-2.77-2-3.46V6h16v2.54zM11 7h2v2h-2zm0 4h2v2h-2zm0 4h2v2h-2z"/>
+                </svg>
+                <span>MY BOOKINGS</span>
               </motion.a>
-            ))}
+
+              <motion.a
+                whileHover={{ y: -2, borderColor: "rgba(163,230,53,0.6)" }}
+                whileTap={{ scale: 0.97 }}
+                href="https://wa.me/918073064676"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-[10px] sm:text-xs font-mono uppercase tracking-wider p-3 rounded-none transition-colors text-center flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4 fill-emerald-400 shrink-0" viewBox="0 0 24 24">
+                  <path d="M12.012 2c-5.506 0-9.969 4.458-9.969 9.968 0 1.764.453 3.487 1.313 5.013l-1.396 5.099 5.234-1.365c1.472.802 3.137 1.222 4.818 1.222l.004-.001c5.505 0 9.967-4.457 9.967-9.968 0-2.663-1.038-5.168-2.923-7.051-1.884-1.884-4.388-2.92-7.048-2.92zm5.834 14.161c-.247.693-1.229 1.272-1.996 1.423-.523.103-1.205.186-3.504-.76-2.942-1.21-4.839-4.204-4.986-4.401-.147-.197-1.198-1.593-1.198-3.038 0-1.445.759-2.158 1.028-2.451.269-.293.587-.366.783-.366.196 0 .392.001.564.01.185.009.434-.07.679.529.245.599.833 2.032.906 2.18.073.148.122.321.024.518-.098.197-.147.321-.293.494-.147.173-.309.387-.441.52-.147.148-.302.309-.13.576.173.268.767 1.267 1.648 2.051 1.134 1.009 2.091 1.321 2.385 1.469.294.148.465.123.637-.074.172-.197.735-.856.932-1.15.196-.294.392-.246.661-.148.269.098 1.714.808 2.008.955.294.148.49.222.563.346.073.123.073.717-.174 1.41z"/>
+                </svg>
+                <span>WHATSAPP</span>
+              </motion.a>
+
+              <motion.a
+                whileHover={{ y: -2, borderColor: "rgba(163,230,53,0.6)" }}
+                whileTap={{ scale: 0.97 }}
+                href="https://instagram.com/smesturf"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-[10px] sm:text-xs font-mono uppercase tracking-wider p-3 transition-colors text-center flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4 fill-pink-500 shrink-0" viewBox="0 0 24 24">
+                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                </svg>
+                <span>INSTAGRAM</span>
+              </motion.a>
+
+              <motion.a
+                whileHover={{ y: -2, borderColor: "rgba(163,230,53,0.6)" }}
+                whileTap={{ scale: 0.97 }}
+                href="https://maps.google.com/?q=12.329329,76.612008"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-[10px] sm:text-xs font-mono uppercase tracking-wider p-3 transition-colors text-center flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4 fill-red-400 shrink-0" viewBox="0 0 24 24">
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                </svg>
+                <span>FIND ARENA</span>
+              </motion.a>
+
+              <motion.a
+                whileHover={{ y: -2, borderColor: "rgba(163,230,53,0.6)" }}
+                whileTap={{ scale: 0.97 }}
+                href="tel:+918073064676"
+                className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-[10px] sm:text-xs font-mono uppercase tracking-wider p-3 transition-colors text-center flex items-center justify-center gap-2 col-span-2"
+              >
+                <svg className="w-4 h-4 fill-lime-400 shrink-0" viewBox="0 0 24 24">
+                  <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+                </svg>
+                <span>CALL DESK</span>
+              </motion.a>
+            </div>
           </motion.div>
         </div>
 
@@ -640,7 +657,6 @@ export default function Home() {
             ⚡ Launch Offer: <span className="text-neutral-500 line-through mr-1 font-medium">₹2400</span> <span className="text-lime-400 font-bold">₹1200 / Hr</span>
            </p>
         </motion.div>
-
       </motion.header>
 
       {/* ---------- Disciplines ---------- */}
@@ -649,7 +665,7 @@ export default function Home() {
         initial="hidden"
         whileInView="show"
         viewport={{ once: true, amount: 0.2 }}
-        className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-20 border-b border-neutral-900 relative z-10"
+        className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-16 border-b border-neutral-900 relative z-10"
       >
          <motion.span variants={fadeUp} className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-2">
           01 — Disciplines
@@ -692,6 +708,44 @@ export default function Home() {
         </div>
       </motion.section>
 
+      {/* ---------- Media Gallery ---------- */}
+      <motion.section
+        variants={stagger}
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, amount: 0.2 }}
+        className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-16 border-b border-neutral-900 relative z-10"
+      >
+        <motion.span variants={fadeUp} className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-2">
+          02 — Media
+        </motion.span>
+        <motion.h2 variants={fadeUp} className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white mb-8">
+          Turf Gallery
+        </motion.h2>
+
+        {/* --- PHOTOS GRID (7 Photos) --- */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {[
+            "20260709_154856.jpg",
+            "20260709_154916.jpg",
+            "20260715_190724.jpg",
+            "IMG-20260608-WA0005.jpg",
+            "IMG-20260608-WA0007.jpg",
+            "dji_fly_20260711_130516_0202_1783764137.jpg", // Ensure this matches your exact truncated DJI filename
+            "dji_fly_20260711_130620_0204_1783764134.jpg"  // Ensure this matches your exact truncated DJI filename
+          ].map((imgSrc, idx) => (
+            <motion.div key={imgSrc} variants={fadeUp} className={`relative h-40 sm:h-48 rounded-md overflow-hidden border border-neutral-800 bg-neutral-900/50 ${idx === 6 ? "col-span-2 sm:col-span-1" : ""}`}>
+              <Image 
+                src={`/photos/${imgSrc}`} 
+                alt={`Arena View ${idx + 1}`} 
+                fill 
+                className="object-cover hover:scale-105 transition-transform duration-500" 
+              />
+            </motion.div>
+          ))}
+        </div>
+      </motion.section>
+
       {/* ---------- Booking Engine ---------- */}
       <section
          id="booking-engine-section"
@@ -710,7 +764,7 @@ export default function Home() {
             <motion.div variants={fadeUp} className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
               <div>
                 <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-2">
-                 02 — Reservation
+                 03 — Reservation
                 </span>
                 <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">
                   Select and Secure Pitch
@@ -754,17 +808,8 @@ export default function Home() {
                     value={phone}
                     onChange={(e) => {
                       let sanitized = e.target.value.replace(/\D/g, "");
-                      
-                      // Auto-correct leading '0' from Google Autofill
-                      if (sanitized.startsWith("0") && sanitized.length > 10) {
-                        sanitized = sanitized.slice(1);
-                      } 
-                      // Auto-correct leading '91' from Google Autofill
-                      else if (sanitized.startsWith("91") && sanitized.length > 10) {
-                        sanitized = sanitized.slice(2);
-                      }
-
-                      // Set state and forcefully limit to 10 digits
+                      if (sanitized.startsWith("0") && sanitized.length > 10) sanitized = sanitized.slice(1);
+                      else if (sanitized.startsWith("91") && sanitized.length > 10) sanitized = sanitized.slice(2);
                       setPhone(sanitized.slice(0, 10));
                     }}
                     className="w-full p-4 bg-neutral-900/50 text-white font-mono border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all text-base md:text-sm"
@@ -854,9 +899,9 @@ export default function Home() {
                         ) : (
                           <motion.div 
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                            className="w-full h-full bg-black/60 flex items-center justify-center backdrop-blur-[2px]"
+                            className="w-full h-full bg-lime-400/10 flex items-center justify-center backdrop-blur-[2px]"
                           >
-                            <span className="text-neutral-500 text-[10px] sm:text-xs font-bold tracking-widest font-mono uppercase bg-black/80 px-3 py-1.5 border border-neutral-800">
+                            <span className="text-lime-400 text-[10px] sm:text-xs font-bold tracking-widest font-mono uppercase bg-black/80 px-4 py-2 border border-lime-400/40 shadow-[0_0_15px_rgba(163,230,53,0.2)]">
                               Awaiting Selection
                             </span>
                           </motion.div>
@@ -898,19 +943,21 @@ export default function Home() {
                 </div>
               </motion.div>
 
-              {/* Date */}
+              {/* Date Box with iPhone Overflow Fix */}
               <motion.div variants={fadeUp} className="space-y-2">
                 <label className="text-xs font-mono uppercase text-neutral-400">Calendar Date</label>
-                <input
-                  type="date"
-                  min={minDate}
-                  value={bookingDate}
-                  onChange={(e) => {
-                    setBookingDate(e.target.value);
-                  }}
-                  className="w-full p-4 bg-neutral-900 text-lime-400 font-bold font-mono border border-neutral-800 focus:border-lime-400 outline-none rounded-none text-base md:text-sm"
-                  style={{ colorScheme: "dark" }}
-                />
+                <div className="w-full box-border max-w-full overflow-hidden relative">
+                  <input
+                    type="date"
+                    min={minDate}
+                    value={bookingDate}
+                    onChange={(e) => {
+                      setBookingDate(e.target.value);
+                    }}
+                    className="w-full max-w-full box-border appearance-none p-4 bg-neutral-900 text-lime-400 font-bold font-mono border border-neutral-800 focus:border-lime-400 outline-none rounded-none text-base md:text-sm"
+                    style={{ colorScheme: "dark" }}
+                  />
+                </div>
               </motion.div>
 
               {/* Session Length */}
@@ -1186,7 +1233,7 @@ export default function Home() {
 
           <div className="flex flex-col items-center md:items-end gap-2 font-mono text-[9px] sm:text-[10px] text-neutral-400 uppercase tracking-widest">
             <div className="flex flex-wrap justify-center md:justify-end gap-x-6 gap-y-2">
-              <div><span className="text-lime-500">P:</span> +91 8453095258</div>
+              <div><span className="text-lime-500">P:</span> +91 8073064676</div>
               <div><span className="text-lime-500">E:</span> sports@smesturf.com</div>
               <div><span className="text-lime-500">L:</span> Mysuru, Karnataka</div>
             </div>
