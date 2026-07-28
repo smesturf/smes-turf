@@ -533,7 +533,7 @@ export default function Home() {
               {/* Heading and Location - Left aligned */}
               <div className="flex flex-col items-start text-left">
                 {/* Scaled mobile heading to text-4xl */}
-                <h1 className="text-4xl sm:text-7xl md:text-8xl font-black tracking-tighter uppercase leading-none text-white whitespace-nowrap">
+                <h1 className="text-5xl sm:text-7xl md:text-8xl font-black tracking-tighter uppercase leading-none text-white whitespace-nowrap">
                   <span className="inline-block bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-neutral-400">
                     SMES TURF
                   </span>
