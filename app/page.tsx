@@ -731,8 +731,8 @@ export default function Home() {
             "20260715_190724.jpg",
             "IMG-20260608-WA0005.jpg",
             "IMG-20260608-WA0007.jpg",
-            "dji_fly_20260711_130516_0202_1783764137.jpg", // Ensure this matches your exact truncated DJI filename
-            "dji_fly_20260711_130620_0204_1783764134.jpg"  // Ensure this matches your exact truncated DJI filename
+            "arena-1.jpg", // Ensure this matches your exact truncated DJI filename
+            "arena-2.jpg"  // Ensure this matches your exact truncated DJI filename
           ].map((imgSrc, idx) => (
             <motion.div key={imgSrc} variants={fadeUp} className={`relative h-40 sm:h-48 rounded-md overflow-hidden border border-neutral-800 bg-neutral-900/50 ${idx === 6 ? "col-span-2 sm:col-span-1" : ""}`}>
               <Image 
