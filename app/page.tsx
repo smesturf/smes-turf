@@ -57,6 +57,9 @@ export default function Home() {
   const [isProcessingBooking, setIsProcessingBooking] = useState(false);
   const [successData, setSuccessData] = useState<any>(null);
 
+  // Gallery Selected Image for Lightbox Pop-up Motion
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
   const autoPassRef = useRef<HTMLDivElement>(null);
 
   /* -------- HELPER: TIME RANGE FORMATTER -------- */
@@ -400,7 +403,6 @@ export default function Home() {
       const advancePaid = 200;
       
       const formattedTimeSlot = getTimeRangeLabel(startTime, duration);
-      const [startT, endT] = formattedTimeSlot.split(" - "); 
 
       const whatsappRes = await fetch("/api/whatsapp", {
         method: "POST",
@@ -516,15 +518,15 @@ export default function Home() {
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 sm:gap-8">
           <div className="text-center lg:text-left flex flex-col items-center lg:items-start w-full">
             
-            {/* Added Brand Logo */}
+            {/* Added Brand Logo with Fixed Path */}
             <motion.div variants={fadeUp} className="relative w-20 h-20 mb-4 rounded-full overflow-hidden border-2 border-lime-400/40 shadow-[0_0_20px_rgba(163,230,53,0.15)] bg-neutral-900">
               <Image 
-                src="/photos/logo.png" 
+                src="/images/logo.png" 
                 alt="SMES Turf Logo" 
                 fill 
                 className="object-cover" 
                 priority 
-                unoptimized={true} // Add this line!
+                unoptimized={true}
               />
             </motion.div>
 
@@ -574,7 +576,7 @@ export default function Home() {
               <span>BOOK NOW</span>
             </motion.button>
 
-            {/* Secondary Actions Grid (2-Column Grid on Mobile & Laptop) */}
+            {/* Secondary Actions Grid (2-Column Grid) */}
             <div className="grid grid-cols-2 gap-2 w-full">
               <motion.a
                 whileHover={{ y: -2, borderColor: "rgba(163,230,53,0.6)" }}
@@ -708,7 +710,7 @@ export default function Home() {
         </div>
       </motion.section>
 
-      {/* ---------- Media Gallery ---------- */}
+      {/* ---------- Media Gallery (WITH FIXED PATHS & CLICK MOTION) ---------- */}
       <motion.section
         variants={stagger}
         initial="hidden"
@@ -723,7 +725,7 @@ export default function Home() {
           Turf Gallery
         </motion.h2>
 
-        {/* --- PHOTOS GRID (7 Photos) --- */}
+        {/* --- PHOTOS GRID (7 Photos with Motion & Click Expansion) --- */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {[
             "20260709_154856.jpg",
@@ -731,18 +733,38 @@ export default function Home() {
             "20260715_190724.jpg",
             "IMG-20260608-WA0005.jpg",
             "IMG-20260608-WA0007.jpg",
-            "arena-1.jpg", // Ensure this matches your exact truncated DJI filename
-            "arena-2.jpg"  // Ensure this matches your exact truncated DJI filename
-          ].map((imgSrc, idx) => (
-            <motion.div key={imgSrc} variants={fadeUp} className={`relative h-40 sm:h-48 rounded-md overflow-hidden border border-neutral-800 bg-neutral-900/50 ${idx === 6 ? "col-span-2 sm:col-span-1" : ""}`}>
-              <Image 
-                src={`/photos/${imgSrc}`} 
-                alt={`Arena View ${idx + 1}`} 
-                fill 
-                className="object-cover hover:scale-105 transition-transform duration-500" 
-              />
-            </motion.div>
-          ))}
+            "arena-1.jpg", // Replace with your exact filename
+            "arena-2.jpg"  // Replace with your exact filename
+          ].map((imgSrc, idx) => {
+            const isLastItem = idx === 6;
+
+            return (
+              <motion.div 
+                key={imgSrc} 
+                variants={fadeUp} 
+                layoutId={`gallery-img-${imgSrc}`}
+                onClick={() => setSelectedImage(imgSrc)}
+                className={`relative h-40 sm:h-48 rounded-md overflow-hidden border border-neutral-800 bg-neutral-900/50 cursor-pointer group ${
+                  isLastItem ? "col-span-2 sm:col-span-1 lg:col-span-2" : ""
+                }`}
+              >
+                <Image 
+                  src={`/images/${imgSrc}`} // FIXED: /photos/ -> /images/
+                  alt={`Arena View ${idx + 1}`} 
+                  fill 
+                  sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                  className="object-cover group-hover:scale-105 group-hover:brightness-90 transition-all duration-500" 
+                />
+                
+                {/* Hover indicator */}
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <span className="text-white text-xs font-mono font-bold bg-black/60 px-3 py-1 rounded-full border border-neutral-700">
+                    🔍 View Photo
+                  </span>
+                </div>
+              </motion.div>
+            );
+          })}
         </div>
       </motion.section>
 
@@ -1248,7 +1270,7 @@ export default function Home() {
         </div>
       </motion.footer>
 
-      {/* ---------- SMART Floating CTA ---------- */}
+      {/* ---------- Floating CTA ---------- */}
       <motion.button
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1278,6 +1300,40 @@ export default function Home() {
         </motion.span>
         <span>{startTime && name && phone.length === 10 && sport && bookingType ? "Confirm Slot" : "Book Here"}</span>
       </motion.button>
+
+      {/* ---------- FULLSCREEN GALLERY LIGHTBOX POPUP ---------- */}
+      <AnimatePresence>
+        {selectedImage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[999999] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 sm:p-8"
+            onClick={() => setSelectedImage(null)}
+          >
+            <motion.div
+              layoutId={`gallery-img-${selectedImage}`}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-5xl h-[60vh] sm:h-[80vh] rounded-xl overflow-hidden border border-neutral-800 shadow-2xl bg-neutral-950"
+            >
+              <Image
+                src={`/images/${selectedImage}`}
+                alt="Enlarged Turf View"
+                fill
+                sizes="100vw"
+                className="object-contain"
+                priority
+              />
+              <button
+                onClick={() => setSelectedImage(null)}
+                className="absolute top-4 right-4 bg-neutral-900/80 hover:bg-lime-400 text-white hover:text-black border border-neutral-700 w-10 h-10 flex items-center justify-center rounded-full font-mono font-bold text-sm transition-all z-20 cursor-pointer"
+              >
+                ✕
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ---------- Arena Pass Confirmation Modal ---------- */}
       <AnimatePresence>
@@ -1422,7 +1478,7 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* ---------- 🎉 FINAL SUCCESS CONFIRMATION MODAL WITH AUTO-DOWNLOAD PASS ---------- */}
+      {/* ---------- FINAL SUCCESS CONFIRMATION MODAL ---------- */}
       <AnimatePresence>
         {successData && (
           <motion.div
