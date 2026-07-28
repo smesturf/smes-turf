@@ -514,11 +514,11 @@ export default function Home() {
         </motion.div>
 
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 sm:gap-8">
-          <div className="text-center lg:text-left flex flex-col items-center lg:items-start w-full">
+          <div className="text-center flex flex-col items-center w-full">
             
-            {/* Side-by-Side Logo + Title (Original Heading Size Preserved) */}
-            <motion.div variants={fadeUp} className="flex items-center justify-center lg:justify-start space-x-4 sm:space-x-6 w-full">
-              {/* Logo on the Left */}
+            {/* Logo on the left + Centered Heading & Location */}
+            <motion.div variants={fadeUp} className="flex items-center justify-center gap-4 sm:gap-6 w-full">
+              {/* Logo */}
               <div className="relative w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 shrink-0 rounded-full overflow-hidden border-2 border-lime-400/40 shadow-[0_0_20px_rgba(163,230,53,0.15)] bg-neutral-900">
                 <Image 
                   src="/photos/logo.png" 
@@ -530,24 +530,25 @@ export default function Home() {
                 />
               </div>
 
-              {/* Title & Location on the Right */}
-              <div className="flex flex-col items-start justify-center">
+              {/* Centered Heading and Location */}
+              <div className="flex flex-col items-center text-center">
                 <h1 className="text-5xl sm:text-6xl md:text-8xl font-black tracking-tighter uppercase leading-none text-white whitespace-nowrap">
                   <span className="inline-block bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-neutral-400">
                     SMES TURF
                   </span>
                 </h1>
-                
-                <div className="flex items-center gap-1.5 text-xs sm:text-sm font-mono text-lime-400 uppercase tracking-wider mt-1 sm:mt-3 font-bold">
+
+                <div className="flex items-center justify-center gap-1.5 text-xs sm:text-sm font-mono text-lime-400 uppercase tracking-wider mt-1 sm:mt-3 font-bold">
                   <span className="text-sm sm:text-base">📍</span>
                   <span>Vijayanagar, 2nd Stage, Mysuru</span>
                 </div>
               </div>
             </motion.div>
 
+            {/* Centered Description */}
             <motion.p
               variants={fadeUp}
-              className="text-base sm:text-lg md:text-xl font-medium tracking-normal text-neutral-400 mt-3 sm:mt-4 max-w-xl mx-auto lg:mx-0"
+              className="text-base sm:text-lg md:text-xl font-medium tracking-normal text-neutral-400 mt-4 max-w-xl mx-auto text-center"
             >
                Premium multisport arena built for high-performance{" "}
               <span className="text-lime-400">Football</span> &{" "}
