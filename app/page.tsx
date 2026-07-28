@@ -516,10 +516,10 @@ export default function Home() {
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 sm:gap-8">
           <div className="text-center flex flex-col items-center w-full">
             
-            {/* Logo on the left + Centered Heading & Location */}
-            <motion.div variants={fadeUp} className="flex items-center justify-center gap-4 sm:gap-6 w-full">
-              {/* Logo */}
-              <div className="relative w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 shrink-0 rounded-full overflow-hidden border-2 border-lime-400/40 shadow-[0_0_20px_rgba(163,230,53,0.15)] bg-neutral-900">
+            {/* Logo on the left + Heading & Location Side-by-Side on Mobile */}
+            <motion.div variants={fadeUp} className="flex items-center justify-center gap-3 sm:gap-6 w-full">
+              {/* Logo - Scaled down for mobile */}
+              <div className="relative w-14 h-14 sm:w-20 sm:h-20 md:w-24 md:h-24 shrink-0 rounded-full overflow-hidden border-2 border-lime-400/40 shadow-[0_0_20px_rgba(163,230,53,0.15)] bg-neutral-900">
                 <Image 
                   src="/photos/logo.png" 
                   alt="SMES Turf Logo" 
@@ -530,16 +530,18 @@ export default function Home() {
                 />
               </div>
 
-              {/* Centered Heading and Location */}
-              <div className="flex flex-col items-center text-center">
-                <h1 className="text-6xl sm:text-7xl md:text-8xl font-black tracking-tighter uppercase leading-none text-white whitespace-nowrap">
-  <span className="inline-block bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-neutral-400">
-    SMES TURF
-  </span>
-</h1>
+              {/* Heading and Location - Left aligned */}
+              <div className="flex flex-col items-start text-left">
+                {/* Scaled mobile heading to text-4xl */}
+                <h1 className="text-4xl sm:text-7xl md:text-8xl font-black tracking-tighter uppercase leading-none text-white whitespace-nowrap">
+                  <span className="inline-block bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-neutral-400">
+                    SMES TURF
+                  </span>
+                </h1>
 
-                <div className="flex items-center justify-center gap-1.5 text-xs sm:text-sm font-mono text-lime-400 uppercase tracking-wider mt-1 sm:mt-3 font-bold">
-                  <span className="text-sm sm:text-base">📍</span>
+                {/* Left-aligned location with smaller mobile font */}
+                <div className="flex items-center justify-start gap-1.5 text-[10px] sm:text-sm font-mono text-lime-400 uppercase tracking-wider mt-1 sm:mt-3 font-bold">
+                  <span className="text-xs sm:text-base">📍</span>
                   <span>Vijayanagar, 2nd Stage, Mysuru</span>
                 </div>
               </div>
@@ -548,7 +550,7 @@ export default function Home() {
             {/* Centered Description */}
             <motion.p
               variants={fadeUp}
-              className="text-base sm:text-lg md:text-xl font-medium tracking-normal text-neutral-400 mt-4 max-w-xl mx-auto text-center"
+              className="text-base sm:text-lg md:text-xl font-medium tracking-normal text-neutral-400 mt-5 sm:mt-6 max-w-xl mx-auto text-center px-2"
             >
                Premium multisport arena built for high-performance{" "}
               <span className="text-lime-400">Football</span> &{" "}
@@ -559,7 +561,7 @@ export default function Home() {
           {/* Action Buttons Container */}
           <motion.div
             variants={fadeUp}
-            className="w-full max-w-md mx-auto lg:max-w-sm lg:mx-0 flex flex-col gap-3"
+            className="w-full max-w-md mx-auto lg:max-w-sm lg:mx-0 flex flex-col gap-3 mt-4 lg:mt-0"
           >
             {/* Primary Action Button */}
             <motion.button
@@ -648,7 +650,7 @@ export default function Home() {
 
         <motion.div
           variants={fadeUp}
-          className="mt-8 sm:mt-12 inline-flex items-center gap-3 sm:gap-4 bg-neutral-900/70 backdrop-blur border border-neutral-800 px-4 py-3 rounded-none w-full sm:w-auto"
+          className="mt-8 sm:mt-12 inline-flex items-center gap-3 sm:gap-4 bg-neutral-900/70 backdrop-blur border border-neutral-800 px-4 py-3 rounded-none w-full sm:w-auto justify-center"
         >
           <span className="flex h-2 w-2 relative flex-shrink-0">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75" />
