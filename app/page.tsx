@@ -503,23 +503,26 @@ export default function Home() {
         variants={stagger}
         initial="hidden"
         animate="show"
-        className="max-w-7xl mx-auto px-4 pt-6 sm:pt-16 pb-6 sm:pb-8 relative z-10 text-center"
+        className="max-w-7xl mx-auto px-4 pt-6 sm:pt-16 pb-6 sm:pb-8 relative z-10 flex flex-col lg:items-start"
       >
+        {/* Elite Badge - Pushed left on PC */}
         <motion.div
           variants={fadeUp}
-          className="inline-flex items-center gap-1.5 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-slate-900/80 backdrop-blur border border-slate-800 text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-lime-400 mb-3 sm:mb-6 mt-1 sm:mt-4"
+          className="inline-flex items-center gap-1.5 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-slate-900/80 backdrop-blur border border-slate-800 text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-lime-400 mb-3 sm:mb-6 mt-1 sm:mt-4 mx-auto lg:mx-0"
         >
           <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />
           Elite Sports Venue
         </motion.div>
 
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 sm:gap-8">
-          <div className="text-center flex flex-col items-center w-full">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 sm:gap-12 w-full">
+          
+          {/* LEFT SIDE: Text and Logo */}
+          <div className="flex flex-col items-center lg:items-start text-center lg:text-left w-full lg:w-auto">
             
-            {/* Logo on the left + Heading & Location Side-by-Side on Mobile */}
-            <motion.div variants={fadeUp} className="flex items-center justify-center gap-3 sm:gap-6 w-full">
-              {/* Logo - Scaled down for mobile */}
-              <div className="relative w-14 h-14 sm:w-20 sm:h-20 md:w-24 md:h-24 shrink-0 rounded-full overflow-hidden border-2 border-lime-400/40 shadow-[0_0_20px_rgba(163,230,53,0.15)] bg-neutral-900">
+            {/* Logo + Heading (Left aligned on PC) */}
+            <motion.div variants={fadeUp} className="flex items-center justify-center lg:justify-start gap-3 sm:gap-6 w-full">
+              {/* Logo - Increased size slightly for phone and PC */}
+              <div className="relative w-16 h-16 sm:w-24 sm:h-24 md:w-28 md:h-28 shrink-0 rounded-full overflow-hidden border-2 border-lime-400/40 shadow-[0_0_20px_rgba(163,230,53,0.15)] bg-neutral-900">
                 <Image 
                   src="/photos/logo.png" 
                   alt="SMES Turf Logo" 
@@ -530,16 +533,14 @@ export default function Home() {
                 />
               </div>
 
-              {/* Heading and Location - Left aligned */}
+              {/* Heading and Location */}
               <div className="flex flex-col items-start text-left">
-                {/* Scaled mobile heading to text-4xl */}
                 <h1 className="text-5xl sm:text-7xl md:text-8xl font-black tracking-tighter uppercase leading-none text-white whitespace-nowrap">
                   <span className="inline-block bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-neutral-400">
                     SMES TURF
                   </span>
                 </h1>
 
-                {/* Left-aligned location with smaller mobile font */}
                 <div className="flex items-center justify-start gap-1.5 text-[10px] sm:text-sm font-mono text-lime-400 uppercase tracking-wider mt-1 sm:mt-3 font-bold">
                   <span className="text-xs sm:text-base">📍</span>
                   <span>Vijayanagar, 2nd Stage, Mysuru</span>
@@ -547,10 +548,10 @@ export default function Home() {
               </div>
             </motion.div>
 
-            {/* Centered Description */}
+            {/* Description (Left aligned on PC) */}
             <motion.p
               variants={fadeUp}
-              className="text-base sm:text-lg md:text-xl font-medium tracking-normal text-neutral-400 mt-5 sm:mt-6 max-w-xl mx-auto text-center px-2"
+              className="text-base sm:text-lg md:text-xl font-medium tracking-normal text-neutral-400 mt-5 sm:mt-6 max-w-xl mx-auto lg:mx-0 text-center lg:text-left px-2 lg:px-0"
             >
                Premium multisport arena built for high-performance{" "}
               <span className="text-lime-400">Football</span> &{" "}
@@ -558,10 +559,10 @@ export default function Home() {
             </motion.p>
           </div>
 
-          {/* Action Buttons Container */}
+          {/* RIGHT SIDE: Action Buttons Container */}
           <motion.div
             variants={fadeUp}
-            className="w-full max-w-md mx-auto lg:max-w-sm lg:mx-0 flex flex-col gap-3 mt-4 lg:mt-0"
+            className="w-full max-w-md mx-auto lg:max-w-sm lg:mx-0 flex flex-col gap-3 mt-4 lg:mt-0 shrink-0"
           >
             {/* Primary Action Button */}
             <motion.button
@@ -648,9 +649,10 @@ export default function Home() {
           </motion.div>
         </div>
 
+        {/* Launch Offer Badge (Pushed left on PC) */}
         <motion.div
           variants={fadeUp}
-          className="mt-8 sm:mt-12 inline-flex items-center gap-3 sm:gap-4 bg-neutral-900/70 backdrop-blur border border-neutral-800 px-4 py-3 rounded-none w-full sm:w-auto justify-center"
+          className="mt-8 sm:mt-12 inline-flex items-center justify-center lg:justify-start gap-3 sm:gap-4 bg-neutral-900/70 backdrop-blur border border-neutral-800 px-4 py-3 rounded-none w-full sm:w-auto mx-auto lg:mx-0"
         >
           <span className="flex h-2 w-2 relative flex-shrink-0">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75" />
