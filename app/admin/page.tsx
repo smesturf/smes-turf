@@ -40,7 +40,7 @@ export default function AdminPage() {
 
   const [bookings, setBookings] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterDate, setFilterDate] = useState<string>(""); // ⚙️ Date Filter State
+  const [filterDate, setFilterDate] = useState<string>(""); 
   const [blockedSlots, setBlockedSlots] = useState<any[]>([]);
   const [todaySlots, setTodaySlots] = useState(0);
   const [tomorrowSlots, setTomorrowSlots] = useState(0);
@@ -67,7 +67,7 @@ export default function AdminPage() {
   const [adminExistingMethod, setAdminExistingMethod] = useState("UPI");
   const [isSendingEmails, setIsSendingEmails] = useState(false);
 
-  // ⚙️ Manage Booking Pop-Up States (Master Admin - 4 Options)
+  // ⚙️ Manage Booking Pop-Up States
   const [showManageModal, setShowManageModal] = useState(false);
   const [selectedManageBooking, setSelectedManageBooking] = useState<any>(null);
   const [manageMode, setManageMode] = useState<"options" | "reschedule" | "extend">("options");
@@ -77,6 +77,13 @@ export default function AdminPage() {
   const [rescheduleCourt, setRescheduleCourt] = useState("Full Court");
   const [availableRescheduleSlots, setAvailableRescheduleSlots] = useState<string[]>([]);
   const [extendMinutes, setExtendMinutes] = useState(30);
+
+  // 🔒 Master Admin OTP Security States
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [otpInput, setOtpInput] = useState("");
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"cancel_refund" | "reschedule" | "cancel_no_refund" | "extend" | null>(null);
 
   const FIXED_COACHING_FEE = 3500;
   const currentMonthYear = new Date().toISOString().slice(0, 7);
@@ -108,7 +115,6 @@ export default function AdminPage() {
 
   const [slotDate, setSlotDate] = useState("");
   
-  // ⚙️ Hardcoded Time Slots 
   const adminTimeSlots = [
     "12:00 AM", "12:30 AM", "01:00 AM", "01:30 AM", "02:00 AM", "02:30 AM",
     "03:00 AM", "03:30 AM", "04:00 AM", "04:30 AM", "05:00 AM", "05:30 AM",
@@ -176,9 +182,7 @@ export default function AdminPage() {
   const [cashAmount, setCashAmount] = useState("");
   const [upiAmount, setUpiAmount] = useState("");
 
-  /* -------- Security Auth & Realtime Loader -------- */
   useEffect(() => {
-    // ⚙️ Adaptive Auth State Subscription (Fixes Phone vs Laptop Multi-Device Conflicts)
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session) {
         localStorage.removeItem("adminLoggedIn");
@@ -220,12 +224,10 @@ export default function AdminPage() {
     };
   }, [router]);
 
-  /* -------- Fetch historical data seamlessly if filter changes -------- */
   useEffect(() => {
     loadBookings();
   }, [filterDate]);
 
-  /* -------- Midnight Auto-Rollover -------- */
   useEffect(() => {
     const now = new Date();
     const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
@@ -239,7 +241,6 @@ export default function AdminPage() {
     return () => clearTimeout(timer);
   }, [activeDate]);
 
-  /* -------- Inactivity Auto-Logout Timer -------- */
   useEffect(() => {
     let timeout: NodeJS.Timeout;
     const INACTIVITY_LIMIT = 15 * 60 * 1000;
@@ -247,7 +248,6 @@ export default function AdminPage() {
     const resetTimer = () => {
       clearTimeout(timeout);
       timeout = setTimeout(async () => {
-        // Scoped to local session to avoid logging out active session on laptop/phone
         await supabase.auth.signOut({ scope: "local" });
         localStorage.removeItem("adminLoggedIn");
         localStorage.removeItem("adminLoginTime");
@@ -267,7 +267,6 @@ export default function AdminPage() {
     };
   }, [router]);
 
-  /* -------- Automated Email Reminders -------- */
   const sendEmailReminders = async () => {
     const pendingStudents = academyStudents.filter(s => s.payment_status !== "settled" && s.email);
     const noEmailStudents = academyStudents.filter(s => s.payment_status !== "settled" && !s.email);
@@ -660,28 +659,94 @@ export default function AdminPage() {
     setShowManageSlots(false);
   };
 
-  const handleCancelWithRefund = async () => {
+
+  /* ========================================================================= */
+  /* 🔒 MASTER OTP SECURITY LOGIC */
+  /* ========================================================================= */
+
+  const triggerOtpProtection = async (actionType: "cancel_refund" | "reschedule" | "cancel_no_refund" | "extend") => {
+    setIsSendingOtp(true);
+    try {
+      const response = await fetch("/api/admin-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate", email: "sports@smesturf.com" })
+      });
+      
+      if (!response.ok) throw new Error("Failed to trigger OTP");
+      
+      setPendingAction(actionType);
+      setShowOtpModal(true);
+    } catch (error) {
+      alert("Failed to send OTP. Please check your internet connection.");
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const verifyOtpAndExecute = async () => {
+    if (!otpInput || otpInput.length !== 6) {
+      alert("Please enter a valid 6-digit OTP.");
+      return;
+    }
+    
+    setIsVerifyingOtp(true);
+    try {
+      const response = await fetch("/api/admin-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "verify", otp: otpInput })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setShowOtpModal(false);
+        setOtpInput("");
+        
+        // Execute the correct function with otpVerified = true bypass flag
+        if (pendingAction === "cancel_refund") await handleCancelWithRefund(true);
+        else if (pendingAction === "reschedule") await handleRescheduleBooking(true);
+        else if (pendingAction === "cancel_no_refund") await handleCancelWithoutRefund(true);
+        else if (pendingAction === "extend") await checkAndExtendBooking(true);
+        
+        setPendingAction(null);
+      } else {
+        alert("❌ Invalid or Expired OTP. Please try again.");
+      }
+    } catch (error) {
+      alert("Error verifying OTP.");
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  };
+
+  // 1. Cancel With Refund
+  const handleCancelWithRefund = async (otpVerified = false) => {
     if (!selectedManageBooking) return;
-    const advanceAmount = selectedManageBooking.advance_amount || 0;
-    const confirmCancel = confirm(
-      `Are you sure you want to cancel booking for "${selectedManageBooking.customer_name}"?\n\n💰 Advance Refund to return: ₹${advanceAmount}`
-    );
-    if (!confirmCancel) return;
+    
+    if (!otpVerified) {
+      const advanceAmount = selectedManageBooking.advance_amount || 0;
+      const confirmCancel = confirm(
+        `Are you sure you want to cancel booking for "${selectedManageBooking.customer_name}"?\n\n💰 Advance Refund to return: ₹${advanceAmount}`
+      );
+      if (!confirmCancel) return;
+      
+      await triggerOtpProtection("cancel_refund");
+      return; // Stop execution here until OTP is verified
+    }
 
-    const { error } = await supabase
-      .from("bookings")
-      .delete()
-      .eq("id", selectedManageBooking.id);
-
+    const { error } = await supabase.from("bookings").delete().eq("id", selectedManageBooking.id);
     if (error) { alert(error.message); return; }
 
-    alert(`✅ Booking Cancelled. Refund of ₹${advanceAmount} marked to be returned.`);
+    alert(`✅ Booking Cancelled. Refund of ₹${selectedManageBooking.advance_amount || 0} marked to be returned.`);
     setShowManageModal(false);
     setSelectedManageBooking(null);
     loadBookings();
   };
 
-  const handleRescheduleBooking = async () => {
+  // 2. Reschedule
+  const handleRescheduleBooking = async (otpVerified = false) => {
     if (!selectedManageBooking || !rescheduleDate || !rescheduleTime) {
       alert("Please select both Date and Time for rescheduling.");
       return;
@@ -713,6 +778,11 @@ export default function AdminPage() {
       return;
     }
 
+    if (!otpVerified) {
+      await triggerOtpProtection("reschedule");
+      return; // Stop execution here until OTP is verified
+    }
+
     const originalDur = selectedManageBooking.duration_minutes || 60;
     const originalTotal = selectedManageBooking.total_amount || 0;
     const pricePerMin = originalTotal / originalDur;
@@ -740,18 +810,21 @@ export default function AdminPage() {
     loadBookings();
   };
 
-  const handleCancelWithoutRefund = async () => {
+  // 3. Cancel Without Refund
+  const handleCancelWithoutRefund = async (otpVerified = false) => {
     if (!selectedManageBooking) return;
-    const confirmCancel = confirm(
-      `Are you sure you want to cancel the booking for "${selectedManageBooking.customer_name}" WITHOUT issuing a refund?`
-    );
-    if (!confirmCancel) return;
+    
+    if (!otpVerified) {
+      const confirmCancel = confirm(
+        `Are you sure you want to cancel the booking for "${selectedManageBooking.customer_name}" WITHOUT issuing a refund?`
+      );
+      if (!confirmCancel) return;
+      
+      await triggerOtpProtection("cancel_no_refund");
+      return; // Stop execution here until OTP is verified
+    }
 
-    const { error } = await supabase
-      .from("bookings")
-      .delete()
-      .eq("id", selectedManageBooking.id);
-
+    const { error } = await supabase.from("bookings").delete().eq("id", selectedManageBooking.id);
     if (error) { alert(error.message); return; }
 
     alert("✅ Booking Cancelled (No Refund Issued).");
@@ -760,7 +833,8 @@ export default function AdminPage() {
     loadBookings();
   };
 
-  const checkAndExtendBooking = async () => {
+  // 4. Extend Slot
+  const checkAndExtendBooking = async (otpVerified = false) => {
     if (!selectedManageBooking) return;
 
     const bDate = selectedManageBooking.booking_date?.split("T")[0];
@@ -792,6 +866,11 @@ export default function AdminPage() {
       alert("⚠️ Extension Failed: The target extended time slot is already booked or blocked.");
       return;
     }
+    
+    if (!otpVerified) {
+      await triggerOtpProtection("extend");
+      return; // Stop execution here until OTP is verified
+    }
 
     const currentTotal = selectedManageBooking.total_amount || 0;
     const currentBalance = selectedManageBooking.balance_amount || 0;
@@ -819,6 +898,8 @@ export default function AdminPage() {
     setSelectedManageBooking(null);
     loadBookings();
   };
+
+  /* ========================================================================= */
 
   const todaysAdvance = bookings
     .filter((booking) => booking.created_at?.split("T")[0] === getTodayStr())
@@ -1953,15 +2034,15 @@ export default function AdminPage() {
                   <motion.button
                     whileHover={{ scale: 1.01, borderColor: "rgba(239, 68, 68, 0.6)" }}
                     whileTap={{ scale: 0.98 }}
-                    onClick={handleCancelWithRefund}
+                    onClick={() => handleCancelWithRefund(false)}
                     className="w-full text-left p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-red-950/40 transition-colors group"
                   >
                     <div className="flex justify-between items-center">
                       <span className="text-xs font-black uppercase text-red-400 group-hover:text-red-300">
                         ❌ Cancel & Refund Advance
                       </span>
-                      <span className="text-xs font-mono text-emerald-400 font-black">
-                        Refund: ₹{selectedManageBooking.advance_amount || 0}
+                      <span className="text-xs font-mono text-emerald-400 font-black flex items-center gap-2">
+                        🔒 OTP Required
                       </span>
                     </div>
                     <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">
@@ -1989,14 +2070,16 @@ export default function AdminPage() {
                   <motion.button
                     whileHover={{ scale: 1.01, borderColor: "rgba(245, 158, 11, 0.6)" }}
                     whileTap={{ scale: 0.98 }}
-                    onClick={handleCancelWithoutRefund}
+                    onClick={() => handleCancelWithoutRefund(false)}
                     className="w-full text-left p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-amber-950/30 transition-colors group"
                   >
                     <div className="flex justify-between items-center">
                       <span className="text-xs font-black uppercase text-amber-400 group-hover:text-amber-300">
                         ⛔ Cancel Without Refund
                       </span>
-                      <span className="text-xs font-mono text-amber-400">Forfeit advance</span>
+                      <span className="text-xs font-mono text-amber-400 flex items-center gap-2">
+                        🔒 OTP Required
+                      </span>
                     </div>
                     <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">
                       Cancels order but retains advance deposit.
@@ -2038,26 +2121,20 @@ export default function AdminPage() {
                     />
                   </div>
 
+                  {/* Fields 2 & 3: Court and Duration (Locked & Filtered) */}
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono uppercase text-neutral-400">Court</label>
-                      <select
-                        value={rescheduleCourt}
-                        onChange={(e) => {
-                          const newCourt = e.target.value;
-                          setRescheduleCourt(newCourt);
-                          if (rescheduleDate) loadRescheduleAvailableSlots(rescheduleDate, rescheduleDuration, newCourt);
-                        }}
-                        className="w-full p-3 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                      >
-                        <option value="Full Court">Full Court</option>
-                        <option value="Court 1">Court 1</option>
-                        <option value="Court 2">Court 2</option>
-                      </select>
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Court (Locked)</label>
+                      <input
+                        type="text"
+                        value={selectedManageBooking.court_number || selectedManageBooking.booking_type || "Full Court"}
+                        disabled
+                        className="w-full p-3 bg-neutral-900/50 text-neutral-500 border border-neutral-800 outline-none text-xs font-mono cursor-not-allowed"
+                      />
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono uppercase text-neutral-400">Duration</label>
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Duration (Same or Extend)</label>
                       <select
                         value={rescheduleDuration}
                         onChange={(e) => {
@@ -2067,10 +2144,11 @@ export default function AdminPage() {
                         }}
                         className="w-full p-3 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
                       >
-                        <option value={30}>30 mins</option>
-                        <option value={60}>60 mins</option>
-                        <option value={90}>90 mins</option>
-                        <option value={120}>120 mins</option>
+                        {[30, 60, 90, 120]
+                          .filter((d) => d >= (selectedManageBooking?.duration_minutes || 60))
+                          .map((d) => (
+                            <option key={d} value={d}>{d} mins</option>
+                          ))}
                       </select>
                     </div>
                   </div>
@@ -2100,10 +2178,10 @@ export default function AdminPage() {
                     <motion.button
                       whileHover={{ y: -1 }}
                       whileTap={{ scale: 0.97 }}
-                      onClick={handleRescheduleBooking}
-                      className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors"
+                      onClick={() => handleRescheduleBooking(false)}
+                      className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors flex items-center justify-center gap-2"
                     >
-                      Confirm Reschedule
+                      🔒 OTP & Reschedule
                     </motion.button>
 
                     <button
@@ -2163,10 +2241,10 @@ export default function AdminPage() {
                     <motion.button
                       whileHover={{ y: -1 }}
                       whileTap={{ scale: 0.97 }}
-                      onClick={checkAndExtendBooking}
-                      className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors"
+                      onClick={() => checkAndExtendBooking(false)}
+                      className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors flex items-center justify-center gap-2"
                     >
-                      Check & Extend
+                      🔒 Check & Extend
                     </motion.button>
 
                     <button
@@ -2481,6 +2559,84 @@ export default function AdminPage() {
                   Cancel
                 </motion.button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------- MASTER SECURITY OTP MODAL ---------- */}
+      <AnimatePresence>
+        {showOtpModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-[10000]"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 12, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.9, y: 12, opacity: 0 }}
+              transition={{ duration: 0.3, ease: easeOut }}
+              className="bg-neutral-950 border border-red-500/50 p-6 w-full max-w-sm space-y-5 relative overflow-hidden shadow-[0_0_50px_rgba(239,68,68,0.15)]"
+            >
+              <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-red-500/10 to-transparent pointer-events-none" />
+
+              <div className="relative text-center">
+                <div className="mx-auto w-10 h-10 bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 mb-3 rounded-full">
+                  🔒
+                </div>
+                <h2 className="text-xl font-black uppercase tracking-tight text-white">
+                  Security Check
+                </h2>
+                <p className="text-neutral-400 text-[11px] mt-2 font-mono leading-relaxed">
+                  To authorize this modification, please enter the 6-digit OTP sent to the <span className="text-white font-bold">master admin emails</span>.
+                </p>
+              </div>
+
+              {isSendingOtp ? (
+                <div className="py-6 text-center text-xs font-mono text-lime-400 animate-pulse font-black uppercase tracking-widest">
+                  Dispatching OTP to Master Email...
+                </div>
+              ) : (
+                <div className="space-y-4 relative">
+                  <input
+                    type="text"
+                    maxLength={6}
+                    placeholder="••••••"
+                    value={otpInput}
+                    onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ""))}
+                    className="w-full p-4 bg-neutral-900 text-center text-white text-2xl tracking-[0.5em] border border-neutral-800 focus:border-red-500 outline-none font-mono font-black transition-colors"
+                  />
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <motion.button
+                      whileHover={{ y: -2, boxShadow: "0 10px 25px rgba(239,68,68,0.3)" }}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={verifyOtpAndExecute}
+                      disabled={isVerifyingOtp || otpInput.length !== 6}
+                      className={`w-full font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors ${
+                        otpInput.length === 6 
+                          ? "bg-red-500 hover:bg-red-400 text-white" 
+                          : "bg-neutral-900 text-neutral-600 cursor-not-allowed border border-neutral-800"
+                      }`}
+                    >
+                      {isVerifyingOtp ? "Verifying..." : "Authorize"}
+                    </motion.button>
+                    <motion.button
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => {
+                        setShowOtpModal(false);
+                        setOtpInput("");
+                        setPendingAction(null);
+                      }}
+                      className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-400 font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
+                    >
+                      Abort
+                    </motion.button>
+                  </div>
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}

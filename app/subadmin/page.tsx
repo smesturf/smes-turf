@@ -77,6 +77,13 @@ export default function AdminPage() {
   const [availableRescheduleSlots, setAvailableRescheduleSlots] = useState<string[]>([]);
   const [extendMinutes, setExtendMinutes] = useState(30);
 
+  // 🔒 Security OTP States
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [otpInput, setOtpInput] = useState("");
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [otpPendingAction, setOtpPendingAction] = useState<"reschedule" | "extend" | null>(null);
+
   const FIXED_COACHING_FEE = 3500;
   const currentMonthYear = new Date().toISOString().slice(0, 7);
   const currentMonthLabel = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
@@ -659,7 +666,60 @@ export default function AdminPage() {
     setShowManageSlots(false);
   };
 
-  // ⚙️ SUB-ADMIN MANAGE OPERATIONS HANDLERS (No Cancel Options)
+  /* -------- 🔒 Security OTP Handlers -------- */
+  const triggerOtpVerification = async (actionType: "reschedule" | "extend") => {
+    setOtpPendingAction(actionType);
+    setIsSendingOtp(true);
+    setShowOtpModal(true);
+
+    try {
+      const response = await fetch('/api/admin-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'generate' }),
+      });
+      const data = await response.json();
+      if (!data.success) throw new Error(data.message);
+    } catch (error) {
+      alert("Failed to send OTP. Please check your internet connection.");
+      setShowOtpModal(false);
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const verifyOtpAndExecute = async () => {
+    if (otpInput.length !== 6) { alert("Please enter a valid 6-digit OTP."); return; }
+    
+    setIsVerifyingOtp(true);
+    try {
+      const response = await fetch('/api/admin-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'verify', otp: otpInput }),
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        // Execute the pending action once authorized
+        if (otpPendingAction === "reschedule") await executeRescheduleBooking();
+        if (otpPendingAction === "extend") await executeExtendBooking();
+        
+        setShowOtpModal(false);
+        setOtpInput("");
+        setOtpPendingAction(null);
+      } else {
+        alert("Invalid or expired OTP.");
+      }
+    } catch (error) {
+      alert("Verification failed. Please try again.");
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  };
+
+  // ⚙️ SUB-ADMIN MANAGE OPERATIONS HANDLERS (Now Protected by OTP)
+
   const handleRescheduleBooking = async () => {
     if (!selectedManageBooking || !rescheduleDate || !rescheduleTime) {
       alert("Please select both Date and Time for rescheduling.");
@@ -692,6 +752,11 @@ export default function AdminPage() {
       return;
     }
 
+    // Validation passed! Trigger OTP instead of updating directly
+    triggerOtpVerification("reschedule");
+  };
+
+  const executeRescheduleBooking = async () => {
     // Proportional Price Calculation
     const originalDur = selectedManageBooking.duration_minutes || 60;
     const originalTotal = selectedManageBooking.total_amount || 0;
@@ -753,9 +818,15 @@ export default function AdminPage() {
       return;
     }
 
+    // Validation passed! Trigger OTP instead of updating directly
+    triggerOtpVerification("extend");
+  };
+
+  const executeExtendBooking = async () => {
     // Price Update Calculation
     const currentTotal = selectedManageBooking.total_amount || 0;
     const currentBalance = selectedManageBooking.balance_amount || 0;
+    const currentDur = selectedManageBooking.duration_minutes || 60;
     
     const pricePerMin = currentTotal / currentDur;
     const addedPrice = Math.round(pricePerMin * Number(extendMinutes));
@@ -1739,27 +1810,20 @@ export default function AdminPage() {
                     />
                   </div>
 
-                  {/* Fields 2 & 3: Court and Duration */}
+                  {/* Fields 2 & 3: Court and Duration (Locked & Filtered) */}
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono uppercase text-neutral-400">Court</label>
-                      <select
-                        value={rescheduleCourt}
-                        onChange={(e) => {
-                          const newCourt = e.target.value;
-                          setRescheduleCourt(newCourt);
-                          if (rescheduleDate) loadRescheduleAvailableSlots(rescheduleDate, rescheduleDuration, newCourt);
-                        }}
-                        className="w-full p-3 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                      >
-                        <option value="Full Court">Full Court</option>
-                        <option value="Court 1">Court 1</option>
-                        <option value="Court 2">Court 2</option>
-                      </select>
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Court (Locked)</label>
+                      <input
+                        type="text"
+                        value={selectedManageBooking.court_number || selectedManageBooking.booking_type || "Full Court"}
+                        disabled
+                        className="w-full p-3 bg-neutral-900/50 text-neutral-500 border border-neutral-800 outline-none text-xs font-mono cursor-not-allowed"
+                      />
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono uppercase text-neutral-400">Duration</label>
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Duration (Same or Extend)</label>
                       <select
                         value={rescheduleDuration}
                         onChange={(e) => {
@@ -1769,10 +1833,11 @@ export default function AdminPage() {
                         }}
                         className="w-full p-3 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
                       >
-                        <option value={30}>30 mins</option>
-                        <option value={60}>60 mins</option>
-                        <option value={90}>90 mins</option>
-                        <option value={120}>120 mins</option>
+                        {[30, 60, 90, 120]
+                          .filter((d) => d >= (selectedManageBooking?.duration_minutes || 60))
+                          .map((d) => (
+                            <option key={d} value={d}>{d} mins</option>
+                          ))}
                       </select>
                     </div>
                   </div>
@@ -2170,6 +2235,83 @@ export default function AdminPage() {
                 >
                   Cancel
                 </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------- 🔒 SECURITY OTP MODAL ---------- */}
+      <AnimatePresence>
+        {showOtpModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-[99999]"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 10, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 10, opacity: 0 }}
+              className="bg-neutral-950 border border-neutral-800 p-6 sm:p-8 w-full max-w-sm relative overflow-hidden"
+            >
+              {/* Security Warning Header */}
+              <div className="absolute top-0 inset-x-0 h-1 bg-red-500" />
+              <div className="flex flex-col items-center text-center space-y-3 mb-6">
+                <div className="w-12 h-12 bg-red-500/10 border border-red-500/20 rounded-full flex items-center justify-center text-red-500 text-xl">
+                  🔒
+                </div>
+                <div>
+                  <h3 className="text-white font-black uppercase tracking-widest text-sm">Security Clearance</h3>
+                  <p className="text-neutral-500 text-[10px] font-mono mt-1">
+                    An authorization code has been dispatched to the master admin emails.
+                  </p>
+                </div>
+              </div>
+
+              {/* Input Area */}
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400 block text-center">
+                    Enter 6-Digit Code
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={otpInput}
+                    onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ""))}
+                    placeholder="• • • • • •"
+                    className="w-full bg-neutral-900 border border-neutral-800 focus:border-red-500 outline-none p-4 text-center text-2xl font-mono text-white tracking-[0.5em] transition-colors"
+                  />
+                </div>
+
+                {isSendingOtp ? (
+                  <div className="w-full bg-neutral-900 border border-neutral-800 text-neutral-500 font-mono text-xs uppercase tracking-widest py-3.5 text-center font-black">
+                    Transmitting...
+                  </div>
+                ) : (
+                  <motion.button
+                    whileHover={{ y: -2, boxShadow: "0 10px 25px rgba(239,68,68,0.2)" }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={verifyOtpAndExecute}
+                    disabled={isVerifyingOtp}
+                    className="w-full bg-red-500 hover:bg-red-400 text-black font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
+                  >
+                    {isVerifyingOtp ? "Verifying..." : "Authorize Action"}
+                  </motion.button>
+                )}
+
+                <button
+                  onClick={() => {
+                    setShowOtpModal(false);
+                    setOtpPendingAction(null);
+                    setOtpInput("");
+                  }}
+                  className="w-full text-[10px] font-mono uppercase text-neutral-500 hover:text-white pt-2 transition-colors"
+                >
+                  Cancel & Abort
+                </button>
               </div>
             </motion.div>
           </motion.div>
