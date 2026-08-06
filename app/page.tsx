@@ -1239,7 +1239,7 @@ export default function Home() {
           <div className="flex flex-col items-center md:items-end gap-2 font-mono text-[9px] sm:text-[10px] text-neutral-400 uppercase tracking-widest">
             <div className="flex flex-wrap justify-center md:justify-end gap-x-6 gap-y-2">
               <div><span className="text-lime-500">P:</span> +91 8073064676</div>
-              <div><span className="text-lime-500">E:</span> sports@smesturf.com</div>
+              <div><span className="text-lime-500">E:</span> smesturf@gmail.com</div>
               <div><span className="text-lime-500">L:</span> Mysuru, Karnataka</div>
             </div>
 

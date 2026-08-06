@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 
+// Create a global cache to store OTPs temporarily (Works well for Dev/Testing)
+const globalForOtp = global as unknown as { otpCache: Map<string, { otp: string; expires: number }> };
+export const otpCache = globalForOtp.otpCache || new Map();
+if (process.env.NODE_ENV !== "production") globalForOtp.otpCache = otpCache;
+
 export async function POST(request: Request) {
   try {
     const { email } = await request.json();
@@ -11,6 +16,12 @@ export async function POST(request: Request) {
 
     // 1. Generate a random 6-digit OTP right here in Next.js
     const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // --- DEBUG LINES ---
+    // These will print to your VS Code terminal so we can see if the password is correct
+    console.log("TESTING EMAIL:", process.env.EMAIL_USER);
+    console.log("TESTING PASS:", process.env.EMAIL_PASSWORD);
+    // -------------------
 
     // 2. Configure the email transporter
     const transporter = nodemailer.createTransport({
@@ -27,7 +38,7 @@ export async function POST(request: Request) {
       to: email,
       subject: "Your SMES Turf Pass Login OTP",
       html: `
-        <div style="font-family: monospace; max-w-md; margin: auto; padding: 20px; background-color: #050505; color: #f5f5f5; border: 1px solid #262626;">
+        <div style="font-family: monospace; max-width: 400px; margin: auto; padding: 20px; background-color: #050505; color: #f5f5f5; border: 1px solid #262626;">
           <h2 style="color: #a3e635; text-transform: uppercase;">SMES Turf Verification</h2>
           <p style="color: #a3a3a3;">You requested access to view your Official Arena Passes.</p>
           <div style="margin: 30px 0; padding: 20px; background-color: #171717; border-left: 4px solid #a3e635; text-align: center;">
@@ -44,7 +55,11 @@ export async function POST(request: Request) {
     // 4. Send the email
     await transporter.sendMail(mailOptions);
 
-    // 5. TODO: We MUST store `generatedOtp` somewhere so we can verify it later!
+    // 5. Store the OTP in memory, set to expire in 5 minutes
+    otpCache.set(email, {
+      otp: generatedOtp,
+      expires: Date.now() + 5 * 60 * 1000, 
+    });
     
     return NextResponse.json({ success: true, message: "OTP Email Sent Successfully" });
   } catch (error: any) {
