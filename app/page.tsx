@@ -447,7 +447,7 @@ export default function Home() {
               <motion.a
                 whileHover={{ y: -2, borderColor: "rgba(19, 136, 8, 0.6)" }}
                 whileTap={{ scale: 0.97 }}
-                href="https://wa.me/918453095258"
+                href="https://wa.me/918073064676"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-[10px] sm:text-xs font-mono uppercase tracking-wider p-3 rounded-none transition-colors text-center flex items-center justify-center gap-2"
@@ -489,7 +489,7 @@ export default function Home() {
               <motion.a
                 whileHover={{ y: -2, borderColor: "rgba(255,255,255,0.6)" }}
                 whileTap={{ scale: 0.97 }}
-                href="tel:+918453095258"
+                href="tel:+918073064676"
                 className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-[10px] sm:text-xs font-mono uppercase tracking-wider p-3 transition-colors text-center flex items-center justify-center gap-2 col-span-2"
               >
                 <svg className="w-4 h-4 fill-white shrink-0" viewBox="0 0 24 24">
@@ -663,11 +663,24 @@ export default function Home() {
                   <label className="text-xs font-mono uppercase text-neutral-400">Phone Number</label>
                   <input
                     type="tel"
+                    name="phone"
+                    autoComplete="tel"
                     placeholder="10-Digit Contact"
                     value={phone}
                     onChange={(e) => {
-                      const sanitized = e.target.value.replace(/\D/g, "");
-                      if (sanitized.length <= 10) setPhone(sanitized);
+                      let sanitized = e.target.value.replace(/\D/g, "");
+                      
+                      // Auto-remove '91' country code if Google Autofill pastes it
+                      if (sanitized.startsWith("91") && sanitized.length > 10) {
+                        sanitized = sanitized.slice(2);
+                      }
+                      
+                      // Enforce the 10-digit maximum safely
+                      if (sanitized.length > 10) {
+                        sanitized = sanitized.slice(0, 10);
+                      }
+                      
+                      setPhone(sanitized);
                     }}
                     className="w-full p-4 bg-neutral-900/50 text-white font-mono border border-neutral-800 focus:border-white outline-none rounded-none transition-all text-base md:text-sm"
                   />
@@ -990,7 +1003,7 @@ export default function Home() {
             </p>
           </div>
           <div className="flex flex-wrap justify-center md:justify-end gap-x-6 gap-y-2 font-mono text-[9px] sm:text-[10px] text-neutral-400 uppercase tracking-widest">
-            <div><span className="text-white">P:</span> +91 8453095258</div>
+            <div><span className="text-white">P:</span> +91 80730 64676</div>
             <div><span className="text-white">E:</span> sports@smesturf.com</div>
             <div><span className="text-white">L:</span> Mysuru, Karnataka</div>
           </div>
