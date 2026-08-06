@@ -84,21 +84,23 @@ export async function POST(req: Request) {
     const timePart = bookingDetails.startTime.substring(0, 5).replace(":", "");
     const bookingReference = `SMES-${datePart}-${timePart}`;
 
+    const gatewayFee = bookingDetails.totalAmount - 200; // Evaluates to ₹5 or ₹10 depending on scale
+
     const { data: insertedData, error } = await supabase.from("bookings").insert([
       {
         booking_reference: bookingReference,
         customer_name: bookingDetails.name,
         phone: bookingDetails.phone,
-        email: bookingDetails.email, // <-- Added Email Save
+        email: bookingDetails.email, 
         booking_type: bookingDetails.bookingType,
         court_number: availability.court,
         sport: bookingDetails.sport,
         booking_date: bookingDetails.bookingDate,
         start_time: convert12to24(bookingDetails.startTime),
         duration_minutes: Number(bookingDetails.duration),
-        total_amount: bookingDetails.totalAmount,
-        advance_amount: 200,
-        balance_amount: bookingDetails.totalAmount - 200,
+        total_amount: bookingDetails.totalAmount, // 205 (or 410)
+        advance_amount: 200,                      // Your actual turf rate
+        balance_amount: 0,                        // 0 balance due at the venue!
         razorpay_order_id: paymentData.razorpay_order_id || null,
         razorpay_payment_id: paymentData.razorpay_payment_id || null,
         payment_status: "paid",
@@ -143,17 +145,21 @@ export async function POST(req: Request) {
                 <td style="padding: 15px; font-weight: bold; color: #ffffff; text-align: right;">${bookingDetails.startTime} (${bookingDetails.duration} Mins)</td>
               </tr>
               <tr style="background-color: #171717; border-bottom: 1px solid #262626;">
-                <td style="padding: 15px; color: #a3a3a3; text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Advance Paid</td>
+                <td style="padding: 15px; color: #a3a3a3; text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Promo Rate Paid</td>
                 <td style="padding: 15px; font-weight: bold; color: #a3e635; text-align: right;">₹200</td>
               </tr>
+              <tr style="background-color: #171717; border-bottom: 1px solid #262626;">
+                <td style="padding: 15px; color: #a3a3a3; text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Gateway Fee</td>
+                <td style="padding: 15px; font-weight: bold; color: #a3e635; text-align: right;">₹${gatewayFee}</td>
+              </tr>
               <tr style="background-color: #171717;">
-                <td style="padding: 15px; color: #a3a3a3; text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Balance Due</td>
-                <td style="padding: 15px; font-weight: bold; color: #ef4444; font-size: 18px; text-align: right;">₹${bookingDetails.totalAmount - 200}</td>
+                <td style="padding: 15px; color: #a3a3a3; text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Balance Due at Venue</td>
+                <td style="padding: 15px; font-weight: bold; color: #ef4444; font-size: 18px; text-align: right;">₹0</td>
               </tr>
             </table>
 
             <p style="color: #a3a3a3; font-size: 13px; margin-top: 30px; line-height: 1.5;">
-              ⚠️ <strong>Rules:</strong> Please arrive 10 minutes prior to kickoff. Balance must be cleared at the desk before entering the pitch. Non-marking turf shoes only.
+              ⚠️ <strong>Rules:</strong> Please arrive 10 minutes prior to kickoff. Non-marking turf shoes only. Don't forget your Instagram post requirement!
             </p>
             
             <hr style="border: 0; height: 1px; background-color: #262626; margin: 30px 0;" />

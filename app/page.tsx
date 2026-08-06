@@ -23,8 +23,13 @@ const stagger = {
   show: { transition: { staggerChildren: 0.08, delayChildren: 0.1 } },
 };
 
+const slotItem = {
+  hidden: { opacity: 0, scale: 0.9, y: 8 },
+  show: { opacity: 1, scale: 1, y: 0, transition: { duration: 0.25, ease: easeOut } },
+};
+
 /* ------------------------------------------------------------------ */
-/* Main Component (INDEPENDENCE DAY PROMO)                           */
+/* Main Component (INDEPENDENCE DAY MEGA PROMO)                      */
 /* ------------------------------------------------------------------ */
 export default function Home() {
   const router = useRouter();
@@ -43,6 +48,9 @@ export default function Home() {
   const duration = "60"; 
   const [bookingType, setBookingType] = useState("Half Court");
   
+  // 🚫 BOOKED / BLOCKED SLOTS STATE
+  const [bookedSlots, setBookedSlots] = useState<string[]>([]);
+
   // 💰 DYNAMIC PRICING CONFIGURATION
   const totalAmount = bookingType === "Half Court" ? 205 : 410; // Flat pricing sent to Razorpay
   const regularAmount = bookingType === "Half Court" ? 1200 : 2400; // Displayed for crossed-out value
@@ -59,6 +67,13 @@ export default function Home() {
 
   const [weather, setWeather] = useState<{ temp: number; condition: string } | null>(null);
   const autoPassRef = useRef<HTMLDivElement>(null);
+
+  const allKickoffSlots = [
+    "06:00 AM", "07:00 AM", "08:00 AM", "09:00 AM", "10:00 AM",
+    "11:00 AM", "12:00 PM", "01:00 PM", "02:00 PM", "03:00 PM",
+    "04:00 PM", "05:00 PM", "06:00 PM", "07:00 PM", "08:00 PM",
+    "09:00 PM", "10:00 PM", "11:00 PM"
+  ];
 
   /* -------- HELPER: TIME RANGE FORMATTER -------- */
   const getTimeRangeLabel = (startTimeStr: string, durationMins: number | string) => {
@@ -84,6 +99,107 @@ export default function Home() {
 
     return `${startTimeStr} - ${formatString(endTotal)}`;
   };
+
+  /* -------- LOAD BOOKED SLOTS FROM SUPABASE -------- */
+  const loadBookedSlots = async (dateStr: string, currentType: string) => {
+    if (!dateStr) {
+      setBookedSlots([]);
+      return;
+    }
+
+    const { data: bookingsData, error } = await supabase
+      .from("bookings")
+      .select("start_time, duration_minutes, booking_type, court_number")
+      .eq("booking_date", dateStr);
+
+    const { data: blockedData } = await supabase
+      .from("blocked_slots")
+      .select("start_time, duration_minutes, court_number")
+      .eq("booking_date", dateStr);
+
+    if (error) {
+      console.error("Error loading booked slots:", error);
+      return;
+    }
+
+    const timeToMinutes = (timeStr: string) => {
+      if (!timeStr) return 0;
+      const clean = timeStr.trim().toUpperCase();
+      if (clean.includes("AM") || clean.includes("PM")) {
+        const parts = clean.split(" ");
+        const timePart = parts[0];
+        const ampm = parts[1];
+        let [h, m] = timePart.split(":").map(Number);
+        if (ampm === "PM" && h !== 12) h += 12;
+        if (ampm === "AM" && h === 12) h = 0;
+        return h * 60 + (m || 0);
+      } else {
+        const [h, m] = clean.split(":").map(Number);
+        return h * 60 + (m || 0);
+      }
+    };
+
+    const blockedList: string[] = [];
+
+    allKickoffSlots.forEach((slot) => {
+      const slotStart = timeToMinutes(slot);
+      const slotEnd = slotStart + 60;
+      let count = 0;
+
+      const checkOverlapAndCount = (items: any[] | null) => {
+        if (!items) return;
+        items.forEach((item) => {
+          if (!item.start_time) return;
+          const bStart = timeToMinutes(item.start_time);
+          const bEnd = bStart + (Number(item.duration_minutes) || 60);
+
+          if (slotStart < bEnd && slotEnd > bStart) {
+            const isFull =
+              item.booking_type === "Full Court" ||
+              item.court_number === "Full Court" ||
+              item.court_number === "Both Courts";
+
+            if (isFull) {
+              count = 999;
+            } else {
+              count += 1;
+            }
+          }
+        });
+      };
+
+      checkOverlapAndCount(bookingsData);
+      checkOverlapAndCount(blockedData);
+
+      if (currentType === "Full Court") {
+        if (count >= 1) {
+          blockedList.push(slot);
+        }
+      } else {
+        if (count >= 2 || count === 999) {
+          blockedList.push(slot);
+        }
+      }
+    });
+
+    setBookedSlots(blockedList);
+  };
+
+  /* -------- RE-FETCH BOOKED SLOTS ON DATE OR COURT TYPE CHANGE -------- */
+  useEffect(() => {
+    if (bookingDate) {
+      loadBookedSlots(bookingDate, bookingType);
+    } else {
+      setBookedSlots([]);
+    }
+  }, [bookingDate, bookingType]);
+
+  /* -------- RESET START TIME IF CURRENTLY SELECTED TIME BECOMES BLOCKED -------- */
+  useEffect(() => {
+    if (startTime && bookedSlots.includes(startTime)) {
+      setStartTime("");
+    }
+  }, [bookedSlots, startTime]);
 
   /* -------- AUTOMATIC PASS DOWNLOAD TRIGGER -------- */
   useEffect(() => {
@@ -338,22 +454,29 @@ export default function Home() {
       {/* 🚀 Next.js Optimized External Script Loading */}
       <Script id="razorpay-js" src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
 
-      {/* ---------- Animated Aurora Background (Tricolor Theme) ---------- */}
+      {/* ---------- Animated Aurora Background (Tricolor + Ashoka Navy Theme) ---------- */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
         <div className="absolute top-0 inset-x-0 h-[400px] sm:h-[640px] bg-gradient-to-b from-white/5 via-transparent to-transparent" />
         
         {/* Saffron Glow */}
         <motion.div
-          animate={{ x: [0, 40, 0], y: [0, 30, 0] }}
+          animate={{ x: [0, 50, 0], y: [0, 35, 0] }}
           transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute top-[-5%] left-[-10%] w-[60%] h-[40%] bg-[#FF9933]/15 rounded-full blur-[80px] sm:blur-[120px]"
+          className="absolute top-[-5%] left-[-10%] w-[60%] h-[45%] bg-[#FF9933]/15 rounded-full blur-[90px] sm:blur-[130px]"
         />
         
-        {/* Green Glow */}
+        {/* India Green Glow */}
         <motion.div
           animate={{ x: [0, -50, 0], y: [0, 40, 0] }}
           transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute top-[15%] right-[-10%] w-[50%] h-[50%] bg-[#138808]/15 rounded-full blur-[80px] sm:blur-[120px]"
+          className="absolute top-[15%] right-[-10%] w-[55%] h-[55%] bg-[#138808]/15 rounded-full blur-[90px] sm:blur-[130px]"
+        />
+
+        {/* Ashoka Navy Blue Subtle Ambient Center Glow */}
+        <motion.div
+          animate={{ scale: [1, 1.08, 1], opacity: [0.1, 0.2, 0.1] }}
+          transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute top-[25%] left-[25%] w-[50%] h-[40%] bg-[#1e3a8a]/15 rounded-full blur-[100px]"
         />
         
         <div
@@ -372,11 +495,13 @@ export default function Home() {
         animate="show"
         className="max-w-7xl mx-auto px-4 pt-12 pb-6 sm:pt-16 sm:pb-8 relative z-10 flex flex-col lg:items-start"
       >
+        {/* Tricolor Hero Badge */}
         <motion.div
           variants={fadeUp}
-          className="inline-flex items-center gap-2 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-slate-900/80 backdrop-blur border border-slate-800 text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-white mb-3 sm:mb-6 mt-1 sm:mt-4 mx-auto lg:mx-0 shadow-[0_0_15px_rgba(255,255,255,0.1)]"
+          className="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-slate-900/90 backdrop-blur border border-white/20 text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-white mb-3 sm:mb-6 mt-1 sm:mt-4 mx-auto lg:mx-0 shadow-[0_0_20px_rgba(255,153,51,0.2)]"
         >
           <span>🇮🇳</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-[#FF9933] animate-pulse" />
           <span className="bg-clip-text text-transparent bg-gradient-to-r from-[#FF9933] via-white to-[#138808] font-black">
             INDEPENDENCE DAY MEGA PROMO
           </span>
@@ -386,7 +511,7 @@ export default function Home() {
           <div className="flex flex-col items-center lg:items-start text-center lg:text-left w-full lg:w-auto">
             
             <motion.div variants={fadeUp} className="flex items-center justify-center lg:justify-start gap-3 sm:gap-6 w-full">
-              <div className="relative w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 shrink-0 rounded-full overflow-hidden border-2 border-white/40 shadow-[0_0_20px_rgba(255,255,255,0.15)] bg-neutral-900">
+              <div className="relative w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 shrink-0 rounded-full overflow-hidden border-2 border-white/40 shadow-[0_0_25px_rgba(255,255,255,0.2)] bg-neutral-900">
                 <Image 
                   src="/photos/logo.png" 
                   alt="SMES Turf Logo" 
@@ -416,8 +541,8 @@ export default function Home() {
               className="text-base sm:text-lg md:text-xl font-medium tracking-normal text-neutral-400 mt-5 sm:mt-6 max-w-xl mx-auto lg:mx-0 text-center lg:text-left px-2 lg:px-0"
             >
                Premium multisport arena built for high-performance{" "}
-              <span className="text-lime-400">Football</span> &{" "}
-              <span className="text-lime-400">Cricket</span> action.
+              <span className="text-[#FF9933]">Football</span> &{" "}
+              <span className="text-[#138808]">Cricket</span> action.
             </motion.p>
           </div>
 
@@ -426,10 +551,10 @@ export default function Home() {
             className="w-full max-w-md mx-auto lg:max-w-sm lg:mx-0 flex flex-col gap-3 mt-4 lg:mt-0 shrink-0"
           >
             <motion.button
-              whileHover={{ y: -2, boxShadow: "0 10px 25px rgba(255,255,255,0.2)" }}
+              whileHover={{ y: -2, boxShadow: "0 10px 25px rgba(255,153,51,0.25)" }}
               onClick={scrollToBooking}
               type="button"
-              className="w-full text-black text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-all font-black text-center cursor-pointer flex items-center justify-center gap-2 bg-white hover:bg-gray-200 border-white"
+              className="w-full text-black text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-all font-black text-center cursor-pointer flex items-center justify-center gap-2 bg-gradient-to-r from-[#FF9933] via-white to-[#138808] hover:opacity-90 border-0 shadow-lg"
             >
               🇮🇳 RESERVE YOUR FREEDOM SLOT
             </motion.button>
@@ -450,7 +575,7 @@ export default function Home() {
               <motion.a
                 whileHover={{ y: -2, borderColor: "rgba(19, 136, 8, 0.6)" }}
                 whileTap={{ scale: 0.97 }}
-                href="https://wa.me/918453095258"
+                href="https://wa.me/918073064676"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-[10px] sm:text-xs font-mono uppercase tracking-wider p-3 rounded-none transition-colors text-center flex items-center justify-center gap-2"
@@ -492,7 +617,7 @@ export default function Home() {
               <motion.a
                 whileHover={{ y: -2, borderColor: "rgba(255,255,255,0.6)" }}
                 whileTap={{ scale: 0.97 }}
-                href="tel:+918453095258"
+                href="tel:+918073064676"
                 className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-[10px] sm:text-xs font-mono uppercase tracking-wider p-3 transition-colors text-center flex items-center justify-center gap-2 col-span-2"
               >
                 <svg className="w-4 h-4 fill-white shrink-0" viewBox="0 0 24 24">
@@ -504,19 +629,19 @@ export default function Home() {
           </motion.div>
         </div>
 
-        {/* ⚡ LAUNCH OFFER BANNER */}
+        {/* ⚡ INDEPENDENCE DAY MEGA PROMO BANNER */}
         <motion.div
           variants={fadeUp}
           className="mt-8 sm:mt-12 w-full flex justify-center lg:justify-start"
         >
-          <div className="inline-flex flex-col sm:flex-row items-center gap-3 sm:gap-4 bg-white/5 backdrop-blur border border-white/20 px-6 py-4 shadow-[0_0_30px_rgba(255,255,255,0.05)] text-center sm:text-left">
+          <div className="inline-flex flex-col sm:flex-row items-center gap-3 sm:gap-4 bg-white/5 backdrop-blur border-t-2 border-t-[#FF9933] border-b-2 border-b-[#138808] border-x border-white/20 px-6 py-4 shadow-[0_0_30px_rgba(255,153,51,0.15)] text-center sm:text-left">
             <span className="flex h-3 w-3 relative flex-shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-lime-500" />
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#FF9933] opacity-75" />
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-[#FF9933]" />
             </span>
             <p className="text-xs sm:text-sm font-mono uppercase tracking-wide text-neutral-200">
-              💥 Mega Promo: <span className="text-neutral-500 line-through mr-1 font-medium">₹1200/Hr</span> <span className="text-white font-black text-base">From ₹205</span>
-              <span className="block sm:inline sm:ml-3 text-amber-400 mt-1 sm:mt-0 font-black animate-pulse">— Aug 15 to Aug 19 Limited!</span>
+              💥 Grand Freedom Offer: <span className="text-neutral-500 line-through mr-1 font-medium">₹1200/Hr</span> <span className="text-white font-black text-base">From ₹205</span>
+              <span className="block sm:inline sm:ml-3 text-[#FF9933] mt-1 sm:mt-0 font-black animate-pulse">— Aug 15 to Aug 19 Limited!</span>
              </p>
           </div>
         </motion.div>
@@ -530,7 +655,7 @@ export default function Home() {
         viewport={{ once: true, amount: 0.2 }}
         className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-16 border-b border-neutral-900 relative z-10"
       >
-         <motion.span variants={fadeUp} className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-2">
+         <motion.span variants={fadeUp} className="text-[11px] font-mono uppercase tracking-widest text-[#FF9933] block mb-2 font-bold">
           01 — Disciplines
         </motion.span>
         <motion.h2 variants={fadeUp} className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white mb-8 sm:mb-12">
@@ -553,7 +678,7 @@ export default function Home() {
             <motion.div
               key={card.title}
               variants={fadeUp}
-              whileHover={{ y: -4, borderColor: "rgba(255,255,255,0.3)" }}
+              whileHover={{ y: -4, borderColor: "rgba(255, 153, 51, 0.4)" }}
               transition={{ duration: 0.3, ease: easeOut }}
               className="border border-neutral-900 bg-neutral-900/20 p-6 sm:p-8 flex flex-col justify-between group transition-colors min-h-[180px] sm:min-h-[220px]"
             >
@@ -561,7 +686,7 @@ export default function Home() {
                  <span className="text-[11px] font-mono text-neutral-600 block mb-3 sm:mb-4">
                   {card.tag}
                 </span>
-                <h3 className="text-xl sm:text-2xl font-bold uppercase tracking-tight text-white group-hover:text-white transition-colors">
+                <h3 className="text-xl sm:text-2xl font-bold uppercase tracking-tight text-white group-hover:text-[#FF9933] transition-colors">
                   {card.title}
                 </h3>
                 <p className="text-neutral-400 text-xs sm:text-sm mt-2 max-w-sm">{card.desc}</p>
@@ -579,7 +704,7 @@ export default function Home() {
         viewport={{ once: true, amount: 0.2 }}
         className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-16 border-b border-neutral-900 relative z-10"
       >
-        <motion.span variants={fadeUp} className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-2">
+        <motion.span variants={fadeUp} className="text-[11px] font-mono uppercase tracking-widest text-neutral-400 block mb-2 font-bold">
           02 — Media
         </motion.span>
         <motion.h2 variants={fadeUp} className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white mb-8">
@@ -608,7 +733,7 @@ export default function Home() {
         </div>
       </motion.section>
 
-      {/* ---------- Booking Engine (PROMO TEASER MODE) ---------- */}
+      {/* ---------- Booking Engine ---------- */}
       <section
          id="booking-engine-section"
         className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-20 relative z-10 scroll-mt-6"
@@ -625,7 +750,7 @@ export default function Home() {
           >
             <motion.div variants={fadeUp} className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
               <div>
-                <span className="text-[11px] font-mono uppercase tracking-widest text-lime-400 block mb-2 font-bold animate-pulse">
+                <span className="text-[11px] font-mono uppercase tracking-widest text-[#138808] block mb-2 font-bold animate-pulse">
                  03 — Promotional Roster
                 </span>
                 <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">
@@ -641,7 +766,7 @@ export default function Home() {
                       Mysuru Weather
                     </span>
                     <span className="text-xs font-mono text-white font-bold">
-                      {weather.temp}°C — <span className="text-lime-400">{weather.condition}</span>
+                      {weather.temp}°C — <span className="text-[#FF9933]">{weather.condition}</span>
                     </span>
                   </div>
                 </div>
@@ -670,7 +795,8 @@ export default function Home() {
                     value={phone}
                     onChange={(e) => {
                       const sanitized = e.target.value.replace(/\D/g, "");
-                      if (sanitized.length <= 10) setPhone(sanitized);
+                      const finalNumber = sanitized.length > 10 ? sanitized.slice(-10) : sanitized;
+                      if (finalNumber.length <= 10) setPhone(finalNumber);
                     }}
                     className="w-full p-4 bg-neutral-900/50 text-white font-mono border border-neutral-800 focus:border-white outline-none rounded-none transition-all text-base md:text-sm"
                   />
@@ -701,7 +827,7 @@ export default function Home() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-mono uppercase text-white font-bold">Instagram Handle</label>
+                  <label className="text-xs font-mono uppercase text-[#FF9933] font-bold">Instagram Handle</label>
                   <input 
                     type="text" 
                     placeholder="@username" 
@@ -711,7 +837,7 @@ export default function Home() {
                       if (val && !val.startsWith("@")) val = "@" + val;
                       setInstaHandle(val);
                     }} 
-                    className="w-full p-4 bg-white/5 border border-white/30 text-base md:text-sm font-mono outline-none text-white font-bold focus:border-white placeholder-white/50" 
+                    className="w-full p-4 bg-white/5 border border-white/30 text-base md:text-sm font-mono outline-none text-white font-bold focus:border-[#FF9933] placeholder-white/50" 
                   />
                 </div>
               </motion.div>
@@ -724,8 +850,8 @@ export default function Home() {
                   onChange={(e) => setBookingType(e.target.value)}
                   className="w-full p-4 bg-neutral-900 text-white font-bold border border-neutral-800 focus:border-white outline-none rounded-none appearance-none text-base md:text-sm"
                 >
-                  <option value="Half Court">Half Court (5v5)</option>
-                  <option value="Full Court">Full Court (7v7 / 9v9)</option>
+                  <option value="Half Court">Half Court (5v5) — ₹205</option>
+                  <option value="Full Court">Full Court (7v7 / 9v9) — ₹410</option>
                 </select>
               </motion.div>
 
@@ -734,7 +860,7 @@ export default function Home() {
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400 flex justify-between items-center">
                     <span>Arena Visualizer</span>
-                    <span className="text-lime-400 tracking-wider font-black">SELECTED: {bookingType.toUpperCase()}</span>
+                    <span className="text-[#FF9933] tracking-wider font-black">SELECTED: {bookingType.toUpperCase()}</span>
                   </label>
                   
                   <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 bg-neutral-900/40 p-3 sm:p-4 border border-neutral-800">
@@ -752,8 +878,8 @@ export default function Home() {
                       <div className="absolute inset-0 z-20 flex transition-all duration-500">
                         {bookingType === "Half Court" ? (
                            <>
-                             <div className="w-1/2 h-full bg-lime-400/30 flex items-center justify-center border-r-2 border-lime-400 border-dashed backdrop-blur-[1px]">
-                               <span className="text-lime-400 text-[10px] sm:text-xs font-black tracking-widest font-mono bg-black/80 px-2.5 py-1.5 shadow-lg border border-lime-400/30 uppercase text-center">
+                             <div className="w-1/2 h-full bg-[#FF9933]/30 flex items-center justify-center border-r-2 border-[#FF9933] border-dashed backdrop-blur-[1px]">
+                               <span className="text-[#FF9933] text-[10px] sm:text-xs font-black tracking-widest font-mono bg-black/80 px-2.5 py-1.5 shadow-lg border border-[#FF9933]/30 uppercase text-center">
                                  5v5 Area
                                </span>
                              </div>
@@ -764,8 +890,8 @@ export default function Home() {
                              </div>
                            </>
                         ) : (
-                           <div className="w-full h-full bg-lime-400/30 flex items-center justify-center backdrop-blur-[1px]">
-                             <span className="text-lime-400 text-[10px] sm:text-xs font-black tracking-widest font-mono bg-black/80 px-2.5 py-1.5 shadow-lg border border-lime-400/30 uppercase text-center">
+                           <div className="w-full h-full bg-[#138808]/30 flex items-center justify-center backdrop-blur-[1px]">
+                             <span className="text-[#138808] text-[10px] sm:text-xs font-black tracking-widest font-mono bg-black/80 px-2.5 py-1.5 shadow-lg border border-[#138808]/30 uppercase text-center">
                                Full Court Access
                              </span>
                            </div>
@@ -793,7 +919,7 @@ export default function Home() {
                 </select>
               </motion.div>
 
-              {/* DYNAMIC START TIME */}
+              {/* DYNAMIC START TIME (FILTERED BY BOOKED SLOTS) */}
               <motion.div variants={fadeUp} className="space-y-2 relative">
                 <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Time</label>
                 <select
@@ -802,16 +928,17 @@ export default function Home() {
                   className="w-full p-4 bg-neutral-900 text-white font-bold border border-neutral-800 focus:border-white outline-none rounded-none appearance-none text-base md:text-sm"
                 >
                   <option value="">-- Select Time Slot --</option>
-                  {[
-                    "06:00 AM", "07:00 AM", "08:00 AM", "09:00 AM", "10:00 AM",
-                    "11:00 AM", "12:00 PM", "01:00 PM", "02:00 PM", "03:00 PM",
-                    "04:00 PM", "05:00 PM", "06:00 PM", "07:00 PM", "08:00 PM",
-                    "09:00 PM", "10:00 PM", "11:00 PM"
-                  ].map(t => <option key={t} value={t}>{t}</option>)}
+                  {allKickoffSlots
+                    .filter((t) => !bookedSlots.includes(t))
+                    .map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
                 </select>
               </motion.div>
 
-              {/* DURATION - LOCKED FOR LAUNCH */}
+              {/* DURATION - LOCKED FOR PROMO */}
               <motion.div variants={fadeUp} className="space-y-2 relative">
                 <label className="text-xs font-mono uppercase text-neutral-400">Session Length</label>
                 <div className="relative">
@@ -866,7 +993,7 @@ export default function Home() {
                 </div>
                 <div>
                   <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Sport</span>
-                  <span className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">{sport}</span>
+                  <span className="text-xs sm:text-sm font-bold text-[#FF9933] uppercase tracking-wider">{sport}</span>
                 </div>
                 <div>
                   <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Scale</span>
@@ -874,11 +1001,11 @@ export default function Home() {
                 </div>
                  <div>
                   <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Date</span>
-                  <span className="text-xs sm:text-sm font-bold text-lime-400 uppercase tracking-wider">{bookingDate ? new Date(bookingDate).toLocaleDateString("en-GB") : "TBD"}</span>
+                  <span className="text-xs sm:text-sm font-bold text-[#138808] uppercase tracking-wider">{bookingDate ? new Date(bookingDate).toLocaleDateString("en-GB") : "TBD"}</span>
                 </div>
                 <div>
                   <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Kickoff</span>
-                  <span className="text-xs sm:text-sm font-bold text-lime-400 uppercase tracking-wider">{startTime || "TBD"}</span>
+                  <span className="text-xs sm:text-sm font-bold text-[#138808] uppercase tracking-wider">{startTime || "TBD"}</span>
                 </div>
               </div>
 
@@ -925,10 +1052,10 @@ export default function Home() {
                     id="insta-verification-checkbox" 
                     checked={instaAgreed} 
                     onChange={(e) => setInstaAgreed(e.target.checked)} 
-                    className="w-4 h-4 accent-white mt-0.5 cursor-pointer flex-shrink-0" 
+                    className="w-4 h-4 accent-[#FF9933] mt-0.5 cursor-pointer flex-shrink-0" 
                   />
                   <label htmlFor="insta-verification-checkbox" className="text-[10px] font-mono text-neutral-400 cursor-pointer leading-relaxed select-none">
-                    I agree my team will follow <span className="text-white font-bold">@smesturf</span>, post a story, mention us, and use <span className="text-white font-bold">#SMESTurf</span>. ⚠️ <span className="text-white font-bold underline">Strict Condition:</span> No player from my team will book duplicate promo slots.
+                    I agree my team will follow <span className="text-white font-bold">@smesturf</span>, post a story, mention us, and use <span className="text-[#FF9933] font-bold">#SMESTurf</span>. ⚠️ <span className="text-white font-bold underline">Strict Condition:</span> No player from my team will book duplicate promo slots.
                   </label>
                 </div>
               </div>
@@ -993,8 +1120,8 @@ export default function Home() {
             </p>
           </div>
           <div className="flex flex-wrap justify-center md:justify-end gap-x-6 gap-y-2 font-mono text-[9px] sm:text-[10px] text-neutral-400 uppercase tracking-widest">
-            <div><span className="text-white">P:</span> +91 8453095258</div>
-            <div><span className="text-white">E:</span> sports@smesturf.com</div>
+            <div><span className="text-white">P:</span> +91 8073064676</div>
+            <div><span className="text-white">E:</span> smesturf@gmail.com</div>
             <div><span className="text-white">L:</span> Mysuru, Karnataka</div>
           </div>
         </div>
@@ -1012,7 +1139,7 @@ export default function Home() {
           isPaymentLoading 
             ? "bg-neutral-900 border-neutral-800 text-neutral-500 cursor-not-allowed"
             : isFormComplete 
-              ? "bg-lime-400 border-lime-400 text-black hover:bg-lime-500 shadow-lime-400/30 cursor-pointer" 
+              ? "bg-[#FF9933] border-[#FF9933] text-black hover:bg-[#ff8811] shadow-[#FF9933]/30 cursor-pointer" 
               : "bg-white border-white text-black hover:bg-gray-200 shadow-white/20 cursor-pointer"
         }`}
       >
