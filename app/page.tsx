@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Script from "next/script";
 import Image from "next/image";
 import { supabase } from "./lib/supabase";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
+import { getPrice } from "./lib/booking-rules";
 
 /* ------------------------------------------------------------------ */
 /* Motion Presets                                                    */
@@ -23,43 +24,39 @@ const stagger = {
   show: { transition: { staggerChildren: 0.08, delayChildren: 0.1 } },
 };
 
+const slotItem = {
+  hidden: { opacity: 0, scale: 0.9, y: 8 },
+  show: { opacity: 1, scale: 1, y: 0, transition: { duration: 0.25, ease: easeOut } },
+};
+
 /* ------------------------------------------------------------------ */
-/* Main Component (INDEPENDENCE DAY PROMO)                           */
+/* Main Component                                                    */
 /* ------------------------------------------------------------------ */
 export default function Home() {
   const router = useRouter();
 
-  // 📝 USER INPUT STATE
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [instaHandle, setInstaHandle] = useState("");
-  const [sport, setSport] = useState("Football");
   
-  // 🔓 DYNAMIC PROMO STATE (LIVE TODAY)
-  const isBookingOpen = true; // Gateway is OPEN
-  const [bookingDate, setBookingDate] = useState(""); 
+  const [sport, setSport] = useState("");
+  const [bookingType, setBookingType] = useState("");
+  
+  const [bookingDate, setBookingDate] = useState("");
   const [startTime, setStartTime] = useState("");
-  const duration = "60"; 
-  const [bookingType, setBookingType] = useState("Half Court");
-  
-  // 💰 DYNAMIC PRICING CONFIGURATION
-  const baseOfferPrice = bookingType === "Half Court" ? 195 : 400;
-  const convenienceFee = 10;
-  const totalAmount = baseOfferPrice + convenienceFee; // ₹205 or ₹410 sent to Razorpay
-  const regularAmount = bookingType === "Half Court" ? 1200 : 2400; // Displayed for crossed-out value
-  
-  // 📸 INSTAGRAM MANDATORY VERIFICATION STATE
-  const [instaAgreed, setInstaAgreed] = useState(false);
+  const [duration, setDuration] = useState(""); 
 
-  // 📲 TEAM WHATSAPP OVERLAY POPUP MODAL STATE
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [savedBooking, setSavedBooking] = useState({ date: "", time: "" });
+  const [bookedSlots, setBookedSlots] = useState<string[]>([]);
+  
+  // 🔒 CLIENT DATE STATE (Strictly IST)
+  const [minDate, setMinDate] = useState("");
+
+  const [weather, setWeather] = useState<{ temp: number; condition: string } | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isPaymentLoading, setIsPaymentLoading] = useState(false);
   const [isProcessingBooking, setIsProcessingBooking] = useState(false);
   const [successData, setSuccessData] = useState<any>(null);
 
-  const [weather, setWeather] = useState<{ temp: number; condition: string } | null>(null);
   const autoPassRef = useRef<HTMLDivElement>(null);
 
   /* -------- HELPER: TIME RANGE FORMATTER -------- */
@@ -104,7 +101,7 @@ export default function Home() {
           });
 
           const link = document.createElement("a");
-          link.download = `SMES_Freedom_Pass_${successData.referenceId || successData.bookingId}.png`;
+          link.download = `SMES_Arena_Pass_${successData.referenceId || successData.bookingId}.png`;
           link.href = dataUrl;
           document.body.appendChild(link);
           link.click();
@@ -113,6 +110,7 @@ export default function Home() {
           console.error("Auto-download error:", err);
         }
       };
+
       triggerAutoDownload();
     }
   }, [successData]);
@@ -123,15 +121,18 @@ export default function Home() {
       try {
         const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=12.3400&longitude=76.6100&current_weather=true");
         const data = await res.json();
+        
         if (data?.current_weather) {
           const temp = Math.round(data.current_weather.temperature);
           const code = data.current_weather.weathercode;
+          
           let condition = "Clear Conditions";
           if (code >= 1 && code <= 3) condition = "Partly Cloudy";
           if (code >= 45 && code <= 48) condition = "Fog Warning";
           if (code >= 51 && code <= 67) condition = "Light Drizzle";
           if (code >= 71 && code <= 82) condition = "Heavy Rain";
           if (code >= 95) condition = "Thunderstorm Warning";
+
           setWeather({ temp, condition });
         }
       } catch (e) {
@@ -141,37 +142,186 @@ export default function Home() {
     fetchWeather();
   }, []);
 
+  /* -------- IST Strict Min Date -------- */
+  const getLocalDateString = () =>
+    new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+
+  useEffect(() => {
+    setMinDate(getLocalDateString());
+  }, []);
+
+  useEffect(() => {
+    if (bookingDate && bookingType) loadBookedSlots(bookingDate);
+  }, [bookingDate, bookingType]);
+
+  const { totalAmount, regularAmount } = useMemo(
+    () => {
+      if (!bookingType || !duration) return { totalAmount: 0, regularAmount: 0 };
+      return getPrice(duration, bookingType);
+    },
+    [duration, bookingType]
+  );
+
+  const allSlots = Array.from({ length: 48 }, (_, i) => {
+    const h = Math.floor(i / 2);
+    const m = i % 2 === 0 ? "00" : "30";
+    const ampm = h >= 12 ? "PM" : "AM";
+    const displayH = h % 12 === 0 ? 12 : h % 12;
+    return `${String(displayH).padStart(2, "0")}:${m} ${ampm}`;
+  });
+
+  const isSlotAvailable = (slot: string) => {
+    if (!bookingDate || !duration || !bookingType) return false;
+    const segmentsNeeded = Number(duration) / 30;
+    const slotIndex = allSlots.indexOf(slot);
+    
+    for (let i = 0; i < segmentsNeeded; i++) {
+      const targetIndex = (slotIndex + i) % allSlots.length;
+      const nextSlot = allSlots[targetIndex];
+      if (bookedSlots.includes(nextSlot)) return false;
+    }
+    
+    // Strict IST Today Check
+    const today = getLocalDateString();
+    if (bookingDate && bookingDate < today) return false;
+    if (bookingDate !== today) return true;
+
+    // Strict IST Time Comparison
+    const istTimeStr = new Date().toLocaleTimeString("en-US", {
+      timeZone: "Asia/Kolkata",
+      hour12: false,
+    });
+    const [currentHours, currentMins] = istTimeStr.split(":").map(Number);
+    const currentMinutes = currentHours * 60 + currentMins;
+
+    const [time, ampm] = slot.split(" ");
+    let [hours, minutes] = time.split(":").map(Number);
+    if (ampm === "PM" && hours !== 12) hours += 12;
+    if (ampm === "AM" && hours === 12) hours = 0;
+    const slotMinutes = hours * 60 + minutes;
+    
+    return slotMinutes > currentMinutes;
+  };
+
+  useEffect(() => {
+    if (startTime && !isSlotAvailable(startTime)) setStartTime("");
+  }, [bookingDate, bookedSlots, duration, bookingType]);
+
+  const loadBookedSlots = async (dateStr: string) => {
+    if (!bookingType) return; 
+
+    // IST strict offset parsing
+    const selectedDate = new Date(`${dateStr}T00:00:00+05:30`);
+    const prevDate = new Date(selectedDate.getTime() - 24 * 60 * 60 * 1000);
+
+    const currentDateStr = dateStr;
+    const prevDateStr = prevDate.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+
+    const { data: bookingsData, error } = await supabase
+      .from("bookings")
+      .select("start_time, duration_minutes, booking_type, court_number, booking_date")
+      .in("booking_date", [prevDateStr, currentDateStr]);
+
+    const { data: blockedData } = await supabase
+      .from("blocked_slots")
+      .select("start_time, duration_minutes, court_number, booking_date") 
+      .in("booking_date", [prevDateStr, currentDateStr]);
+
+    if (error) {
+      console.log(error);
+      return;
+    }
+
+    const slotCounts: Record<string, number> = {};
+
+    const processSlots = (dataArray: any[] | null, isBlock = false) => {
+      if (!dataArray) return;
+      
+      dataArray.forEach((slot: any) => {
+        if (!slot.start_time) return;
+        const time = slot.start_time.substring(0, 5);
+        const [h, m] = time.split(":");
+        let startMinutes = Number(h) * 60 + Number(m);
+        const slotsToBlock = (slot.duration_minutes || 60) / 30;
+
+        for (let i = 0; i < slotsToBlock; i++) {
+          let currentMinute = startMinutes + i * 30;
+          let isSlotForToday = false;
+
+          if (slot.booking_date === currentDateStr) {
+            if (currentMinute < 24 * 60) isSlotForToday = true;
+          } else if (slot.booking_date === prevDateStr) {
+            if (currentMinute >= 24 * 60) {
+              isSlotForToday = true;
+              currentMinute = currentMinute - (24 * 60); 
+            }
+          }
+
+          if (isSlotForToday) {
+            const hour24 = Math.floor(currentMinute / 60);
+            const minute = currentMinute % 60;
+            const ampm = hour24 >= 12 ? "PM" : "AM";
+            const hour12 = hour24 % 12 || 12;
+            const slotLabel = `${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${ampm}`;
+
+            let type = slot.booking_type; 
+            if (isBlock) {
+               if (slot.court_number === "Both Courts" || !slot.court_number) {
+                  type = "Full Court";
+               } else {
+                  type = "Half Court";
+               }
+            }
+
+            if (type === "Full Court") {
+              slotCounts[slotLabel] = 999; 
+            } else {
+              slotCounts[slotLabel] = (slotCounts[slotLabel] || 0) + 1; 
+            }
+          }
+        }
+      });
+    };
+
+    processSlots(bookingsData, false);
+    processSlots(blockedData, true);
+
+    const blocked: string[] = [];
+    Object.entries(slotCounts).forEach(([slot, count]) => {
+      if (bookingType === "Full Court") {
+        if (count >= 1) blocked.push(slot); 
+      } else {
+        if (count >= 2 || count === 999) blocked.push(slot); 
+      }
+    });
+
+    setBookedSlots(blocked);
+  };
+
   /* -------- Secure Razorpay Intent -------- */
   const openRazorpay = async () => {
+    if (!name || !phone || !email || !sport || !bookingType || !bookingDate || !startTime) {
+      alert("⚠️ Please fill all fields, select a sport, arena configuration, and a valid time slot.");
+      return;
+    }
+    if (phone.length !== 10) {
+      alert("⚠️ Invalid Phone Number: Please enter exactly 10 digits.");
+      return;
+    }
+
+    setIsPaymentLoading(true); 
+
     try {
-      if (!name || !phone || !email || !instaHandle || !bookingDate || !startTime || !instaAgreed) {
-        alert("Please fulfill all registration fields, select a court type, pick a kickoff slot, and accept the promo agreement.");
-        return;
-      }
-
-      // 🛑 ENFORCEMENT: Check for duplicate promo entries via phone OR email
-      const { data: duplicatePromoCheck } = await supabase
-        .from("bookings")
-        .select("id")
-        .or(`phone.eq.${phone},email.eq.${email}`);
-
-      if (duplicatePromoCheck && duplicatePromoCheck.length > 0) {
-        alert("❌ Promo Limit Exceeded: This phone number or email ID has already reserved a promotional slot. To ensure fairness, players are restricted to 1 promo booking.");
-        return;
-      }
-
-      setIsPaymentLoading(true);
-
       const response = await fetch("/api/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           bookingDate,
           startTime,
           duration,
           bookingType,
-          amount: totalAmount 
-        }),
+          amount: 205 // ₹200 Advance + ₹5 Razorpay Convenience Fee
+        })
       });
 
       const orderData = await response.json();
@@ -179,6 +329,7 @@ export default function Home() {
       if (!response.ok) {
         setIsPaymentLoading(false);
         alert(`❌ ${orderData.error || "Slot is no longer available. Please select another time."}`);
+        loadBookedSlots(bookingDate); 
         return;
       }
 
@@ -186,16 +337,16 @@ export default function Home() {
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
         amount: orderData.amount,
         currency: orderData.currency,
-        name: "SMES Turf Freedom Offer",
-        description: `${bookingType} Promo Entry`,
+        name: "SMES Turf",
+        description: "Advance Booking Payment",
         order_id: orderData.id,
         handler: async function (paymentRes: any) {
           await handleBooking(paymentRes);
         },
-        prefill: { 
+        prefill: {
           name: name,
-          email: email, 
-          contact: `+91${phone}` 
+          email: email,
+          contact: `+91${phone}`, 
         },
         readonly: {
           name: true,
@@ -210,16 +361,16 @@ export default function Home() {
         setIsPaymentLoading(false);
       } else {
         setIsPaymentLoading(false);
-        alert("Payment gateway script still loading. Please try again in a moment.");
+        alert("Payment gateway script still loading. Please try again.");
       }
     } catch (error) {
       setIsPaymentLoading(false);
-      console.error(error);
-      alert("Failed to open payment gateway");
+      console.error("Order creation failed:", error);
+      alert("Failed to initiate secure checkout.");
     }
   };
 
-  /* -------- Secure Server Booking Handler (WhatsApp & DB Sync) -------- */
+  /* -------- Secure Server Booking Handler -------- */
   const handleBooking = async (paymentData: any) => {
     setIsProcessingBooking(true);
 
@@ -230,15 +381,7 @@ export default function Home() {
         body: JSON.stringify({
           paymentData,
           bookingDetails: {
-            name: `${name} (IG: ${instaHandle})`, 
-            phone, 
-            email, 
-            sport: sport.toLowerCase(), 
-            bookingType, 
-            bookingDate, 
-            startTime, 
-            duration, 
-            totalAmount
+            name, phone, email, sport, bookingType, bookingDate, startTime, duration, totalAmount
           }
         }),
       });
@@ -251,14 +394,14 @@ export default function Home() {
         return;
       }
 
-      const balanceAmount = 0; // Total is paid upfront for promo
+      const balanceAmount = totalAmount - 200;
       const bookingId = verifyData.booking?.id ? `#${verifyData.booking.id}` : "#----";
       const referenceId = verifyData.booking?.booking_reference || paymentData.razorpay_payment_id || "N/A";
-      const advancePaid = totalAmount;
+      const advancePaid = 200;
       
       const formattedTimeSlot = getTimeRangeLabel(startTime, duration);
+      const [startT, endT] = formattedTimeSlot.split(" - "); 
 
-      // Trigger WhatsApp API Notification
       const whatsappRes = await fetch("/api/whatsapp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -283,12 +426,12 @@ export default function Home() {
       
       if (!whatsappRes.ok) {
          console.error("CRITICAL WHATSAPP API ERROR:", whatsappData);
+      } else if (!whatsappData.metaSent) {
+         console.warn("Customer Meta message failed:", whatsappData.metaError);
       }
 
       setIsProcessingBooking(false);
 
-      // Set Success states
-      setSavedBooking({ date: bookingDate, time: startTime });
       setSuccessData({
         bookingId,
         referenceId,
@@ -303,19 +446,14 @@ export default function Home() {
         advancePaid,
         balance: balanceAmount
       });
-      setShowSuccessModal(true);
 
-      // Reset form
       setName("");
       setPhone("");
-      setEmail("");
-      setInstaHandle("");
       setBookingDate("");
       setStartTime("");
-      setBookingType("Half Court");
-      setInstaAgreed(false);
-      setSport("Football");
-
+      setDuration("");
+      setSport("");
+      setBookingType("");
     } catch (error) {
       console.error(error);
       setIsProcessingBooking(false);
@@ -337,55 +475,54 @@ export default function Home() {
       {/* 🚀 Next.js Optimized External Script Loading */}
       <Script id="razorpay-js" src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
 
-      {/* ---------- Animated Aurora Background (Tricolor Theme) ---------- */}
+      {/* ---------- Background ---------- */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="absolute top-0 inset-x-0 h-[400px] sm:h-[640px] bg-gradient-to-b from-white/5 via-transparent to-transparent" />
-        
-        {/* Saffron Glow */}
+        <div className="absolute top-0 inset-x-0 h-[400px] sm:h-[640px] bg-gradient-to-b from-lime-500/10 via-transparent to-transparent" />
         <motion.div
           animate={{ x: [0, 40, 0], y: [0, 30, 0] }}
           transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute top-[-5%] left-[-10%] w-[60%] h-[40%] bg-[#FF9933]/15 rounded-full blur-[80px] sm:blur-[120px]"
+          className="absolute top-[-5%] left-[-10%] w-[60%] h-[40%] bg-emerald-500/10 rounded-full blur-[80px] sm:blur-[120px]"
         />
-        
-        {/* Green Glow */}
         <motion.div
           animate={{ x: [0, -50, 0], y: [0, 40, 0] }}
           transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute top-[15%] right-[-10%] w-[50%] h-[50%] bg-[#138808]/15 rounded-full blur-[80px] sm:blur-[120px]"
+          className="absolute top-[15%] right-[-10%] w-[50%] h-[50%] bg-lime-500/10 rounded-full blur-[80px] sm:blur-[120px]"
         />
-        
         <div
           className="absolute inset-0 opacity-[0.03]"
           style={{
-            backgroundImage: "linear-gradient(to right, rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.5) 1px, transparent 1px)",
+            backgroundImage:
+              "linear-gradient(to right, rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.5) 1px, transparent 1px)",
             backgroundSize: "60px 60px",
           }}
         />
       </div>
 
-      {/* ---------- Header (PROMO MODE) ---------- */}
+      {/* ---------- Header ---------- */}
       <motion.header
         variants={stagger}
         initial="hidden"
         animate="show"
-        className="max-w-7xl mx-auto px-4 pt-12 pb-6 sm:pt-16 sm:pb-8 relative z-10 flex flex-col lg:items-start"
+        className="max-w-7xl mx-auto px-4 pt-6 sm:pt-16 pb-6 sm:pb-8 relative z-10 flex flex-col lg:items-start"
       >
+        {/* Elite Badge - Pushed left on PC */}
         <motion.div
           variants={fadeUp}
-          className="inline-flex items-center gap-2 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-slate-900/80 backdrop-blur border border-slate-800 text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-white mb-3 sm:mb-6 mt-1 sm:mt-4 mx-auto lg:mx-0 shadow-[0_0_15px_rgba(255,255,255,0.1)]"
+          className="inline-flex items-center gap-1.5 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-slate-900/80 backdrop-blur border border-slate-800 text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-lime-400 mb-3 sm:mb-6 mt-1 sm:mt-4 mx-auto lg:mx-0"
         >
-          <span>🇮🇳</span>
-          <span className="bg-clip-text text-transparent bg-gradient-to-r from-[#FF9933] via-white to-[#138808] font-black">
-            INDEPENDENCE DAY MEGA PROMO
-          </span>
+          <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />
+          Elite Sports Venue
         </motion.div>
 
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 sm:gap-12 w-full">
+          
+          {/* LEFT SIDE: Text and Logo */}
           <div className="flex flex-col items-center lg:items-start text-center lg:text-left w-full lg:w-auto">
             
+            {/* Logo + Heading (Left aligned on PC) */}
             <motion.div variants={fadeUp} className="flex items-center justify-center lg:justify-start gap-3 sm:gap-6 w-full">
-              <div className="relative w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 shrink-0 rounded-full overflow-hidden border-2 border-white/40 shadow-[0_0_20px_rgba(255,255,255,0.15)] bg-neutral-900">
+              {/* Logo - Increased size slightly for phone and PC */}
+              <div className="relative w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 shrink-0 rounded-full overflow-hidden border-2 border-lime-400/40 shadow-[0_0_20px_rgba(163,230,53,0.15)] bg-neutral-900">
                 <Image 
                   src="/photos/logo.png" 
                   alt="SMES Turf Logo" 
@@ -396,9 +533,10 @@ export default function Home() {
                 />
               </div>
 
+              {/* Heading and Location */}
               <div className="flex flex-col items-start text-left">
                 <h1 className="text-5xl sm:text-7xl md:text-8xl font-black tracking-tighter uppercase leading-none text-white whitespace-nowrap">
-                  <span className="inline-block bg-clip-text text-transparent bg-gradient-to-b from-white via-neutral-200 to-neutral-400">
+                  <span className="inline-block bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-neutral-400">
                     SMES TURF
                   </span>
                 </h1>
@@ -410,6 +548,7 @@ export default function Home() {
               </div>
             </motion.div>
 
+            {/* Description (Left aligned on PC) */}
             <motion.p
               variants={fadeUp}
               className="text-base sm:text-lg md:text-xl font-medium tracking-normal text-neutral-400 mt-5 sm:mt-6 max-w-xl mx-auto lg:mx-0 text-center lg:text-left px-2 lg:px-0"
@@ -420,81 +559,88 @@ export default function Home() {
             </motion.p>
           </div>
 
+          {/* RIGHT SIDE: Action Buttons Container */}
           <motion.div
             variants={fadeUp}
             className="w-full max-w-md mx-auto lg:max-w-sm lg:mx-0 flex flex-col gap-3 mt-4 lg:mt-0 shrink-0"
           >
+            {/* Primary Action Button */}
             <motion.button
-              whileHover={{ y: -2, boxShadow: "0 10px 25px rgba(255,255,255,0.2)" }}
+              whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.35)" }}
+              whileTap={{ scale: 0.97 }}
               onClick={scrollToBooking}
               type="button"
-              className="w-full text-black text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-all font-black text-center cursor-pointer flex items-center justify-center gap-2 bg-white hover:bg-gray-200 border-white"
+              className="w-full bg-lime-400 hover:bg-lime-300 text-black text-xs font-mono uppercase tracking-wider p-4 rounded-none transition-colors font-black text-center shadow-lg shadow-lime-400/10 cursor-pointer flex items-center justify-center gap-2"
             >
-              🇮🇳 RESERVE YOUR FREEDOM SLOT
+              <svg className="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24">
+                <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2z"/>
+              </svg>
+              <span>BOOK NOW</span>
             </motion.button>
 
+            {/* Secondary Actions Grid (2-Column Grid on Mobile & Laptop) */}
             <div className="grid grid-cols-2 gap-2 w-full">
               <motion.a
-                whileHover={{ y: -2, borderColor: "rgba(255,255,255,0.6)" }}
+                whileHover={{ y: -2, borderColor: "rgba(163,230,53,0.6)" }}
                 whileTap={{ scale: 0.97 }}
                 href="/my-booking"
                 className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-[10px] sm:text-xs font-mono uppercase tracking-wider p-3 rounded-none transition-colors text-center flex items-center justify-center gap-2"
               >
-                <svg className="w-4 h-4 fill-white shrink-0" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 fill-lime-400 shrink-0" viewBox="0 0 24 24">
                   <path d="M22 10V6c0-1.11-.9-2-2-2H4c-1.1 0-1.99.89-1.99 2v4c1.1 0 1.99.9 1.99 2s-.89 2-2 2v4c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2v-4c-1.1 0-2-.9-2-2s.9-2 2-2zm-2-1.46c-1.19.69-2 1.99-2 3.46s.81 2.77 2 3.46V18H4v-2.54c1.19-.69 2-1.99 2-3.46s-.81-2.77-2-3.46V6h16v2.54zM11 7h2v2h-2zm0 4h2v2h-2zm0 4h2v2h-2z"/>
                 </svg>
                 <span>MY BOOKINGS</span>
               </motion.a>
 
               <motion.a
-                whileHover={{ y: -2, borderColor: "rgba(19, 136, 8, 0.6)" }}
+                whileHover={{ y: -2, borderColor: "rgba(163,230,53,0.6)" }}
                 whileTap={{ scale: 0.97 }}
-                href="https://wa.me/918453095258"
+                href="https://wa.me/918073064676"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-[10px] sm:text-xs font-mono uppercase tracking-wider p-3 rounded-none transition-colors text-center flex items-center justify-center gap-2"
               >
-                <svg className="w-4 h-4 fill-[#138808] shrink-0" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 fill-emerald-400 shrink-0" viewBox="0 0 24 24">
                   <path d="M12.012 2c-5.506 0-9.969 4.458-9.969 9.968 0 1.764.453 3.487 1.313 5.013l-1.396 5.099 5.234-1.365c1.472.802 3.137 1.222 4.818 1.222l.004-.001c5.505 0 9.967-4.457 9.967-9.968 0-2.663-1.038-5.168-2.923-7.051-1.884-1.884-4.388-2.92-7.048-2.92zm5.834 14.161c-.247.693-1.229 1.272-1.996 1.423-.523.103-1.205.186-3.504-.76-2.942-1.21-4.839-4.204-4.986-4.401-.147-.197-1.198-1.593-1.198-3.038 0-1.445.759-2.158 1.028-2.451.269-.293.587-.366.783-.366.196 0 .392.001.564.01.185.009.434-.07.679.529.245.599.833 2.032.906 2.18.073.148.122.321.024.518-.098.197-.147.321-.293.494-.147.173-.309.387-.441.52-.147.148-.302.309-.13.576.173.268.767 1.267 1.648 2.051 1.134 1.009 2.091 1.321 2.385 1.469.294.148.465.123.637-.074.172-.197.735-.856.932-1.15.196-.294.392-.246.661-.148.269.098 1.714.808 2.008.955.294.148.49.222.563.346.073.123.073.717-.174 1.41z"/>
                 </svg>
                 <span>WHATSAPP</span>
               </motion.a>
 
               <motion.a
-                whileHover={{ y: -2, borderColor: "rgba(255, 153, 51, 0.6)" }}
+                whileHover={{ y: -2, borderColor: "rgba(163,230,53,0.6)" }}
                 whileTap={{ scale: 0.97 }}
                 href="https://instagram.com/smesturf"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-[10px] sm:text-xs font-mono uppercase tracking-wider p-3 transition-colors text-center flex items-center justify-center gap-2"
               >
-                <svg className="w-4 h-4 fill-[#FF9933] shrink-0" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 fill-pink-500 shrink-0" viewBox="0 0 24 24">
                   <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
                 </svg>
                 <span>INSTAGRAM</span>
               </motion.a>
 
               <motion.a
-                whileHover={{ y: -2, borderColor: "rgba(255,255,255,0.6)" }}
+                whileHover={{ y: -2, borderColor: "rgba(163,230,53,0.6)" }}
                 whileTap={{ scale: 0.97 }}
                 href="https://maps.google.com/?q=12.329329,76.612008"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-[10px] sm:text-xs font-mono uppercase tracking-wider p-3 transition-colors text-center flex items-center justify-center gap-2"
               >
-                <svg className="w-4 h-4 fill-white shrink-0" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 fill-red-400 shrink-0" viewBox="0 0 24 24">
                   <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
                 </svg>
                 <span>FIND ARENA</span>
               </motion.a>
 
               <motion.a
-                whileHover={{ y: -2, borderColor: "rgba(255,255,255,0.6)" }}
+                whileHover={{ y: -2, borderColor: "rgba(163,230,53,0.6)" }}
                 whileTap={{ scale: 0.97 }}
-                href="tel:+918453095258"
+                href="tel:+918073064676"
                 className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-[10px] sm:text-xs font-mono uppercase tracking-wider p-3 transition-colors text-center flex items-center justify-center gap-2 col-span-2"
               >
-                <svg className="w-4 h-4 fill-white shrink-0" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 fill-lime-400 shrink-0" viewBox="0 0 24 24">
                   <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
                 </svg>
                 <span>CALL DESK</span>
@@ -503,21 +649,18 @@ export default function Home() {
           </motion.div>
         </div>
 
-        {/* ⚡ LAUNCH OFFER BANNER */}
+        {/* Launch Offer Badge (Pushed left on PC) */}
         <motion.div
           variants={fadeUp}
-          className="mt-8 sm:mt-12 w-full flex justify-center lg:justify-start"
+          className="mt-8 sm:mt-12 inline-flex items-center justify-center lg:justify-start gap-3 sm:gap-4 bg-neutral-900/70 backdrop-blur border border-neutral-800 px-4 py-3 rounded-none w-full sm:w-auto mx-auto lg:mx-0"
         >
-          <div className="inline-flex flex-col sm:flex-row items-center gap-3 sm:gap-4 bg-white/5 backdrop-blur border border-white/20 px-6 py-4 shadow-[0_0_30px_rgba(255,255,255,0.05)] text-center sm:text-left">
-            <span className="flex h-3 w-3 relative flex-shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-lime-500" />
-            </span>
-            <p className="text-xs sm:text-sm font-mono uppercase tracking-wide text-neutral-200">
-              💥 Mega Promo: <span className="text-neutral-500 line-through mr-1 font-medium">₹1200/Hr</span> <span className="text-white font-black text-base">From ₹205</span>
-              <span className="block sm:inline sm:ml-3 text-amber-400 mt-1 sm:mt-0 font-black animate-pulse">— Aug 15 to Aug 19 Limited!</span>
-             </p>
-          </div>
+          <span className="flex h-2 w-2 relative flex-shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500" />
+          </span>
+          <p className="text-[11px] sm:text-xs font-mono uppercase tracking-wide text-neutral-300">
+            ⚡ Launch Offer: <span className="text-neutral-500 line-through mr-1 font-medium">₹2400</span> <span className="text-lime-400 font-bold">₹1200 / Hr</span>
+           </p>
         </motion.div>
       </motion.header>
 
@@ -541,7 +684,7 @@ export default function Home() {
              {
               tag: "01 // TRACK FIELD",
               title: "Football Arena",
-              desc: "From fast-paced 5-A-side tactical clashes to open-field full court training drills.",
+              desc: "From fast-paced 7-A-side tactical clashes to open-field training drills.",
             },
             {
               tag: "02 // NET BOX",
@@ -552,7 +695,7 @@ export default function Home() {
             <motion.div
               key={card.title}
               variants={fadeUp}
-              whileHover={{ y: -4, borderColor: "rgba(255,255,255,0.3)" }}
+              whileHover={{ y: -4, borderColor: "rgba(163,230,53,0.4)" }}
               transition={{ duration: 0.3, ease: easeOut }}
               className="border border-neutral-900 bg-neutral-900/20 p-6 sm:p-8 flex flex-col justify-between group transition-colors min-h-[180px] sm:min-h-[220px]"
             >
@@ -560,7 +703,7 @@ export default function Home() {
                  <span className="text-[11px] font-mono text-neutral-600 block mb-3 sm:mb-4">
                   {card.tag}
                 </span>
-                <h3 className="text-xl sm:text-2xl font-bold uppercase tracking-tight text-white group-hover:text-white transition-colors">
+                <h3 className="text-xl sm:text-2xl font-bold uppercase tracking-tight text-white group-hover:text-lime-400 transition-colors">
                   {card.title}
                 </h3>
                 <p className="text-neutral-400 text-xs sm:text-sm mt-2 max-w-sm">{card.desc}</p>
@@ -585,6 +728,7 @@ export default function Home() {
           Turf Gallery
         </motion.h2>
 
+        {/* --- PHOTOS GRID (7 Photos) --- */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {[
             "20260709_154856.jpg",
@@ -607,7 +751,7 @@ export default function Home() {
         </div>
       </motion.section>
 
-      {/* ---------- Booking Engine (PROMO TEASER MODE) ---------- */}
+      {/* ---------- Booking Engine ---------- */}
       <section
          id="booking-engine-section"
         className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-20 relative z-10 scroll-mt-6"
@@ -624,11 +768,11 @@ export default function Home() {
           >
             <motion.div variants={fadeUp} className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
               <div>
-                <span className="text-[11px] font-mono uppercase tracking-widest text-lime-400 block mb-2 font-bold animate-pulse">
-                 03 — Promotional Roster
+                <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-2">
+                 03 — Reservation
                 </span>
                 <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">
-                  Prepare Your Squad
+                  Select and Secure Pitch
                 </h2>
               </div>
               
@@ -637,7 +781,7 @@ export default function Home() {
                   <span className="text-xl">🌤️</span>
                   <div>
                     <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500">
-                      Mysuru Weather
+                      Vijayanagar 2nd Stage
                     </span>
                     <span className="text-xs font-mono text-white font-bold">
                       {weather.temp}°C — <span className="text-lime-400">{weather.condition}</span>
@@ -648,7 +792,6 @@ export default function Home() {
             </motion.div>
 
             <div className="space-y-4 sm:space-y-6">
-              
               {/* Name + Phone + Email */}
               <motion.div variants={fadeUp} className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
                 <div className="space-y-2">
@@ -658,88 +801,68 @@ export default function Home() {
                     placeholder="Enter athlete name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full p-4 bg-neutral-900/50 text-white font-bold border border-neutral-800 focus:border-white outline-none rounded-none transition-all text-base md:text-sm"
+                    className="w-full p-4 bg-neutral-900/50 text-lime-400 font-bold border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all text-base md:text-sm"
                   />
                 </div>
+    
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400">Phone Number</label>
                   <input
                     type="tel"
-                    placeholder="10-Digit Contact"
+                    placeholder="Active contact"
                     value={phone}
                     onChange={(e) => {
-                      const sanitized = e.target.value.replace(/\D/g, "");
-                      if (sanitized.length <= 10) setPhone(sanitized);
+                      let sanitized = e.target.value.replace(/\D/g, "");
+                      if (sanitized.startsWith("0") && sanitized.length > 10) sanitized = sanitized.slice(1);
+                      else if (sanitized.startsWith("91") && sanitized.length > 10) sanitized = sanitized.slice(2);
+                      setPhone(sanitized.slice(0, 10));
                     }}
-                    className="w-full p-4 bg-neutral-900/50 text-white font-mono border border-neutral-800 focus:border-white outline-none rounded-none transition-all text-base md:text-sm"
+                    className="w-full p-4 bg-neutral-900/50 text-white font-mono border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all text-base md:text-sm"
                   />
                 </div>
+
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400">Email Address</label>
                   <input
                     type="email"
-                    placeholder="For pass delivery"
+                    placeholder="For pass & reminders"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full p-4 bg-neutral-900/50 text-white font-mono border border-neutral-800 focus:border-white outline-none rounded-none transition-all text-base md:text-sm"
+                    className="w-full p-4 bg-neutral-900/50 text-white font-mono border border-neutral-800 focus:border-lime-400 outline-none rounded-none transition-all text-base md:text-sm"
                   />
                 </div>
               </motion.div>
 
-              {/* Insta + Sport */}
-              <motion.div variants={fadeUp} className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+              {/* Sport + Pitch Config */}
+              <motion.div variants={fadeUp} className="space-y-6">
+                
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400">Sport Discipline</label>
-                  <select
-                    value={sport}
-                    onChange={(e) => setSport(e.target.value)}
-                    className="w-full p-4 bg-neutral-900 text-white font-bold border border-neutral-800 focus:border-white outline-none rounded-none appearance-none text-base md:text-sm"
-                  >
-                    <option value="Football">⚽ Football</option>
-                    <option value="Cricket">🏏 Cricket</option>
-                  </select>
+                  <div className="relative">
+                    <select
+                      value={sport}
+                      onChange={(e) => setSport(e.target.value)}
+                      className={`w-full p-4 bg-neutral-900 outline-none rounded-none appearance-none text-base md:text-sm transition-colors border ${sport ? "text-lime-400 font-bold border-neutral-800 focus:border-lime-400" : "text-neutral-500 border-neutral-800 focus:border-neutral-600"}`}
+                    >
+                      <option value="" disabled hidden>-- Select Sport --</option>
+                      <option value="Football">⚽ Football</option>
+                      <option value="Cricket">🏏 Cricket</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 text-xs">▼</div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-mono uppercase text-white font-bold">Instagram Handle</label>
-                  <input 
-                    type="text" 
-                    placeholder="@username" 
-                    value={instaHandle} 
-                    onChange={(e) => {
-                      let val = e.target.value;
-                      if (val && !val.startsWith("@")) val = "@" + val;
-                      setInstaHandle(val);
-                    }} 
-                    className="w-full p-4 bg-white/5 border border-white/30 text-base md:text-sm font-mono outline-none text-white font-bold focus:border-white placeholder-white/50" 
-                  />
-                </div>
-              </motion.div>
 
-              {/* COURT TYPE SELECTION */}
-              <motion.div variants={fadeUp} className="space-y-2">
-                <label className="text-xs font-mono uppercase text-neutral-400">Court Scale</label>
-                <select
-                  value={bookingType}
-                  onChange={(e) => setBookingType(e.target.value)}
-                  className="w-full p-4 bg-neutral-900 text-white font-bold border border-neutral-800 focus:border-white outline-none rounded-none appearance-none text-base md:text-sm"
-                >
-                  <option value="Half Court">Half Court (5v5)</option>
-                  <option value="Full Court">Full Court (7v7 / 9v9)</option>
-                </select>
-              </motion.div>
-
-              {/* Dynamic Promo Scale Display */}
-              <motion.div variants={fadeUp} className="space-y-6">
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400 flex justify-between items-center">
-                    <span>Arena Visualizer</span>
-                    <span className="text-lime-400 tracking-wider font-black">SELECTED: {bookingType.toUpperCase()}</span>
+                    <span>Arena Scale Configuration</span>
+                    <span className="text-lime-400 tracking-wider font-black">{bookingType ? bookingType.toUpperCase() : "PENDING"}</span>
                   </label>
                   
                   <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 bg-neutral-900/40 p-3 sm:p-4 border border-neutral-800">
-                    <div className="relative w-full h-32 sm:h-40 bg-[#0d2a13] border-2 border-neutral-700 rounded-sm overflow-hidden flex shadow-inner pointer-events-none">
-                      {/* Field Lines Overlay */}
-                      <div className="absolute inset-0 flex items-center justify-center opacity-40 z-10">
+                    
+                    <div className="relative w-full sm:w-2/3 h-32 sm:h-40 bg-[#0d2a13] border-2 border-neutral-700 rounded-sm overflow-hidden flex shadow-inner group">
+                      
+                      <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-40 group-hover:opacity-70 transition-opacity duration-300 z-10">
                         <div className="w-0.5 h-full bg-white" />
                         <div className="absolute w-14 sm:w-20 h-14 sm:h-20 border-2 border-white rounded-full" />
                         <div className="absolute w-1.5 h-1.5 bg-white rounded-full" />
@@ -747,82 +870,178 @@ export default function Home() {
                         <div className="absolute right-0 w-8 sm:w-12 h-16 sm:h-24 border-2 border-r-0 border-white top-1/2 -translate-y-1/2" />
                       </div>
 
-                      {/* Visual Indicator Overlay */}
-                      <div className="absolute inset-0 z-20 flex transition-all duration-500">
+                      <div className="absolute inset-0 z-20 pointer-events-none flex">
                         {bookingType === "Half Court" ? (
-                           <>
-                             <div className="w-1/2 h-full bg-lime-400/30 flex items-center justify-center border-r-2 border-lime-400 border-dashed backdrop-blur-[1px]">
-                               <span className="text-lime-400 text-[10px] sm:text-xs font-black tracking-widest font-mono bg-black/80 px-2.5 py-1.5 shadow-lg border border-lime-400/30 uppercase text-center">
-                                 5v5 Area
-                               </span>
-                             </div>
-                             <div className="w-1/2 h-full bg-black/70 flex items-center justify-center">
-                               <span className="text-neutral-500 text-[9px] font-bold tracking-widest font-mono uppercase bg-black/60 px-2 py-0.5 border border-neutral-800">
-                                 Unused Space
-                               </span>
-                             </div>
-                           </>
+                          <>
+                            <motion.div 
+                              initial={{ opacity: 0 }} animate={{ opacity: 1 }} 
+                              className="w-1/2 h-full bg-lime-400/30 flex items-center justify-center border-r-2 border-lime-400 border-dashed backdrop-blur-[1px]"
+                            >
+                              <span className="text-lime-400 text-[10px] sm:text-xs font-black tracking-widest font-mono bg-black/80 px-2.5 py-1.5 shadow-lg border border-lime-400/30 uppercase">
+                                5v5 Half
+                              </span>
+                            </motion.div>
+                            <motion.div 
+                              initial={{ opacity: 0 }} animate={{ opacity: 1 }} 
+                              className="w-1/2 h-full bg-black/70 flex items-center justify-center"
+                            >
+                              <span className="text-neutral-500 text-[9px] font-bold tracking-widest font-mono uppercase bg-black/60 px-2 py-0.5 border border-neutral-800">
+                                Unused Space
+                              </span>
+                            </motion.div>
+                          </>
+                        ) : bookingType === "Full Court" ? (
+                          <>
+                            <motion.div 
+                              initial={{ opacity: 0 }} animate={{ opacity: 1 }} 
+                              className="w-full h-full bg-lime-400/20 flex items-center justify-center backdrop-blur-[1px]"
+                            >
+                              <span className="text-lime-400 text-xs sm:text-sm font-black tracking-widest font-mono bg-black/80 px-4 py-2 shadow-[0_0_20px_rgba(163,230,53,0.3)] border border-lime-400/50 uppercase">
+                                7v7 Full Arena
+                              </span>
+                            </motion.div>
+                          </>
                         ) : (
-                           <div className="w-full h-full bg-lime-400/30 flex items-center justify-center backdrop-blur-[1px]">
-                             <span className="text-lime-400 text-[10px] sm:text-xs font-black tracking-widest font-mono bg-black/80 px-2.5 py-1.5 shadow-lg border border-lime-400/30 uppercase text-center">
-                               Full Court Access
-                             </span>
-                           </div>
+                          <motion.div 
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                            className="w-full h-full bg-lime-400/10 flex items-center justify-center backdrop-blur-[2px]"
+                          >
+                            <span className="text-lime-400 text-[10px] sm:text-xs font-bold tracking-widest font-mono uppercase bg-black/80 px-4 py-2 border border-lime-400/40 shadow-[0_0_15px_rgba(163,230,53,0.2)]">
+                              Awaiting Selection
+                            </span>
+                          </motion.div>
                         )}
                       </div>
+                    </div>
+
+                    <div className="flex flex-row sm:flex-col w-full sm:w-1/3 gap-2">
+                      <motion.button
+                        type="button"
+                        whileHover={{ x: 2 }}
+                        whileTap={{ scale: 0.96 }}
+                        onClick={() => setBookingType("Half Court")}
+                        className={`flex-1 flex flex-col items-center justify-center py-2.5 px-3 transition-all border ${
+                          bookingType === "Half Court" 
+                            ? "bg-lime-400 text-black border-lime-400 shadow-[0_0_20px_rgba(163,230,53,0.3)]" 
+                            : "bg-neutral-950 text-neutral-500 border-neutral-800 hover:border-neutral-700 hover:text-white"
+                        }`}
+                      >
+                        <span className="text-[9px] uppercase tracking-widest mb-0.5 font-bold opacity-80">5v5 Mode</span>
+                        <span className="font-mono font-black text-xs sm:text-sm uppercase tracking-wider">Half Court</span>
+                      </motion.button>
+                      <motion.button
+                        type="button"
+                        whileHover={{ x: 2 }}
+                        whileTap={{ scale: 0.96 }}
+                        onClick={() => setBookingType("Full Court")}
+                        className={`flex-1 flex flex-col items-center justify-center py-2.5 px-3 transition-all border ${
+                          bookingType === "Full Court" 
+                            ? "bg-lime-400 text-black border-lime-400 shadow-[0_0_20px_rgba(163,230,53,0.3)]" 
+                            : "bg-neutral-950 text-neutral-500 border-neutral-800 hover:border-neutral-700 hover:text-white"
+                        }`}
+                      >
+                        <span className="text-[9px] uppercase tracking-widest mb-0.5 font-bold opacity-80">7v7 Mode</span>
+                        <span className="font-mono font-black text-xs sm:text-sm uppercase tracking-wider">Full Arena</span>
+                      </motion.button>
                     </div>
                   </div>
                 </div>
               </motion.div>
 
-              {/* STRICT DATE DROPDOWN */}
+              {/* Date Box with iPhone Overflow Fix */}
               <motion.div variants={fadeUp} className="space-y-2">
-                <label className="text-xs font-mono uppercase text-neutral-400">Promo Date</label>
-                <select
-                  value={bookingDate}
-                  onChange={(e) => setBookingDate(e.target.value)}
-                  className="w-full p-4 bg-neutral-900 text-white font-bold font-mono border border-neutral-800 focus:border-white outline-none rounded-none appearance-none text-base md:text-sm"
-                >
-                  <option value="">-- Select Promo Date --</option>
-                  <option value="2026-08-15">Aug 15, 2026 🇮🇳 (Independence Day)</option>
-                  <option value="2026-08-16">Aug 16, 2026</option>
-                  <option value="2026-08-17">Aug 17, 2026</option>
-                  <option value="2026-08-18">Aug 18, 2026</option>
-                  <option value="2026-08-19">Aug 19, 2026</option>
-                </select>
+                <label className="text-xs font-mono uppercase text-neutral-400">Calendar Date</label>
+                <div className="w-full box-border max-w-full overflow-hidden relative">
+                  <input
+                    type="date"
+                    min={minDate}
+                    value={bookingDate}
+                    onChange={(e) => {
+                      setBookingDate(e.target.value);
+                    }}
+                    className="w-full max-w-full box-border appearance-none p-4 bg-neutral-900 text-lime-400 font-bold font-mono border border-neutral-800 focus:border-lime-400 outline-none rounded-none text-base md:text-sm"
+                    style={{ colorScheme: "dark" }}
+                  />
+                </div>
               </motion.div>
 
-              {/* DYNAMIC START TIME */}
-              <motion.div variants={fadeUp} className="space-y-2 relative">
-                <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Time</label>
-                <select
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full p-4 bg-neutral-900 text-white font-bold border border-neutral-800 focus:border-white outline-none rounded-none appearance-none text-base md:text-sm"
-                >
-                  <option value="">-- Select Time Slot --</option>
-                  {[
-                    "06:00 AM", "07:00 AM", "08:00 AM", "09:00 AM", "10:00 AM",
-                    "11:00 AM", "12:00 PM", "01:00 PM", "02:00 PM", "03:00 PM",
-                    "04:00 PM", "05:00 PM", "06:00 PM", "07:00 PM", "08:00 PM",
-                    "09:00 PM", "10:00 PM", "11:00 PM"
-                  ].map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </motion.div>
-
-              {/* DURATION - LOCKED FOR LAUNCH */}
+              {/* Session Length */}
               <motion.div variants={fadeUp} className="space-y-2 relative">
                 <label className="text-xs font-mono uppercase text-neutral-400">Session Length</label>
                 <div className="relative">
-                  <select disabled={true} className="w-full p-4 bg-neutral-950 text-neutral-500 border border-neutral-800 outline-none rounded-none appearance-none text-base md:text-sm cursor-not-allowed text-center">
-                    <option>⏱ 60 Minutes Fixed Promo Duration</option>
+                  <select
+                    disabled={!bookingDate || !bookingType} 
+                    value={duration}
+                    onChange={(e) => setDuration(e.target.value)}
+                    className={`w-full p-4 bg-neutral-900 text-white border outline-none rounded-none appearance-none text-base md:text-sm transition-all ${
+                         !bookingDate || !bookingType ?
+                        "border-neutral-800/50 opacity-40 cursor-not-allowed text-neutral-500" : "border-neutral-800 focus:border-lime-400"
+                    }`}
+                  >
+                    <option value="" disabled hidden>-- Select Session Length --</option> 
+                    <option value="60">60 Minutes {bookingType ? `(- ₹${bookingType === "Half Court" ? 700 : 1200})` : ""}</option>
+                    <option value="90">90 Minutes {bookingType ? `(- ₹${bookingType === "Half Court" ? 1050 : 1800})` : ""}</option>
+                    <option value="120">120 Minutes {bookingType ? `(- ₹${bookingType === "Half Court" ? 1400 : 2400})` : ""}</option>
                   </select>
+                  <div className={`pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-xs transition-all ${
+                    !bookingDate || !bookingType ? "text-neutral-700 opacity-40" : "text-neutral-500"
+                  }`}>▼</div>
+                </div>
+              </motion.div>
+
+              {/* Slot Grid */}
+              <motion.div variants={fadeUp} className="space-y-2 relative">
+                 <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Slot</label>
+                <div className="relative">
+                  <LayoutGroup>
+                    <motion.div
+                      variants={stagger}
+                      initial="hidden"
+                      animate="show"
+                      className={`grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 p-3 sm:p-4 bg-neutral-900/30 border border-neutral-800 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-700 transition-all ${
+                        !bookingDate || !duration || !bookingType ? "opacity-40 pointer-events-none select-none" : ""
+                      }`}
+                    >
+                      {allSlots.map((slot) => {
+                        const available = isSlotAvailable(slot);
+                        const selected = startTime === slot;
+
+                        return (
+                          <motion.button
+                            key={slot}
+                            variants={slotItem}
+                            whileHover={available && !selected && bookingDate && duration && bookingType ? { scale: 1.06 } : {}}
+                            whileTap={available && bookingDate && duration && bookingType ? { scale: 0.94 } : {}}
+                            type="button"
+                            disabled={!available || !bookingDate || !duration || !bookingType} 
+                            onClick={() => setStartTime(slot)}
+                            className={`relative py-3 px-1 text-[11px] sm:text-xs font-mono font-bold uppercase transition-colors border ${
+                              selected
+                                ? "bg-red-600 border-red-500 text-white"
+                                : available && bookingDate && duration && bookingType
+                                ? "bg-lime-500/10 border-lime-500/30 text-lime-400 hover:bg-lime-500 hover:text-black cursor-pointer"
+                                : "bg-neutral-950 border-neutral-900 text-neutral-600 opacity-50 cursor-not-allowed"
+                            }`}
+                          >
+                            {selected && (
+                              <motion.span
+                                layoutId="slot-selected-glow"
+                                className="absolute inset-0 bg-red-600 -z-0 shadow-[0_0_18px_rgba(220,38,38,0.55)]"
+                                transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                              />
+                             )}
+                            <span className="relative z-10">{slot}</span>
+                          </motion.button>
+                        );
+                      })}
+                    </motion.div>
+                  </LayoutGroup>
                 </div>
               </motion.div>
             </div>
           </motion.div>
 
-          {/* -------- Summary Side (PROMO VIP Match Ticket) -------- */}
+          {/* -------- Summary Side -------- */}
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -830,115 +1049,131 @@ export default function Home() {
             transition={{ duration: 0.7, ease: easeOut }}
             className="lg:col-span-5 lg:sticky lg:top-6"
           >
-            {/* 🎟️ TICKET CONTAINER */}
             <div className="relative bg-[#0a0a0a] border border-neutral-800 flex flex-col shadow-2xl overflow-hidden">
-              <div className="h-2 w-full bg-gradient-to-r from-[#FF9933] via-white to-[#138808]" />
+              <div className="h-2 w-full bg-gradient-to-r from-lime-500 to-emerald-400" />
               
               <div className="p-5 sm:p-6 pb-4 flex justify-between items-start">
                 <div>
-                  <motion.div animate={{ opacity: [0.6, 1, 0.6] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="flex items-center gap-2 mb-1.5">
+                  <motion.div
+                    animate={{ opacity: [0.6, 1, 0.6] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                    className="flex items-center gap-2 mb-1.5"
+                  >
                     <span className="relative flex h-1.5 w-1.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white"></span>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-lime-500"></span>
                     </span>
-                    <span className="text-[10px] font-mono text-white uppercase tracking-[0.2em] drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]">
-                      Freedom Access Pass
+                    <span className="text-[10px] font-mono text-lime-400 uppercase tracking-[0.2em] drop-shadow-[0_0_8px_rgba(163,230,53,0.5)]">
+                      Official Access Pass
                     </span>
                   </motion.div>
-                  <h3 className="text-xl font-black uppercase text-white tracking-tight">SMES Turf Promo</h3>
+                  <h3 className="text-xl font-black uppercase text-white tracking-tight">SMES Turf Arena</h3>
                  </div>
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-neutral-900 border border-neutral-800 flex items-center justify-center rotate-3 shrink-0 shadow-[0_0_15px_rgba(255,255,255,0.15)]">
-                  <span className="text-white text-xl sm:text-2xl font-black">{sport === "Cricket" ? "🏏" : "⚽"}</span>
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-neutral-900 border border-neutral-800 flex items-center justify-center rotate-3 shrink-0 shadow-[0_0_15px_rgba(163,230,53,0.15)]">
+                  <span className="text-lime-400 text-xl sm:text-2xl font-black">{sport === "Cricket" ? "🏏" : "⚽"}</span>
                 </div>
               </div>
 
               <div className="px-5 sm:px-6 py-4 grid grid-cols-2 gap-y-5 gap-x-4 bg-neutral-900/30">
                 <div className="col-span-2 sm:col-span-1">
                    <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Pass Holder</span>
-                  <span className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider truncate block">
-                    {name ? `${name} ${instaHandle ? `(${instaHandle})` : ""}` : "GUEST"}
+                  <span className="text-xs sm:text-sm font-bold text-lime-400 uppercase tracking-wider truncate block">
+                    {name || "GUEST"}
                   </span>
                 </div>
                 <div className="col-span-2 sm:col-span-1">
                   <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Contact</span>
-                  <span className="text-xs sm:text-sm font-bold text-neutral-300 uppercase tracking-wider">{phone ? `+91 ${phone}` : "REQUIRED"}</span>
+                  <span className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">
+                    {phone ? `+91 ${phone}` : "REQUIRED"}
+                  </span>
                 </div>
                 <div>
                   <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Sport</span>
-                  <span className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">{sport}</span>
+                  <span className="text-xs sm:text-sm font-bold text-lime-400 uppercase tracking-wider">{sport || "TBD"}</span>
                 </div>
                 <div>
                   <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Scale</span>
-                  <span className="text-xs sm:text-sm font-bold text-neutral-300 uppercase tracking-wider">{bookingType}</span>
+                  <span className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">{bookingType || "TBD"}</span>
                 </div>
                  <div>
                   <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Date</span>
-                  <span className="text-xs sm:text-sm font-bold text-lime-400 uppercase tracking-wider">{bookingDate ? new Date(bookingDate).toLocaleDateString("en-GB") : "TBD"}</span>
+                  <span className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">
+                    {bookingDate ? new Date(bookingDate).toLocaleDateString("en-GB") : "TBD"}
+                  </span>
                 </div>
                 <div>
                   <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Kickoff</span>
                   <span className="text-xs sm:text-sm font-bold text-lime-400 uppercase tracking-wider">{startTime || "TBD"}</span>
                 </div>
+                <div className="col-span-2">
+                  <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Timeframe</span>
+                  <span className="text-xs sm:text-sm font-bold text-lime-400 uppercase tracking-wider">
+                    {duration ? `${duration} Minutes` : "TBD"}
+                  </span>
+                </div>
               </div>
 
+              {/* Perforated Line */}
               <div className="relative w-full h-8 flex items-center justify-center my-1">
                  <div className="absolute left-[-16px] w-8 h-8 bg-neutral-950 rounded-full border border-neutral-800 z-10" />
                 <div className="absolute left-[-20px] w-10 h-10 bg-neutral-950 z-20" /> 
                 <div className="absolute left-[-16px] w-8 h-8 rounded-full border-r border-neutral-800 z-30" />
+                
                 <div className="w-full border-t-2 border-dashed border-neutral-800 relative z-0 mx-4" />
+                
                 <div className="absolute right-[-16px] w-8 h-8 bg-neutral-950 rounded-full border border-neutral-800 z-10" />
                 <div className="absolute right-[-20px] w-10 h-10 bg-neutral-950 z-20" /> 
                 <div className="absolute right-[-16px] w-8 h-8 rounded-full border-l border-neutral-800 z-30" />
               </div>
 
+              {/* Pricing Breakdown */}
               <div className="px-5 sm:px-6 py-2 space-y-4">
                 <div className="flex justify-between items-end">
                   <div>
                     <span className="text-[10px] text-neutral-500 font-mono uppercase block">Gross Value</span>
-                    <span className="text-[11px] text-neutral-600 line-through font-mono tracking-widest block mt-0.5">₹{regularAmount}</span>
+                    {totalAmount > 0 && (
+                      <span className="text-[11px] text-neutral-600 line-through font-mono tracking-widest block mt-0.5">
+                        ₹{regularAmount}
+                      </span>
+                    )}
                   </div>
                   <AnimatePresence mode="wait">
-                    <motion.span key={totalAmount} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.2 }} className="text-3xl font-black text-white leading-none drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">
-                      ₹{baseOfferPrice}
+                    <motion.span
+                      key={totalAmount}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.2 }}
+                      className="text-2xl font-black text-lime-400 leading-none"
+                    >
+                      ₹{totalAmount}
                     </motion.span>
                   </AnimatePresence>
                  </div>
 
-                <div className="p-3 bg-white/5 border border-white/20 flex justify-between items-center">
+                <div className="p-3 bg-lime-400/5 border border-lime-400/20 flex justify-between items-center">
                   <div>
-                    <span className="text-[10px] font-mono font-bold text-white uppercase tracking-widest block">Checkout Total</span>
-                    <span className="text-[9px] font-mono text-neutral-500 mt-0.5 block hidden sm:block">No balance due at venue</span>
+                    <span className="text-[10px] font-mono font-bold text-lime-400 uppercase tracking-widest block">Lockdown Advance</span>
+                    <span className="text-[9px] font-mono text-neutral-500 mt-0.5 block hidden sm:block">Reserves slot instantly</span>
                   </div>
                   <div className="text-right">
-                    <span className="text-lg font-black text-white block leading-none">₹{totalAmount}</span>
-                    <span className="text-[8px] font-mono text-neutral-500 uppercase tracking-widest mt-1 block">Includes ₹{convenienceFee} Platform Fee</span>
+                    <span className="text-lg font-black text-white block leading-none">₹200</span>
+                    <span className="text-[8px] font-mono text-neutral-500 uppercase tracking-widest mt-1 block">+ Convenience Fee</span>
                   </div>
                 </div>
               </div>
 
-              {/* Instagram Agreement UI */}
-              <div className="px-5 sm:px-6 pb-4 mt-2">
-                <div className="flex items-start gap-3 p-4 bg-neutral-950 border border-neutral-800 rounded-sm">
-                  <input 
-                    type="checkbox" 
-                    id="insta-verification-checkbox" 
-                    checked={instaAgreed} 
-                    onChange={(e) => setInstaAgreed(e.target.checked)} 
-                    className="w-4 h-4 accent-white mt-0.5 cursor-pointer flex-shrink-0" 
-                  />
-                  <label htmlFor="insta-verification-checkbox" className="text-[10px] font-mono text-neutral-400 cursor-pointer leading-relaxed select-none">
-                    I agree my team will follow <span className="text-white font-bold">@smesturf</span>, post a story, mention us, and use <span className="text-white font-bold">#SMESTurf</span>. ⚠️ <span className="text-white font-bold underline">Strict Condition:</span> No player from my team will book duplicate promo slots.
-                  </label>
-                </div>
-              </div>
-
-              {/* Digital Barcode */}
-              <div className="px-5 sm:px-6 pt-2 pb-6 flex flex-col items-center opacity-30">
+              {/* Barcode Graphic */}
+              <div className="px-5 sm:px-6 pt-4 pb-6 flex flex-col items-center opacity-30">
                 <div className="w-full h-8 flex justify-between items-end gap-[2px]">
                   {Array.from({ length: 35 }).map((_, i) => {
                     const deterministicWidth = (i % 4) + 1.5;
-                    const inputSeed = name.length + phone.length + instaHandle.length + sport.length + bookingType.length;
-                    const dynamicHeight = 20 + (((i * 29) + (inputSeed * 17)) % 80);
+                    const combinedString = `${name}${phone}${sport}${bookingType}${bookingDate}${startTime}${duration}`;
+                    let charSum = 0;
+                    for (let j = 0; j < combinedString.length; j++) {
+                      charSum += combinedString.charCodeAt(j);
+                    }
+                    const dynamicHeight = 20 + (((i * 41) + (charSum * 17)) % 80);
+
                     return (
                       <motion.div 
                         key={i} 
@@ -952,23 +1187,32 @@ export default function Home() {
                   })}
                 </div>
                 <span className="text-[8px] font-mono text-white tracking-[0.3em] mt-2">
-                  SMES-FREEDOM-PROMO
+                  SMES-{bookingDate ? bookingDate.replace(/-/g, "") : "XXXXXXXX"}-{startTime ? startTime.substring(0, 5).replace(":", "") : "XXXX"}
                 </span>
               </div>
             </div>
 
-            {/* DYNAMIC CHECKOUT BUTTON */}
             <motion.button
-              disabled={isPaymentLoading}
-              onClick={openRazorpay}
+              whileHover={startTime && name && email && phone.length === 10 && sport && bookingType ?
+                { y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.35)" } : {}}
+              whileTap={startTime && name && email && phone.length === 10 && sport && bookingType ?
+                { scale: 0.97 } : {}}
               type="button"
-              className={`w-full mt-4 font-mono text-xs sm:text-sm uppercase tracking-widest py-4 sm:py-5 transition-all font-black shadow-lg flex items-center justify-center gap-3 border ${
-                isPaymentLoading 
-                  ? "bg-neutral-900 border-neutral-800 text-neutral-500 cursor-not-allowed"
-                  : "bg-white hover:bg-gray-200 text-black border-white cursor-pointer shadow-white/20" 
+              onClick={() => setShowConfirmModal(true)}
+              disabled={!startTime || !name || !email || phone.length !== 10 || !sport || !bookingType}
+              className={`w-full mt-4 font-mono text-xs sm:text-sm uppercase tracking-widest py-4 sm:py-5 transition-all font-black shadow-lg flex items-center justify-center gap-3 ${
+                !startTime || !name || !email || phone.length !== 10 || !sport || !bookingType
+                  ? "bg-neutral-900 border border-neutral-800 text-neutral-600 cursor-not-allowed"
+                  : "bg-lime-400 hover:bg-lime-300 text-black border border-lime-400 shadow-lime-400/20"
               }`}
             >
-              {isPaymentLoading ? "Processing..." : "🎟️ Secure Promo Slot"}
+              {!name || !email || phone.length !== 10 
+                ? "Enter Name, Email & Phone" 
+                : !sport || !bookingType
+                ? "Select Sport & Scale"
+                : !startTime 
+                ? "Select Kickoff Time" 
+                : "⚡ Confirm Match Slot"}
             </motion.button>
           </motion.div>
         </div>
@@ -991,25 +1235,133 @@ export default function Home() {
               © 2026 Built for competitive team sports action and weekend fun.
             </p>
           </div>
-          <div className="flex flex-wrap justify-center md:justify-end gap-x-6 gap-y-2 font-mono text-[9px] sm:text-[10px] text-neutral-400 uppercase tracking-widest">
-            <div><span className="text-white">P:</span> +91 8453095258</div>
-            <div><span className="text-white">E:</span> sports@smesturf.com</div>
-            <div><span className="text-white">L:</span> Mysuru, Karnataka</div>
+
+          <div className="flex flex-col items-center md:items-end gap-2 font-mono text-[9px] sm:text-[10px] text-neutral-400 uppercase tracking-widest">
+            <div className="flex flex-wrap justify-center md:justify-end gap-x-6 gap-y-2">
+              <div><span className="text-lime-500">P:</span> +91 8073064676</div>
+              <div><span className="text-lime-500">E:</span> sports@smesturf.com</div>
+              <div><span className="text-lime-500">L:</span> Mysuru, Karnataka</div>
+            </div>
+
+            <Link
+              href="/terms"
+              className="text-[9px] sm:text-[10px] text-neutral-500 hover:text-lime-400 uppercase tracking-widest transition-colors pt-1 underline underline-offset-4 decoration-neutral-800 hover:decoration-lime-400"
+            >
+              Terms & Conditions
+            </Link>
           </div>
         </div>
       </motion.footer>
 
-      {/* ---------- Floating CTA ---------- */}
+      {/* ---------- SMART Floating CTA ---------- */}
       <motion.button
-        suppressHydrationWarning={true}
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 1.2, duration: 0.5, ease: easeOut }}
-        onClick={scrollToBooking}
-        className="fixed bottom-6 right-4 md:bottom-8 md:right-8 z-[9000] bg-white border border-white text-black px-6 py-3.5 rounded-full shadow-lg shadow-white/20 cursor-pointer flex items-center gap-2 text-[12px] font-mono font-black uppercase tracking-widest hover:bg-gray-200 transition-colors"
+        whileHover={{ scale: 1.05, boxShadow: startTime && name && phone.length === 10 && sport && bookingType ? "0 0 20px rgba(163,230,53,0.4)" : "0 0 20px rgba(163,230,53,0.2)" }}
+        whileTap={{ scale: 0.95 }}
+        onClick={() => {
+          if (startTime && name && phone.length === 10 && sport && bookingType) {
+            setShowConfirmModal(true);
+          } else {
+            scrollToBooking();
+          }
+        }}
+        className={`fixed bottom-6 right-4 md:bottom-8 md:right-8 z-[9000] backdrop-blur-md px-5 py-3 rounded-full transition-all duration-300 shadow-xl cursor-pointer flex items-center gap-2 text-[11px] md:text-[12px] font-mono font-bold uppercase tracking-widest ${
+          startTime && name && phone.length === 10 && sport && bookingType
+            ? "bg-lime-400 text-black border border-lime-400 hover:bg-lime-300"
+            : "bg-neutral-900/95 border border-neutral-700 hover:border-lime-400/50 text-white"
+        }`}
+        title={startTime && name && phone.length === 10 && sport && bookingType ? "Confirm Match Slot" : "Book Here"}
       >
-        <span>🎟️ Book Now</span>
+        <motion.span
+          className={startTime && name && phone.length === 10 && sport && bookingType ? "text-black" : "text-lime-400"}
+          animate={{ rotate: [0, 15, -10, 0] }}
+          transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+        >
+          {startTime && name && phone.length === 10 && sport && bookingType ? "🔒" : "⚡"}
+        </motion.span>
+        <span>{startTime && name && phone.length === 10 && sport && bookingType ? "Confirm Slot" : "Book Here"}</span>
       </motion.button>
+
+      {/* ---------- Arena Pass Confirmation Modal ---------- */}
+      <AnimatePresence>
+        {showConfirmModal && (
+          <motion.div
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[99999]"
+            onClick={() => setShowConfirmModal(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-neutral-900 border border-neutral-800 p-6 sm:p-8 w-full max-w-md shadow-2xl space-y-6 relative overflow-hidden"
+            >
+               <div className="border-b border-neutral-800 pb-4">
+                  <h3 className="text-xl font-black uppercase text-white tracking-tight">Are you confirm?</h3>
+                  <p className="text-neutral-400 text-xs font-mono uppercase mt-1">Please verify your Arena Pass details</p>
+               </div>
+
+               <div className="grid grid-cols-2 gap-4 bg-black/50 p-4 border border-neutral-800/50">
+                  <div>
+                     <span className="text-[10px] text-neutral-500 font-mono uppercase block mb-1">Sport & Scale</span>
+                     <span className="text-sm font-bold text-white uppercase tracking-wider">{sport} <span className="text-lime-400">({bookingType})</span></span>
+                  </div>
+                  <div>
+                     <span className="text-[10px] text-neutral-500 font-mono uppercase block mb-1">Date</span>
+                     <span className="text-sm font-bold text-white uppercase tracking-wider">{new Date(bookingDate).toLocaleDateString("en-GB")}</span>
+                  </div>
+                  <div>
+                     <span className="text-[10px] text-neutral-500 font-mono uppercase block mb-1">Kick-off</span>
+                     <span className="text-sm font-bold text-lime-400 uppercase tracking-wider">{startTime}</span>
+                  </div>
+                  <div>
+                     <span className="text-[10px] text-neutral-500 font-mono uppercase block mb-1">Timeframe</span>
+                     <span className="text-sm font-bold text-lime-400 uppercase tracking-wider">{duration} Mins</span>
+                  </div>
+               </div>
+
+               <div className="space-y-3">
+                  <div className="flex justify-between items-center text-neutral-400 px-1">
+                     <span className="text-xs font-mono uppercase">Gross Value</span>
+                     <span className="font-bold font-mono">₹{totalAmount}</span>
+                  </div>
+                  
+                  <div className="bg-lime-400/10 border border-lime-400/30 p-4 flex justify-between items-center relative overflow-hidden">
+                     <div className="absolute top-0 left-0 w-1 h-full bg-lime-400"></div>
+                     <div>
+                       <span className="text-[11px] font-mono font-bold text-lime-400 uppercase tracking-widest block">Advance Payable Now</span>
+                       <span className="text-[9px] font-mono text-neutral-400 mt-1 block">Includes ₹5 Convenience Fee</span>
+                     </div>
+                     <span className="text-2xl font-black text-white">₹205</span>
+                  </div>
+               </div>
+
+               <div className="flex gap-3 pt-2">
+                  <button 
+                    onClick={() => setShowConfirmModal(false)}
+                    className="flex-1 bg-transparent border border-neutral-700 hover:bg-neutral-800 text-white font-mono text-xs uppercase tracking-wider py-3.5 transition-colors"
+                  >
+                     Edit Details
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowConfirmModal(false);
+                      openRazorpay();
+                    }}
+                    className="flex-1 bg-lime-400 hover:bg-lime-300 text-black font-black font-mono text-xs uppercase tracking-wider py-3.5 shadow-[0_0_15px_rgba(163,230,53,0.3)] transition-colors flex items-center justify-center gap-2"
+                  >
+                     Proceed To Pay
+                  </button>
+               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ---------- Secure Payment Loading Overlay ---------- */}
       <AnimatePresence>
@@ -1021,12 +1373,12 @@ export default function Home() {
             className="fixed inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center z-[999999]"
           >
             <div className="relative w-24 h-24 flex items-center justify-center mb-8">
-              <div className="absolute inset-0 border-t-2 border-l-2 border-white rounded-full animate-spin" />
-              <div className="absolute inset-3 border-r-2 border-b-2 border-neutral-500 rounded-full animate-[spin_1.5s_reverse_infinite]" />
+              <div className="absolute inset-0 border-t-2 border-l-2 border-lime-400 rounded-full animate-spin" />
+              <div className="absolute inset-3 border-r-2 border-b-2 border-emerald-400 rounded-full animate-[spin_1.5s_reverse_infinite]" />
               <span className="text-3xl animate-pulse">{sport === "Cricket" ? "🏏" : "⚽"}</span>
             </div>
             
-            <h2 className="text-white font-mono font-black uppercase tracking-[0.2em] mb-3 text-center px-4 text-sm sm:text-base drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]">
+            <h2 className="text-lime-400 font-mono font-black uppercase tracking-[0.2em] mb-3 text-center px-4 text-sm sm:text-base drop-shadow-[0_0_10px_rgba(163,230,53,0.5)]">
               Connecting to Secure Gateway
             </h2>
             
@@ -1053,19 +1405,19 @@ export default function Home() {
             className="fixed inset-0 bg-black/95 backdrop-blur-md flex flex-col items-center justify-center z-[999999]"
           >
             <div className="relative w-24 h-24 flex items-center justify-center mb-8">
-              <div className="absolute inset-0 border-t-2 border-l-2 border-white rounded-full animate-spin" />
-              <div className="absolute inset-3 border-r-2 border-b-2 border-neutral-500 rounded-full animate-[spin_1.2s_reverse_infinite]" />
+              <div className="absolute inset-0 border-t-2 border-l-2 border-lime-400 rounded-full animate-spin" />
+              <div className="absolute inset-3 border-r-2 border-b-2 border-white rounded-full animate-[spin_1.2s_reverse_infinite]" />
               <span className="text-3xl animate-pulse">🔒</span>
             </div>
             
-            <h2 className="text-white font-mono font-black uppercase tracking-[0.2em] mb-3 text-center px-4 text-sm sm:text-base drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]">
+            <h2 className="text-lime-400 font-mono font-black uppercase tracking-[0.2em] mb-3 text-center px-4 text-sm sm:text-base drop-shadow-[0_0_10px_rgba(163,230,53,0.5)]">
               Securing Your Slot
             </h2>
             
             <div className="flex items-center gap-2">
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-neutral-200"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500"></span>
               </span>
               <p className="text-neutral-400 font-mono text-[10px] sm:text-xs uppercase tracking-widest">
                 Verifying Payment & Dispatching Tickets...
@@ -1075,42 +1427,113 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* 📲 UPGRADED WHATSAPP INTERACTION BLAST POPUP OVERLAY */}
+      {/* ---------- 🎉 FINAL SUCCESS CONFIRMATION MODAL WITH AUTO-DOWNLOAD PASS ---------- */}
       <AnimatePresence>
-        {showSuccessModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-[99999]">
-            <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-2xl w-full max-w-md text-center space-y-6">
-              <div className="text-4xl text-white">🎉</div>
-              <h3 className="text-xl font-black uppercase text-white tracking-tight">Match Slot Reserved!</h3>
-              
-              <p className="text-xs font-mono text-neutral-400">
-                Your lineup on <span className="text-white font-bold">{savedBooking.date ? new Date(savedBooking.date).toLocaleDateString("en-GB") : ""}</span> at <span className="text-white font-bold">{savedBooking.time}</span> is securely locked.
-              </p>
-              
-              <div className="p-4 bg-black border border-neutral-800/80 text-left rounded-xl">
-                <p className="text-[11px] font-mono text-neutral-400 leading-relaxed">
-                  📢 <span className="text-white font-bold">Important Strategy Note:</span> Pass this blast link onto your team group chat right now so all players can follow, post, and mention <span className="text-white font-bold">@smesturf</span> before arrival!
-                </p>
-              </div>
+        {successData && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 z-[999999] overflow-y-auto"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.9, y: 20, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              className="bg-[#0a0a0a] border border-neutral-800 p-6 sm:p-8 w-full max-w-md shadow-2xl relative overflow-hidden my-8"
+            >
+              <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-lime-400 to-emerald-500" />
+              <div className="absolute top-[-50px] left-1/2 -translate-x-1/2 w-[200px] h-[100px] bg-lime-500/20 blur-[60px] rounded-full pointer-events-none" />
 
-              <button
-                onClick={() => {
-                  const message = `Match Locked! 🏟️ SMES Turf | 📅 ${savedBooking.date ? new Date(savedBooking.date).toLocaleDateString("en-GB") : ""} | 🕒 ${savedBooking.time}. Reminder: Everyone needs to follow @smesturf and post/tag the story before kickoff to keep our promo rate! #SMESTurf`;
-                  window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`, "_blank");
-                }}
-                className="w-full bg-white hover:bg-gray-200 text-black font-mono text-xs uppercase tracking-widest py-4 font-black transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-white/10"
-              >
-                📲 Share with Team (WhatsApp)
-              </button>
-              
-              <button onClick={() => setShowSuccessModal(false)} className="text-xs font-mono text-neutral-500 hover:text-white underline block mx-auto cursor-pointer transition-colors">
-                Close Window
-              </button>
-            </div>
+              <div className="flex flex-col items-center text-center space-y-4 relative z-10">
+                <motion.div 
+                  initial={{ scale: 0 }} 
+                  animate={{ scale: 1, rotate: 360 }} 
+                  transition={{ type: "spring", delay: 0.2 }}
+                  className="w-16 h-16 bg-lime-400/10 border-2 border-lime-400 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(163,230,53,0.3)] mb-1"
+                >
+                  <span className="text-3xl drop-shadow-[0_0_10px_rgba(163,230,53,0.8)]">✅</span>
+                </motion.div>
+
+                <div>
+                  <h2 className="text-2xl font-black uppercase tracking-tight text-white mb-1">Slot Confirmed!</h2>
+                  <p className="text-[10px] font-mono uppercase tracking-widest text-lime-400 flex items-center justify-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-ping" />
+                    Auto-downloading Arena Pass to device...
+                  </p>
+                </div>
+
+                <div
+                  ref={autoPassRef}
+                  className="w-full bg-[#0a0a0a] border border-neutral-800 p-5 text-left space-y-3 relative overflow-hidden shadow-xl"
+                >
+                  <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-lime-400 to-emerald-500" />
+                  
+                  <div className="flex justify-between items-start border-b border-neutral-800 pb-3">
+                    <div>
+                      <span className="text-[9px] font-mono text-lime-400 uppercase font-bold tracking-widest block">Official Arena Pass</span>
+                      <h3 className="text-base font-black text-white uppercase tracking-tight">SMES Sports Turf</h3>
+                      <p className="text-[9px] font-mono text-neutral-400 mt-0.5">
+                        Ref: <strong className="text-lime-400">{successData.referenceId}</strong>
+                      </p>
+                    </div>
+                    <div className="w-8 h-8 bg-neutral-900 border border-neutral-800 flex items-center justify-center">
+                      <span className="text-base">{successData.sport === "Cricket" ? "🏏" : "⚽"}</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 border-b border-neutral-800 pb-3 text-xs font-mono">
+                    <div>
+                      <span className="text-[8px] text-neutral-500 uppercase block">Booking ID</span>
+                      <span className="font-bold text-white uppercase">{successData.bookingId}</span>
+                    </div>
+                    <div>
+                      <span className="text-[8px] text-neutral-500 uppercase block">Player</span>
+                      <span className="font-bold text-white uppercase truncate block">{successData.name}</span>
+                    </div>
+                    <div>
+                      <span className="text-[8px] text-neutral-500 uppercase block">Schedule</span>
+                      <span className="font-bold text-lime-400 uppercase">
+                        {new Date(successData.date).toLocaleDateString("en-GB")}<br/>
+                        {getTimeRangeLabel(successData.time, successData.duration)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[8px] text-neutral-500 uppercase block">Scale</span>
+                      <span className="font-bold text-white uppercase">{successData.bookingType}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 pt-1 text-xs font-mono">
+                    <div className="flex justify-between">
+                      <span className="text-[9px] text-neutral-500 uppercase">Advance Paid</span>
+                      <span className="font-bold text-emerald-400">₹{successData.advancePaid}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[9px] text-neutral-500 uppercase">Balance Due at Venue</span>
+                      <span className="font-bold text-red-400">₹{successData.balance}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-neutral-500 font-mono mt-2 leading-relaxed">
+                  A confirmation message has been sent to your EMAIL. Please arrive 10 minutes prior to kickoff.
+                </p>
+
+                <motion.button
+                  whileHover={{ y: -2, boxShadow: "0 10px 25px rgba(163,230,53,0.2)" }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setSuccessData(null)}
+                  className="w-full mt-2 bg-lime-400 hover:bg-lime-300 text-black font-black font-mono text-xs uppercase tracking-widest py-4 transition-all"
+                >
+                  Done
+                </motion.button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
-
     </main>
   );
 }
