@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { supabase } from "../lib/supabase";
+import { supabase } from "../lib/supabase"; // Kept ONLY for fetching the bookings database
 import { motion } from "framer-motion";
 
 interface Booking {
@@ -46,18 +46,6 @@ export default function BookingLookup() {
     return () => clearInterval(timer);
   }, [otpSent, countdown]);
 
-  /* -------- Auto-Login on Reload using SECURE Session -------- */
-  useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user?.email) {
-        setEmail(session.user.email);
-        await fetchUserBookings(session.user.email);
-      }
-    };
-    checkSession();
-  }, []);
-
   /* -------- Fetch Bookings Logic -------- */
   const fetchUserBookings = async (targetEmail: string) => {
     setIsLoading(true);
@@ -65,6 +53,7 @@ export default function BookingLookup() {
     setBookings([]);
 
     try {
+      // NOTE: This assumes your Supabase Database RLS policies allow reading rows by email.
       const { data, error } = await supabase
         .from("bookings")
         .select("*")
@@ -74,7 +63,7 @@ export default function BookingLookup() {
 
       if (error) throw error;
 
-      setBookings(data as Booking[] || []);
+      setBookings((data as Booking[]) || []);
       if (data && data.length > 0) {
         setSelectedBooking(data[0] as Booking);
       } else {
@@ -88,74 +77,66 @@ export default function BookingLookup() {
     }
   };
 
-  /* -------- Reset Search State & SECURE Logout -------- */
-  const handleResetSearch = async () => {
-    await supabase.auth.signOut();
+  /* -------- Reset Search State & Logout -------- */
+  const handleResetSearch = () => {
     setHasSearched(false);
     setOtpSent(false);
     setOtp("");
-    setEmail(""); 
+    setEmail("");
     setBookings([]);
     setSelectedBooking(null);
   };
 
-  /* -------- 1. Send SECURE OTP via Supabase Auth -------- */
+  /* -------- 1. Send OTP via Custom Nodemailer API -------- */
   const handleSendOTP = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    
-    // 🛡️ Ensure email is lowercase and has no accidental spaces
-    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedEmail = email.trim();
     if (!trimmedEmail) return alert("⚠️ Please enter your registered email address.");
 
     setIsLoading(true);
     try {
-      // 🛡️ Pass the cleaned email to Supabase
-      const { error } = await supabase.auth.signInWithOtp({ email: trimmedEmail });
-      if (error) throw error;
+      const response = await fetch("/api/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmedEmail }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) throw new Error(data.error || "Failed to send OTP");
 
       setOtpSent(true);
       setCountdown(30);
       setCanResend(false);
       alert("📧 Secure OTP sent! Please check your email inbox.");
     } catch (err: any) {
-      console.error("Supabase Auth Error Details:", err);
-      
-      const errorMessage = err?.message || "Network error. This usually means the Supabase Anon Key is invalid in your .env file.";
-      
-      // 🛡️ THE BULLETPROOF FALLBACK
-      const fetchDirect = window.confirm(
-        `Email Gateway Warning: ${errorMessage}\n\nWould you like to securely search for your bookings directly using ${trimmedEmail}?`
-      );
-      
-      if (fetchDirect) {
-        await fetchUserBookings(trimmedEmail); 
-      } else {
-        alert("❌ Failed to send OTP. Ensure the email is correct.");
-      }
+      console.error(err);
+      alert(err.message || "❌ Failed to send OTP. Ensure the email is correct.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  /* -------- 2. Verify SECURE OTP & Fetch Bookings -------- */
+  /* -------- 2. Verify OTP via Custom API & Fetch Bookings -------- */
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     if (otp.length !== 6) return alert("❌ Invalid OTP format.");
 
     setIsLoading(true);
-    const trimmedEmail = email.trim().toLowerCase();
-    
+
     try {
-      const { error: authError } = await supabase.auth.verifyOtp({
-        email: trimmedEmail,
-        token: otp,
-        type: 'email',
+      const response = await fetch("/api/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), otp: otp.trim() }),
       });
 
-      if (authError) throw authError;
-      
-      // Verified securely, session token established
-      await fetchUserBookings(trimmedEmail);
+      const data = await response.json();
+
+      if (!response.ok) throw new Error(data.error || "Invalid OTP");
+
+      // OTP Verified successfully! Fetch the bookings.
+      await fetchUserBookings(email.trim());
     } catch (err: any) {
       console.error(err);
       alert("❌ Invalid or Expired OTP. Please try again.");
@@ -179,7 +160,9 @@ export default function BookingLookup() {
     const formatString = (t: number) => {
       const hours24 = Math.floor(t / 60) % 24;
       const mins = t % 60;
-      return `${hours24 % 12 === 0 ? 12 : hours24 % 12}:${String(mins).padStart(2, "0")} ${hours24 >= 12 ? "PM" : "AM"}`;
+      return `${hours24 % 12 === 0 ? 12 : hours24 % 12}:${String(mins).padStart(2, "0")} ${
+        hours24 >= 12 ? "PM" : "AM"
+      }`;
     };
     return `${formatString(startTotal)} - ${formatString(endTotal)}`;
   };
@@ -200,7 +183,6 @@ export default function BookingLookup() {
       </div>
 
       <div className="relative z-10 max-w-6xl mx-auto px-4 py-8 sm:py-12">
-        
         {/* Top Navigation Bar - ALWAYS VISIBLE */}
         <div className="mb-8 flex items-center justify-between border-b border-neutral-900 pb-4">
           {hasSearched ? (
@@ -242,10 +224,12 @@ export default function BookingLookup() {
             My Match Passes
           </h1>
           <p className="text-neutral-400 text-xs sm:text-sm font-mono mb-2">
-            Enter your registered email address to receive an OTP and view your official verified arena booking passes.
+            Enter your registered email address to receive an OTP and view your official verified arena
+            booking passes.
           </p>
           <div className="p-2 bg-red-500/10 border border-red-500/30 text-[10px] font-mono text-red-400 uppercase tracking-widest inline-block">
-            🛡️ Security Policy: Screenshots are restricted. Please display pass directly via active phone lookup at venue counter.
+            🛡️ Security Policy: Screenshots are restricted. Please display pass directly via active phone
+            lookup at venue counter.
           </div>
         </div>
 
@@ -253,7 +237,10 @@ export default function BookingLookup() {
         {!hasSearched && (
           <div className="max-w-md mx-auto mb-12">
             {!otpSent ? (
-              <form onSubmit={handleSendOTP} className="flex flex-col sm:flex-row gap-2 bg-neutral-900/80 p-2 border border-neutral-800 shadow-2xl">
+              <form
+                onSubmit={handleSendOTP}
+                className="flex flex-col sm:flex-row gap-2 bg-neutral-900/80 p-2 border border-neutral-800 shadow-2xl"
+              >
                 <input
                   type="email"
                   placeholder="Enter Registered Email"
@@ -341,7 +328,6 @@ export default function BookingLookup() {
         {/* Results Grid */}
         {hasSearched && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            
             {/* Left Column: Bookings History List */}
             <div className="lg:col-span-5 space-y-4">
               <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block px-1">
@@ -417,13 +403,18 @@ export default function BookingLookup() {
             <div className="lg:col-span-7 lg:sticky lg:top-8">
               {selectedBooking ? (
                 <div className="space-y-4">
-                  <div 
+                  <div
                     className="bg-[#0a0a0a] border border-neutral-800 p-6 sm:p-8 shadow-2xl relative overflow-hidden select-none"
-                    style={{ WebkitUserSelect: "none", msUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}
+                    style={{
+                      WebkitUserSelect: "none",
+                      msUserSelect: "none",
+                      userSelect: "none",
+                      WebkitTouchCallout: "none",
+                    }}
                     onContextMenu={(e) => e.preventDefault()}
                   >
                     <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-lime-400 to-emerald-500" />
-                    
+
                     {/* Security Watermark */}
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.04] rotate-[-25deg] select-none z-0">
                       <span className="text-3xl sm:text-4xl font-black font-mono tracking-widest text-white uppercase whitespace-nowrap">
@@ -437,15 +428,23 @@ export default function BookingLookup() {
                           <span className="text-[10px] font-mono text-lime-400 uppercase tracking-[0.2em] font-bold block mb-1">
                             Official Arena Pass
                           </span>
-                          <h2 className="text-2xl font-black uppercase text-white tracking-tight">SMES Sports Turf</h2>
-                          
+                          <h2 className="text-2xl font-black uppercase text-white tracking-tight">
+                            SMES Sports Turf
+                          </h2>
+
                           {/* IDs Display */}
                           <div className="mt-2 space-y-0.5 font-mono text-[10px] uppercase">
                             <p className="text-neutral-400">
-                              Ref ID: <strong className="text-lime-400 font-bold">{selectedBooking.booking_reference || "N/A"}</strong>
+                              Ref ID:{" "}
+                              <strong className="text-lime-400 font-bold">
+                                {selectedBooking.booking_reference || "N/A"}
+                              </strong>
                             </p>
                             <p className="text-neutral-400">
-                              Booking ID: <strong className="text-white font-bold">{formatBookingId(selectedBooking.id)}</strong>
+                              Booking ID:{" "}
+                              <strong className="text-white font-bold">
+                                {formatBookingId(selectedBooking.id)}
+                              </strong>
                             </p>
                           </div>
                         </div>
@@ -458,24 +457,38 @@ export default function BookingLookup() {
 
                       <div className="py-6 grid grid-cols-2 gap-y-4 gap-x-6 text-left border-b border-neutral-800 pointer-events-none">
                         <div>
-                          <span className="text-[9px] font-mono text-neutral-500 uppercase block mb-1">Player Name</span>
-                          <span className="text-sm font-bold text-white uppercase">{selectedBooking.customer_name}</span>
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block mb-1">
+                            Player Name
+                          </span>
+                          <span className="text-sm font-bold text-white uppercase">
+                            {selectedBooking.customer_name}
+                          </span>
                         </div>
                         <div>
-                          <span className="text-[9px] font-mono text-neutral-500 uppercase block mb-1">Contact</span>
-                          <span className="text-sm font-mono font-bold text-neutral-300">{selectedBooking.phone}</span>
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block mb-1">
+                            Contact
+                          </span>
+                          <span className="text-sm font-mono font-bold text-neutral-300">
+                            {selectedBooking.phone}
+                          </span>
                         </div>
                         <div>
-                          <span className="text-[9px] font-mono text-neutral-500 uppercase block mb-1">Match Schedule</span>
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block mb-1">
+                            Match Schedule
+                          </span>
                           <span className="text-xs font-bold text-lime-400 uppercase">
-                            {new Date(selectedBooking.booking_date).toLocaleDateString("en-GB")}<br />
+                            {new Date(selectedBooking.booking_date).toLocaleDateString("en-GB")}
+                            <br />
                             {getTimeRangeLabel(selectedBooking.start_time, selectedBooking.duration_minutes)}
                           </span>
                         </div>
                         <div>
-                          <span className="text-[9px] font-mono text-neutral-500 uppercase block mb-1">Scale / Court</span>
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block mb-1">
+                            Scale / Court
+                          </span>
                           <span className="text-xs font-bold text-white uppercase">
-                            {selectedBooking.sport || "Football"} ({selectedBooking.court_number || selectedBooking.booking_type || "Full Court"})
+                            {selectedBooking.sport || "Football"} (
+                            {selectedBooking.court_number || selectedBooking.booking_type || "Full Court"})
                           </span>
                         </div>
                       </div>
@@ -487,10 +500,14 @@ export default function BookingLookup() {
                         </div>
                         <div className="flex justify-between items-center text-xs font-mono">
                           <span className="text-neutral-500 uppercase">Advance Amount Paid</span>
-                          <span className="text-emerald-400 font-bold">₹{selectedBooking.advance_amount || 200}</span>
+                          <span className="text-emerald-400 font-bold">
+                            ₹{selectedBooking.advance_amount || 200}
+                          </span>
                         </div>
                         <div className="flex justify-between items-center pt-2 border-t border-neutral-900">
-                          <span className="text-xs font-mono uppercase font-bold text-white">Balance Due at Venue</span>
+                          <span className="text-xs font-mono uppercase font-bold text-white">
+                            Balance Due at Venue
+                          </span>
                           <span className="text-base font-black text-red-400 font-mono">
                             ₹{selectedBooking.balance_amount || 0}
                           </span>

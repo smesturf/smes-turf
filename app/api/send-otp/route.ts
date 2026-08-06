@@ -3,13 +3,16 @@ import nodemailer from "nodemailer";
 
 export async function POST(request: Request) {
   try {
-    const { email, otp } = await request.json();
+    const { email } = await request.json();
 
-    if (!email || !otp) {
-      return NextResponse.json({ error: "Email and OTP are required" }, { status: 400 });
+    if (!email) {
+      return NextResponse.json({ error: "Email is required" }, { status: 400 });
     }
 
-    // 1. Configure the email transporter
+    // 1. Generate a random 6-digit OTP right here in Next.js
+    const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // 2. Configure the email transporter
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -18,7 +21,7 @@ export async function POST(request: Request) {
       },
     });
 
-    // 2. Format the email content
+    // 3. Format the email content
     const mailOptions = {
       from: `"SMES Sports Turf" <${process.env.EMAIL_USER}>`,
       to: email,
@@ -29,7 +32,7 @@ export async function POST(request: Request) {
           <p style="color: #a3a3a3;">You requested access to view your Official Arena Passes.</p>
           <div style="margin: 30px 0; padding: 20px; background-color: #171717; border-left: 4px solid #a3e635; text-align: center;">
             <p style="margin: 0; font-size: 12px; color: #737373; text-transform: uppercase; letter-spacing: 2px;">Your Unlock Code</p>
-            <h1 style="margin: 10px 0 0 0; font-size: 32px; color: #ffffff; letter-spacing: 8px;">${otp}</h1>
+            <h1 style="margin: 10px 0 0 0; font-size: 32px; color: #ffffff; letter-spacing: 8px;">${generatedOtp}</h1>
           </div>
           <p style="color: #a3a3a3; font-size: 12px;">If you did not request this, please ignore this email.</p>
           <hr style="border: none; border-top: 1px dashed #262626; margin: 20px 0;" />
@@ -38,9 +41,11 @@ export async function POST(request: Request) {
       `,
     };
 
-    // 3. Send the email
+    // 4. Send the email
     await transporter.sendMail(mailOptions);
 
+    // 5. TODO: We MUST store `generatedOtp` somewhere so we can verify it later!
+    
     return NextResponse.json({ success: true, message: "OTP Email Sent Successfully" });
   } catch (error: any) {
     console.error("Nodemailer Error:", error);
