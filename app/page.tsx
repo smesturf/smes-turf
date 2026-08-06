@@ -9,7 +9,7 @@ import { supabase } from "./lib/supabase";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 
 /* ------------------------------------------------------------------ */
-/* Motion Presets                                                    */
+/* Motion Presets & Constants                                        */
 /* ------------------------------------------------------------------ */
 const easeOut = [0.22, 1, 0.36, 1] as const;
 
@@ -22,6 +22,13 @@ const stagger = {
   hidden: {},
   show: { transition: { staggerChildren: 0.08, delayChildren: 0.1 } },
 };
+
+const ALL_TIMES = [
+  "06:00 AM", "07:00 AM", "08:00 AM", "09:00 AM", "10:00 AM",
+  "11:00 AM", "12:00 PM", "01:00 PM", "02:00 PM", "03:00 PM",
+  "04:00 PM", "05:00 PM", "06:00 PM", "07:00 PM", "08:00 PM",
+  "09:00 PM", "10:00 PM", "11:00 PM"
+];
 
 /* ------------------------------------------------------------------ */
 /* Main Component (INDEPENDENCE DAY PROMO)                           */
@@ -42,6 +49,10 @@ export default function Home() {
   const [startTime, setStartTime] = useState("");
   const duration = "60"; 
   const [bookingType, setBookingType] = useState("Half Court");
+
+  // 🕒 DYNAMIC INVENTORY STATE
+  const [availableTimes, setAvailableTimes] = useState<string[]>([]);
+  const [isLoadingTimes, setIsLoadingTimes] = useState(false);
   
   // 💰 DYNAMIC PRICING CONFIGURATION
   const totalAmount = bookingType === "Half Court" ? 205 : 410; // Flat pricing sent to Razorpay
@@ -138,6 +149,65 @@ export default function Home() {
     };
     fetchWeather();
   }, []);
+
+  /* -------- Dynamic Court Availability Logic -------- */
+  useEffect(() => {
+    const fetchAvailability = async () => {
+      // Don't fetch if no date is selected yet
+      if (!bookingDate) {
+        setAvailableTimes([]);
+        return;
+      }
+      
+      setIsLoadingTimes(true);
+      try {
+        // Fetch existing bookings for this specific date
+        const { data, error } = await supabase
+          .from("bookings")
+          .select("start_time, booking_type")
+          .eq("booking_date", bookingDate);
+
+        if (error) throw error;
+
+        const existingBookings = data || [];
+
+        // Filter the master list of times based on what is already booked
+        const available = ALL_TIMES.filter((time) => {
+          const bookingsInThisSlot = existingBookings.filter(b => b.start_time === time);
+          
+          let isFullCourtBooked = false;
+          let halfCourtCount = 0;
+
+          // Tally up what is currently occupying this time slot
+          bookingsInThisSlot.forEach(b => {
+            if (b.booking_type === "Full Court") isFullCourtBooked = true;
+            if (b.booking_type === "Half Court") halfCourtCount++;
+          });
+
+          if (bookingType === "Full Court") {
+            // To book a Full Court, the ENTIRE turf must be empty (0 Fulls, 0 Halfs booked)
+            return !isFullCourtBooked && halfCourtCount === 0;
+          } else {
+            // To book a Half Court, AT LEAST ONE side must be empty (0 Fulls booked, max 1 Half booked)
+            return !isFullCourtBooked && halfCourtCount < 2;
+          }
+        });
+
+        setAvailableTimes(available);
+        
+        // If the user's previously selected time is no longer available, clear it
+        if (startTime && !available.includes(startTime)) {
+          setStartTime("");
+        }
+      } catch (err) {
+        console.error("Failed to fetch availability:", err);
+      } finally {
+        setIsLoadingTimes(false);
+      }
+    };
+
+    fetchAvailability();
+  }, [bookingDate, bookingType, startTime]); 
 
   /* -------- Secure Razorpay Intent -------- */
   const openRazorpay = async () => {
@@ -803,21 +873,25 @@ export default function Home() {
                 </select>
               </motion.div>
 
-              {/* DYNAMIC START TIME */}
+              {/* DYNAMIC START TIME (Inventory Checked) */}
               <motion.div variants={fadeUp} className="space-y-2 relative">
                 <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Time</label>
                 <select
                   value={startTime}
                   onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full p-4 bg-neutral-900 text-white font-bold border border-neutral-800 focus:border-white outline-none rounded-none appearance-none text-base md:text-sm"
+                  disabled={!bookingDate || isLoadingTimes}
+                  className="w-full p-4 bg-neutral-900 text-white font-bold border border-neutral-800 focus:border-white outline-none rounded-none appearance-none text-base md:text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
                 >
-                  <option value="">-- Select Time Slot --</option>
-                  {[
-                    "06:00 AM", "07:00 AM", "08:00 AM", "09:00 AM", "10:00 AM",
-                    "11:00 AM", "12:00 PM", "01:00 PM", "02:00 PM", "03:00 PM",
-                    "04:00 PM", "05:00 PM", "06:00 PM", "07:00 PM", "08:00 PM",
-                    "09:00 PM", "10:00 PM", "11:00 PM"
-                  ].map(t => <option key={t} value={t}>{t}</option>)}
+                  <option value="">
+                    {!bookingDate 
+                      ? "-- Select Date First --" 
+                      : isLoadingTimes 
+                      ? "Checking availability..." 
+                      : "-- Select Time Slot --"}
+                  </option>
+                  {availableTimes.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
                 </select>
               </motion.div>
 
