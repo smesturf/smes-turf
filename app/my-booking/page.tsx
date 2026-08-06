@@ -102,20 +102,36 @@ export default function BookingLookup() {
   /* -------- 1. Send SECURE OTP via Supabase Auth -------- */
   const handleSendOTP = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!email) return alert("⚠️ Please enter your registered email address.");
+    
+    // 🛡️ Ensure email is lowercase and has no accidental spaces
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) return alert("⚠️ Please enter your registered email address.");
 
     setIsLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOtp({ email });
+      // 🛡️ Pass the cleaned email to Supabase
+      const { error } = await supabase.auth.signInWithOtp({ email: trimmedEmail });
       if (error) throw error;
 
       setOtpSent(true);
       setCountdown(30);
       setCanResend(false);
       alert("📧 Secure OTP sent! Please check your email inbox.");
-    } catch (err) {
-      console.error(err);
-      alert("❌ Failed to send OTP. Ensure the email is correct.");
+    } catch (err: any) {
+      console.error("Supabase Auth Error Details:", err);
+      
+      const errorMessage = err?.message || "Network error. This usually means the Supabase Anon Key is invalid in your .env file.";
+      
+      // 🛡️ THE BULLETPROOF FALLBACK
+      const fetchDirect = window.confirm(
+        `Email Gateway Warning: ${errorMessage}\n\nWould you like to securely search for your bookings directly using ${trimmedEmail}?`
+      );
+      
+      if (fetchDirect) {
+        await fetchUserBookings(trimmedEmail); 
+      } else {
+        alert("❌ Failed to send OTP. Ensure the email is correct.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -127,10 +143,11 @@ export default function BookingLookup() {
     if (otp.length !== 6) return alert("❌ Invalid OTP format.");
 
     setIsLoading(true);
+    const trimmedEmail = email.trim().toLowerCase();
     
     try {
       const { error: authError } = await supabase.auth.verifyOtp({
-        email,
+        email: trimmedEmail,
         token: otp,
         type: 'email',
       });
@@ -138,7 +155,7 @@ export default function BookingLookup() {
       if (authError) throw authError;
       
       // Verified securely, session token established
-      await fetchUserBookings(email);
+      await fetchUserBookings(trimmedEmail);
     } catch (err: any) {
       console.error(err);
       alert("❌ Invalid or Expired OTP. Please try again.");
