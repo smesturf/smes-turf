@@ -211,27 +211,36 @@ export default function CoachPage() {
     }
   };
 
-  /* -------- MARK ATTENDANCE LOGIC -------- */
+  /* -------- INSTANT OPTIMISTIC ATTENDANCE LOGIC -------- */
   const markAttendance = async (studentId: string, status: "Present" | "Absent") => {
-    const { error: deleteError } = await supabase
+    // 1. INSTANT UI UPDATE: Update local state immediately so it feels instantaneous
+    setStudents((prevStudents) =>
+      prevStudents.map((student) => {
+        if (student.id !== studentId) return student;
+        
+        // Filter out today's old attendance and add the new one locally
+        const filteredAtt = (student.student_attendance || []).filter(a => a.date !== todayStr);
+        return {
+          ...student,
+          student_attendance: [...filteredAtt, { id: "temp-id", date: todayStr, status }]
+        };
+      })
+    );
+
+    // 2. BACKGROUND DATABASE SYNC: Run delete and insert in the background
+    await supabase
       .from("student_attendance")
       .delete()
       .match({ student_id: studentId, date: todayStr });
 
-    if (deleteError) {
-      alert(`Database Error: ${deleteError.message}\n\nPlease go to Supabase -> Table Editor -> student_attendance -> Click 'RLS Enabled' in the top right -> 'Disable RLS'.`);
-      return;
-    }
-
-    const { error: insertError } = await supabase
+    const { error } = await supabase
       .from("student_attendance")
       .insert([{ student_id: studentId, date: todayStr, status }]);
 
-    if (insertError) {
-      alert(`Database Insert Error: ${insertError.message}\n\nPlease go to Supabase -> Table Editor -> student_attendance -> Click 'RLS Enabled' in the top right -> 'Disable RLS'.`);
-      console.error(insertError);
-    } else {
-      loadCoachData();
+    if (error) {
+      alert("Failed to sync attendance with database.");
+      console.error(error);
+      loadCoachData(); // Revert back if it failed
     }
   };
 
