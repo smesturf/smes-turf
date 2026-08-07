@@ -16,15 +16,23 @@ interface Payment {
   payment_method: string | null;
 }
 
+interface Attendance {
+  id: string;
+  date: string;
+  status: "Present" | "Absent";
+}
+
 interface Student {
   id: string;
   name: string;
   phone: string;
   dob: string | null;
   email: string | null;
+  batch: "Morning Batch" | "Evening Batch";
   created_at: string;
   monthly_fee: number;
   student_payments?: Payment[];
+  student_attendance?: Attendance[];
   payment_status?: string;
   amount_paid?: number;
   payment_method?: string | null;
@@ -50,6 +58,7 @@ interface BlockedSlot {
 }
 
 type TabType = "bookings" | "blocks";
+type BatchTabType = "Morning Batch" | "Evening Batch";
 
 /* ------------------------------------------------------------------ */
 /*  Motion Presets                                                    */
@@ -88,15 +97,18 @@ export default function CoachPage() {
   const [newStudentPhone, setNewStudentPhone] = useState("");
   const [newStudentDOB, setNewStudentDOB] = useState("");
   const [newStudentEmail, setNewStudentEmail] = useState("");
+  const [newStudentBatch, setNewStudentBatch] = useState<BatchTabType>("Morning Batch");
 
   // UI state
   const [tab, setTab] = useState<TabType>("bookings");
+  const [rosterTab, setRosterTab] = useState<BatchTabType>("Morning Batch");
   const [search, setSearch] = useState("");
   const [isSendingEmails, setIsSendingEmails] = useState(false);
 
   // Constants
-  const FIXED_COACHING_FEE = 3500;
+  const FIXED_COACHING_FEE = 2500;
   const currentMonthYear = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
   const currentMonthLabel = new Date().toLocaleString("en-US", {
     month: "long",
     year: "numeric",
@@ -107,7 +119,6 @@ export default function CoachPage() {
     const checkAuth = async () => {
       const { data: { session }, error } = await supabase.auth.getSession();
       
-      // If there's no valid server session, boot them out securely
       if (error || !session) {
         router.replace("/staff");
       } else {
@@ -117,7 +128,6 @@ export default function CoachPage() {
     
     checkAuth();
 
-    // Listen for logout events across tabs
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT' || !session) {
         router.replace("/staff");
@@ -132,12 +142,11 @@ export default function CoachPage() {
     if (!isAuthorized) return;
 
     let timeout: NodeJS.Timeout;
-    const INACTIVITY_LIMIT = 15 * 60 * 1000; // 15 Minutes Inactivity Limit
+    const INACTIVITY_LIMIT = 15 * 60 * 1000;
 
     const resetTimer = () => {
       clearTimeout(timeout);
       timeout = setTimeout(async () => {
-        // Securely sign out from server instead of deleting a local key
         await supabase.auth.signOut(); 
         alert("⚠️ Session expired due to inactivity. Please log in again.");
         router.push("/staff");
@@ -161,63 +170,35 @@ export default function CoachPage() {
 
     loadCoachData();
 
-    const bookingsChannel = supabase
-      .channel("coach-b-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, () => loadCoachData())
-      .subscribe();
-    const blockedChannel = supabase
-      .channel("coach-bl-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "blocked_slots" }, () => loadCoachData())
-      .subscribe();
-    const studentsChannel = supabase
-      .channel("coach-st-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "students" }, () => loadCoachData())
-      .subscribe();
-    const paymentsChannel = supabase
-      .channel("coach-p-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "student_payments" }, () => loadCoachData())
-      .subscribe();
+    const bookingsChannel = supabase.channel("coach-b-sync").on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, () => loadCoachData()).subscribe();
+    const blockedChannel = supabase.channel("coach-bl-sync").on("postgres_changes", { event: "*", schema: "public", table: "blocked_slots" }, () => loadCoachData()).subscribe();
+    const studentsChannel = supabase.channel("coach-st-sync").on("postgres_changes", { event: "*", schema: "public", table: "students" }, () => loadCoachData()).subscribe();
+    const paymentsChannel = supabase.channel("coach-p-sync").on("postgres_changes", { event: "*", schema: "public", table: "student_payments" }, () => loadCoachData()).subscribe();
+    const attendanceChannel = supabase.channel("coach-att-sync").on("postgres_changes", { event: "*", schema: "public", table: "student_attendance" }, () => loadCoachData()).subscribe();
 
     return () => {
       supabase.removeChannel(bookingsChannel);
       supabase.removeChannel(blockedChannel);
       supabase.removeChannel(studentsChannel);
       supabase.removeChannel(paymentsChannel);
+      supabase.removeChannel(attendanceChannel);
     };
   }, [isAuthorized]);
 
   const loadCoachData = async () => {
-    // Force IST query date
-    const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    const localTodayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
-    const { data: bData } = await supabase
-      .from("bookings")
-      .select("*")
-      .gte("booking_date", todayStr)
-      .order("booking_date", { ascending: true })
-      .order("start_time", { ascending: true });
-    
+    const { data: bData } = await supabase.from("bookings").select("*").gte("booking_date", localTodayStr).order("booking_date", { ascending: true }).order("start_time", { ascending: true });
     if (bData) setBookings(bData as Booking[]);
 
-    const { data: blData } = await supabase
-      .from("blocked_slots")
-      .select("*")
-      .gte("booking_date", todayStr)
-      .order("booking_date", { ascending: true })
-      .order("start_time", { ascending: true });
-      
+    const { data: blData } = await supabase.from("blocked_slots").select("*").gte("booking_date", localTodayStr).order("booking_date", { ascending: true }).order("start_time", { ascending: true });
     if (blData) setBlockedSlots(blData as BlockedSlot[]);
 
-    const { data: stData } = await supabase
-      .from("students")
-      .select(`*, student_payments(*)`)
-      .order("name", { ascending: true });
+    const { data: stData } = await supabase.from("students").select(`*, student_payments(*), student_attendance(*)`).order("name", { ascending: true });
 
     if (stData) {
       const processedStudents = stData.map((student: Student) => {
-        const currentMonthRecord = student.student_payments?.find(
-          (p: Payment) => p.month_year === currentMonthYear
-        );
+        const currentMonthRecord = student.student_payments?.find((p: Payment) => p.month_year === currentMonthYear);
         return {
           ...student,
           payment_status: currentMonthRecord ? currentMonthRecord.status : "pending",
@@ -227,6 +208,30 @@ export default function CoachPage() {
         };
       });
       setStudents(processedStudents);
+    }
+  };
+
+  /* -------- MARK ATTENDANCE LOGIC -------- */
+  const markAttendance = async (studentId: string, status: "Present" | "Absent") => {
+    const { error: deleteError } = await supabase
+      .from("student_attendance")
+      .delete()
+      .match({ student_id: studentId, date: todayStr });
+
+    if (deleteError) {
+      alert(`Database Error: ${deleteError.message}\n\nPlease go to Supabase -> Table Editor -> student_attendance -> Click 'RLS Enabled' in the top right -> 'Disable RLS'.`);
+      return;
+    }
+
+    const { error: insertError } = await supabase
+      .from("student_attendance")
+      .insert([{ student_id: studentId, date: todayStr, status }]);
+
+    if (insertError) {
+      alert(`Database Insert Error: ${insertError.message}\n\nPlease go to Supabase -> Table Editor -> student_attendance -> Click 'RLS Enabled' in the top right -> 'Disable RLS'.`);
+      console.error(insertError);
+    } else {
+      loadCoachData();
     }
   };
 
@@ -248,6 +253,7 @@ export default function CoachPage() {
         phone: newStudentPhone,
         dob: newStudentDOB || null,
         email: newStudentEmail || null,
+        batch: newStudentBatch,
         monthly_fee: FIXED_COACHING_FEE,
       }])
       .select()
@@ -271,45 +277,132 @@ export default function CoachPage() {
       return; 
     }
 
-    alert(`✅ ${newStudentName} Enrolled Successfully! Pending Desk Payment Approval.`);
+    alert(`✅ ${newStudentName} Enrolled in ${newStudentBatch}!`);
     setNewStudentName(""); 
     setNewStudentPhone(""); 
     setNewStudentDOB(""); 
     setNewStudentEmail("");
+    setNewStudentBatch("Morning Batch");
     loadCoachData();
   };
 
+  /* -------- DYNAMIC EXCEL EXPORT (UPDATED STRUCTURE & WIDTHS) -------- */
   const exportCoachExcel = async () => {
     const XLSX = await import("xlsx");
     const currentMonthNum = new Date().getMonth();
     const currentYearNum = new Date().getFullYear();
+    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-    const data = students.map((s) => {
-      const joinDate = new Date(s.created_at);
-      const isNew = joinDate.getMonth() === currentMonthNum && joinDate.getFullYear() === currentYearNum;
+    // 1. Sort students alphabetically and split by batch
+    const morningStudents = [...students]
+      .filter(s => s.batch === "Morning Batch")
+      .sort((a, b) => a.name.localeCompare(b.name));
+      
+    const eveningStudents = [...students]
+      .filter(s => s.batch === "Evening Batch")
+      .sort((a, b) => a.name.localeCompare(b.name));
 
-      return {
-        "Student Name": s.name + (isNew ? " (NEW)" : ""),
-        "Phone Number": s.phone,
-        "Date of Birth": s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-",
-        "Email ID": s.email || "-",
-        "Monthly Fee (₹)": s.monthly_fee || FIXED_COACHING_FEE,
-        "Amount Paid (₹)": s.amount_paid || 0,
-        "Payment Method": s.payment_method || "-",
-        "Status": s.payment_status === "settled" ? "✅ SETTLED" : "❌ PENDING",
-        "Type": isNew ? "NEW STUDENT" : "EXISTING",
-      };
-    });
+    let serialCounter = 1;
+    const rosterData: any[] = [];
+    const attendanceData: any[] = [];
 
-    const worksheet = XLSX.utils.json_to_sheet(data);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Coaching Roster");
+    // Helper function to process a batch and populate arrays
+    const processBatch = (batchStudents: Student[]) => {
+      batchStudents.forEach((s) => {
+        const joinDate = new Date(s.created_at);
+        const isNew = joinDate.getMonth() === currentMonthNum && joinDate.getFullYear() === currentYearNum;
 
-    worksheet["!cols"] = [
-      { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 25 },
-      { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 },
+        // Build Roster Row
+        const rRow: any = {
+          "ID": serialCounter,
+          "Student Name": s.name + (isNew ? " (NEW)" : ""),
+          "Batch": s.batch || "Unassigned",
+          "Phone Number": s.phone,
+          "Date of Birth": s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-",
+          "Email ID": s.email || "-",
+          "Monthly Fee (₹)": s.monthly_fee || FIXED_COACHING_FEE,
+          "Type": isNew ? "NEW STUDENT" : "EXISTING",
+        };
+
+        if (s.student_payments && s.student_payments.length > 0) {
+          s.student_payments.forEach((payment) => {
+            let formattedMonth = payment.month_year;
+            if (payment.month_year.includes("-")) {
+              const [yearStr, monthStr] = payment.month_year.split("-");
+              const monthName = monthNames[parseInt(monthStr, 10) - 1];
+              formattedMonth = `${monthName} ${yearStr}`;
+            }
+            rRow[`Fee Status ${formattedMonth}`] = payment.status === "settled" ? "✅ SETTLED" : "❌ PENDING";
+          });
+        }
+        rosterData.push(rRow);
+
+        // Build Attendance Row
+        const aRow: any = {
+          "ID": serialCounter,
+          "Student Name": s.name,
+          "Batch": s.batch || "Unassigned",
+        };
+
+        if (s.student_attendance && s.student_attendance.length > 0) {
+          const sortedAtt = [...s.student_attendance].sort((a, b) => a.date.localeCompare(b.date));
+          sortedAtt.forEach((att) => {
+            aRow[att.date] = att.status;
+          });
+        }
+        attendanceData.push(aRow);
+
+        serialCounter++;
+      });
+    };
+
+    // Process Morning Batch
+    processBatch(morningStudents);
+
+    // Insert an empty row separator if both batches have students
+    if (morningStudents.length > 0 && eveningStudents.length > 0) {
+      rosterData.push({});
+      attendanceData.push({});
+    }
+
+    // Process Evening Batch
+    processBatch(eveningStudents);
+
+    // Convert to Worksheets
+    const rosterWorksheet = XLSX.utils.json_to_sheet(rosterData);
+    const attendanceWorksheet = XLSX.utils.json_to_sheet(attendanceData);
+
+    // Apply strict column widths so manual resizing is not needed
+    const rosterCols = [
+      { wch: 5 },   // ID
+      { wch: 25 },  // Name
+      { wch: 15 },  // Batch
+      { wch: 15 },  // Phone
+      { wch: 15 },  // DOB
+      { wch: 30 },  // Email
+      { wch: 15 },  // Monthly Fee
+      { wch: 15 },  // Type
     ];
-    XLSX.writeFile(workbook, `Coach_Report_${currentMonthYear}.xlsx`);
+    // Add extra wide columns for dynamic payment statuses
+    for (let i = 0; i < 24; i++) rosterCols.push({ wch: 22 });
+    rosterWorksheet["!cols"] = rosterCols;
+
+    const attCols = [
+      { wch: 5 },   // ID
+      { wch: 25 },  // Name
+      { wch: 15 },  // Batch
+    ];
+    // Add extra width for dynamic attendance dates
+    for (let i = 0; i < 31; i++) attCols.push({ wch: 12 });
+    attendanceWorksheet["!cols"] = attCols;
+
+    // Build Workbook
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, rosterWorksheet, "Coaching Roster");
+    XLSX.utils.book_append_sheet(workbook, attendanceWorksheet, "Attendance Record");
+
+    // Download
+    XLSX.writeFile(workbook, `Coach_Report_Detailed_${currentMonthYear}.xlsx`);
   };
 
   const sendEmailReminders = async () => {
@@ -375,15 +468,18 @@ export default function CoachPage() {
   }, [students]);
 
   const filteredStudents = useMemo(() => {
-    if (!search.trim()) return students;
+    let activeStudents = students.filter(s => s.batch === rosterTab);
+    
+    if (!search.trim()) return activeStudents;
     const q = search.toLowerCase();
-    return students.filter(
+    
+    return activeStudents.filter(
       (s) =>
         s.name?.toLowerCase().includes(q) ||
         s.phone?.includes(q) ||
         s.email?.toLowerCase().includes(q)
     );
-  }, [students, search]);
+  }, [students, search, rosterTab]);
 
   /* -------- 4. SECURE LOADER INTERCEPTOR -------- */
   if (!isAuthorized) {
@@ -518,6 +614,8 @@ export default function CoachPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
           <div className="lg:col-span-2 space-y-6 lg:space-y-8">
+            
+            {/* Enrollment Section */}
             <motion.section
               variants={fadeUp}
               initial="hidden"
@@ -589,17 +687,30 @@ export default function CoachPage() {
                   />
                 </div>
 
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400">Assign Batch</label>
+                  <select
+                    value={newStudentBatch}
+                    onChange={(e) => setNewStudentBatch(e.target.value as BatchTabType)}
+                    className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors text-white appearance-none"
+                  >
+                    <option value="Morning Batch">Morning Batch</option>
+                    <option value="Evening Batch">Evening Batch</option>
+                  </select>
+                </div>
+
                 <motion.button
                   whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.3)" }}
                   whileTap={{ scale: 0.97 }}
                   type="submit"
-                  className="sm:col-span-2 bg-lime-400 hover:bg-lime-300 text-black font-mono font-black py-4 text-xs uppercase tracking-widest transition-colors"
+                  className="sm:col-span-2 bg-lime-400 hover:bg-lime-300 text-black font-mono font-black py-4 text-xs uppercase tracking-widest transition-colors mt-2"
                 >
                   Submit Enrollment
                 </motion.button>
               </form>
             </motion.section>
 
+            {/* Roster Section */}
             <motion.section
               variants={fadeUp}
               initial="hidden"
@@ -607,22 +718,54 @@ export default function CoachPage() {
               viewport={{ once: true, amount: 0.15 }}
               className="border border-neutral-900 bg-neutral-900/30 backdrop-blur overflow-hidden"
             >
-              <div className="p-4 sm:p-5 border-b border-neutral-900 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
-                <div>
-                  <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block">
-                    02 — Roster
-                  </span>
-                  <h2 className="text-base sm:text-lg font-black uppercase text-white mt-0.5">
-                    Academy Roster · <span className="text-lime-400">{currentMonthLabel}</span>
-                  </h2>
+              <div className="p-4 sm:p-5 border-b border-neutral-900">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4 justify-between mb-5">
+                  <div>
+                    <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block">
+                      02 — Roster
+                    </span>
+                    <h2 className="text-base sm:text-lg font-black uppercase text-white mt-0.5">
+                      Academy Roster · <span className="text-lime-400">{currentMonthLabel}</span>
+                    </h2>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search active batch..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full sm:w-64 p-2.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors text-white"
+                  />
                 </div>
-                <input
-                  type="text"
-                  placeholder="Search name / phone / email"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full sm:w-64 p-2.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors text-white"
-                />
+
+                {/* Animated Batch Tabs */}
+                <LayoutGroup id="roster-tabs">
+                  <div className="grid grid-cols-2 gap-2 p-1.5 border border-neutral-900 bg-neutral-900/50 backdrop-blur w-full sm:w-80">
+                    {[
+                      { id: "Morning Batch", label: "Morning Batch" },
+                      { id: "Evening Batch", label: "Evening Batch" },
+                    ].map((t) => (
+                      <motion.button
+                        key={t.id}
+                        whileTap={{ scale: 0.97 }}
+                        onClick={() => setRosterTab(t.id as BatchTabType)}
+                        className={`relative py-2.5 text-[10px] font-mono uppercase tracking-widest transition-colors ${
+                          rosterTab === t.id
+                            ? "text-black font-black"
+                            : "text-neutral-500 hover:text-white"
+                        }`}
+                      >
+                        {rosterTab === t.id && (
+                          <motion.span
+                            layoutId="roster-tab-highlight"
+                            className="absolute inset-0 bg-lime-400 -z-0"
+                            transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                          />
+                        )}
+                        <span className="relative z-10">{t.label}</span>
+                      </motion.button>
+                    ))}
+                  </div>
+                </LayoutGroup>
               </div>
 
               <div className="w-full">
@@ -631,8 +774,8 @@ export default function CoachPage() {
                     <tr className="border-b border-neutral-900 text-[10px] font-mono uppercase tracking-widest text-neutral-500 bg-neutral-950/40">
                       <th className="p-4">Student Info</th>
                       <th className="p-4">Contact Details</th>
-                      <th className="p-4">Academy Fee</th>
-                      <th className="p-4 text-center">Payment Status</th>
+                      <th className="p-4">Fee / Status</th>
+                      <th className="p-4 text-center">Attendance (Today)</th>
                     </tr>
                   </thead>
                   
@@ -645,13 +788,14 @@ export default function CoachPage() {
                     <AnimatePresence>
                       {filteredStudents.length === 0 ? (
                         <motion.tr
+                          key="empty"
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
                           className="block md:table-row"
                         >
                           <td colSpan={4} className="p-8 text-center text-xs font-mono text-neutral-600 block md:table-cell">
-                            No students match your search.
+                            No students found in {rosterTab}.
                           </td>
                         </motion.tr>
                       ) : (
@@ -662,15 +806,21 @@ export default function CoachPage() {
                             joinDate.getFullYear() === new Date().getFullYear();
                           const isUnpaid = student.payment_status !== "settled";
 
+                          // Attendance logic for today
+                          const todayAtt = student.student_attendance?.find(a => a.date === todayStr);
+                          const isPresent = todayAtt?.status === "Present";
+                          const isAbsent = todayAtt?.status === "Absent";
+
                           return (
                             <motion.tr
                               key={student.id}
                               variants={rowItem}
                               layout
+                              // Highlight row based strictly on fee payment status
                               className={`grid grid-cols-[1fr_auto] md:table-row items-center p-4 md:p-0 border-b border-neutral-800 md:border-none transition-colors gap-x-2 gap-y-1.5 ${
                                 isUnpaid
                                   ? "bg-red-500/[0.05] hover:bg-red-500/[0.10]"
-                                  : "hover:bg-lime-400/[0.03]"
+                                  : "bg-lime-400/[0.05] hover:bg-lime-400/[0.10]"
                               }`}
                             >
                               <td className="block md:table-cell order-1 md:order-none py-1 md:p-4">
@@ -702,27 +852,50 @@ export default function CoachPage() {
                                 </div>
                               </td>
                               
-                              <td className="flex justify-end md:justify-start items-center md:table-cell order-4 md:order-none py-1 md:p-4 font-mono text-white text-xs md:text-sm">
-                                <span className="md:hidden text-[9px] font-mono text-neutral-500 uppercase tracking-widest mr-1.5">
-                                  Fee:
-                                </span>
-                                ₹{student.monthly_fee || FIXED_COACHING_FEE}
+                              <td className="block md:table-cell order-4 md:order-none py-1 md:p-4 space-y-1">
+                                <div className="font-mono text-white text-xs md:text-sm">
+                                  ₹{student.monthly_fee || FIXED_COACHING_FEE}
+                                </div>
+                                <div>
+                                  {student.payment_status === "settled" ? (
+                                    <span className="px-2 py-0.5 text-[9px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 whitespace-nowrap inline-flex items-center justify-center">
+                                      ✅ Paid
+                                    </span>
+                                  ) : (
+                                    <motion.span
+                                      animate={{ opacity: [1, 0.5, 1] }}
+                                      transition={{ duration: 2, repeat: Infinity }}
+                                      className="px-2 py-0.5 text-[9px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black whitespace-nowrap inline-flex items-center justify-center"
+                                    >
+                                      ⚠️ Unpaid
+                                    </motion.span>
+                                  )}
+                                </div>
                               </td>
                               
-                              <td className="flex justify-end md:table-cell md:text-center order-2 md:order-none py-1 md:p-4">
-                                {student.payment_status === "settled" ? (
-                                  <span className="px-2.5 py-1 text-[9px] md:text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 whitespace-nowrap inline-flex items-center gap-1 justify-center">
-                                    ✅ Paid
-                                  </span>
-                                ) : (
-                                  <motion.span
-                                    animate={{ opacity: [1, 0.5, 1] }}
-                                    transition={{ duration: 2, repeat: Infinity }}
-                                    className="px-2.5 py-1 text-[9px] md:text-[10px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black whitespace-nowrap inline-flex items-center gap-1 justify-center"
+                              <td className="flex justify-end md:justify-center items-center md:table-cell order-2 md:order-none py-1 md:p-4">
+                                <div className="flex items-center gap-2">
+                                  <button 
+                                    onClick={() => markAttendance(student.id, "Present")}
+                                    className={`w-8 h-8 flex items-center justify-center text-sm font-mono font-black transition-all rounded border ${
+                                      isPresent 
+                                        ? 'bg-lime-500 text-black border-lime-500 shadow-[0_0_15px_rgba(132,204,22,0.5)] scale-110' 
+                                        : 'bg-lime-500/10 text-lime-500 border-lime-500/30 hover:bg-lime-500/30'
+                                    }`}
                                   >
-                                    ⚠️ Unpaid
-                                  </motion.span>
-                                )}
+                                    P
+                                  </button>
+                                  <button 
+                                    onClick={() => markAttendance(student.id, "Absent")}
+                                    className={`w-8 h-8 flex items-center justify-center text-sm font-mono font-black transition-all rounded border ${
+                                      isAbsent 
+                                        ? 'bg-red-600 text-white border-red-600 shadow-[0_0_15px_rgba(220,38,38,0.6)] scale-110' 
+                                        : 'bg-red-500/10 text-red-500 border-red-500/30 hover:bg-red-500/30'
+                                    }`}
+                                  >
+                                    A
+                                  </button>
+                                </div>
                               </td>
                             </motion.tr>
                           );
@@ -736,7 +909,7 @@ export default function CoachPage() {
           </div>
 
           <div className="space-y-6 lg:space-y-8 lg:col-span-1">
-            <LayoutGroup>
+            <LayoutGroup id="sidebar-tabs">
               <div className="grid grid-cols-2 gap-2 p-1.5 border border-neutral-900 bg-neutral-900/30 backdrop-blur">
                 {[
                   { id: "bookings", label: "Live Bookings" },
@@ -754,7 +927,7 @@ export default function CoachPage() {
                   >
                     {tab === t.id && (
                       <motion.span
-                        layoutId="tab-highlight"
+                        layoutId="sidebar-tab-highlight"
                         className="absolute inset-0 bg-lime-400 -z-0"
                         transition={{ type: "spring", stiffness: 350, damping: 30 }}
                       />
