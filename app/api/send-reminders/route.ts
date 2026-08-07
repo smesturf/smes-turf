@@ -9,7 +9,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No students provided" }, { status: 400 });
     }
 
-    // Configure the Email Transporter (Setup using a standard Gmail App Password)
+    // Configure the Email Transporter
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -19,14 +19,14 @@ export async function POST(request: Request) {
     });
 
     // Send emails in parallel for speed
-    const emailPromises = students.map((student: any) => {
+    const emailPromises = students.map((student: { name: string; email: string }) => {
       
       // Safety Check: Skip if the student does not have an email address
       if (!student.email) return Promise.resolve();
 
       // Professional HTML Email Template
       const htmlContent = `
-        <div style="font-family: Arial, sans-serif; max-w: 600px; margin: 0 auto; background-color: #0a0a0a; color: #ffffff; padding: 30px; border-top: 5px solid #a3e635;">
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0a0a0a; color: #ffffff; padding: 30px; border-top: 5px solid #a3e635;">
           <h2 style="color: #ffffff; text-transform: uppercase; letter-spacing: 2px;">SMES Sports Academy</h2>
           <p style="color: #a3a3a3; font-size: 14px;">Official Coaching Fee Reminder</p>
           

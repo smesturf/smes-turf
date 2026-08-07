@@ -10,9 +10,15 @@ const supabaseAdmin = createClient(
 
 export async function GET(request: Request) {
   try {
+    // SECURITY: Ensure this is only triggered by Vercel's secure cron job infrastructure
+    const authHeader = request.headers.get('authorization');
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+      return new NextResponse('Unauthorized', { status: 401 });
+    }
+
     const currentMonthLabel = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
     const currentMonthYear = new Date().toISOString().slice(0, 7);
-    const FIXED_COACHING_FEE = 3500;
+    const FIXED_COACHING_FEE = 2500; // Updated to 2500
 
     // 1. Fetch all students and their payments
     const { data: stData, error } = await supabaseAdmin
@@ -45,7 +51,7 @@ export async function GET(request: Request) {
     // 4. Dispatch Emails
     const emailPromises = pendingStudents.map((student: any) => {
       const htmlContent = `
-        <div style="font-family: Arial, sans-serif; max-w: 600px; margin: 0 auto; background-color: #0a0a0a; color: #ffffff; padding: 30px; border-top: 5px solid #a3e635;">
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0a0a0a; color: #ffffff; padding: 30px; border-top: 5px solid #a3e635;">
           <h2 style="color: #ffffff; text-transform: uppercase; letter-spacing: 2px;">SMES Sports Academy</h2>
           <p style="color: #a3a3a3; font-size: 14px;">Official Coaching Fee Reminder</p>
           

@@ -35,6 +35,8 @@ const getTomorrowStr = () => {
   return tomorrowDate.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 };
 
+type BatchTabType = "Morning Batch" | "Evening Batch";
+
 export default function AdminPage() {
   const router = useRouter();
 
@@ -58,10 +60,12 @@ export default function AdminPage() {
   const [showCoachingPanel, setShowCoachingPanel] = useState(false);
   const [academyStudents, setAcademyStudents] = useState<any[]>([]);
   const [academyTab, setAcademyTab] = useState<"new" | "existing">("existing");
+  const [rosterTab, setRosterTab] = useState<BatchTabType>("Morning Batch");
   const [adminNewStudentName, setAdminNewStudentName] = useState("");
   const [adminNewStudentPhone, setAdminNewStudentPhone] = useState("");
   const [adminNewStudentDOB, setAdminNewStudentDOB] = useState("");
   const [adminNewStudentEmail, setAdminNewStudentEmail] = useState("");
+  const [adminNewStudentBatch, setAdminNewStudentBatch] = useState<BatchTabType>("Morning Batch");
   const [adminNewStudentMethod, setAdminNewStudentMethod] = useState("UPI");
   const [adminSelectedStudentId, setAdminSelectedStudentId] = useState("");
   const [adminExistingMethod, setAdminExistingMethod] = useState("UPI");
@@ -85,7 +89,7 @@ export default function AdminPage() {
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [pendingAction, setPendingAction] = useState<"cancel_refund" | "reschedule" | "cancel_no_refund" | "extend" | null>(null);
 
-  const FIXED_COACHING_FEE = 3500;
+  const FIXED_COACHING_FEE = 2500;
   const currentMonthYear = new Date().toISOString().slice(0, 7);
   const currentMonthLabel = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
 
@@ -215,12 +219,18 @@ export default function AdminPage() {
       .on("postgres_changes", { event: "*", schema: "public", table: "student_payments" }, () => loadAcademyData())
       .subscribe();
 
+    const attendanceChannel = supabase
+      .channel("attendance-realtime-admin")
+      .on("postgres_changes", { event: "*", schema: "public", table: "student_attendance" }, () => loadAcademyData())
+      .subscribe();
+
     return () => {
       authListener.subscription.unsubscribe();
       supabase.removeChannel(bookingsChannel);
       supabase.removeChannel(blockedChannel);
       supabase.removeChannel(studentsChannel);
       supabase.removeChannel(paymentsChannel);
+      supabase.removeChannel(attendanceChannel);
     };
   }, [router]);
 
@@ -307,7 +317,7 @@ export default function AdminPage() {
   const loadAcademyData = async () => {
     const { data: stData } = await supabase
       .from("students")
-      .select(`*, student_payments(*)`)
+      .select(`*, student_payments(*), student_attendance(*)`)
       .order("name", { ascending: true });
 
     if (stData) {
@@ -324,6 +334,30 @@ export default function AdminPage() {
     }
   };
 
+  const markAttendance = async (studentId: string, status: "Present" | "Absent") => {
+    const today = getTodayStr();
+    const { error: deleteError } = await supabase
+      .from("student_attendance")
+      .delete()
+      .match({ student_id: studentId, date: today });
+
+    if (deleteError) {
+      alert(`Database Error: ${deleteError.message}\nEnsure 'student_attendance' table RLS is disabled.`);
+      return;
+    }
+
+    const { error: insertError } = await supabase
+      .from("student_attendance")
+      .insert([{ student_id: studentId, date: today, status }]);
+
+    if (insertError) {
+      alert(`Database Insert Error: ${insertError.message}`);
+      console.error(insertError);
+    } else {
+      loadAcademyData();
+    }
+  };
+
   const handleAdminEnrollStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adminNewStudentName || !adminNewStudentPhone) { alert("Please complete name and phone fields"); return; }
@@ -331,7 +365,14 @@ export default function AdminPage() {
 
     const { data: student, error: stError } = await supabase
       .from("students")
-      .insert([{ name: adminNewStudentName, phone: adminNewStudentPhone, dob: adminNewStudentDOB || null, email: adminNewStudentEmail || null, monthly_fee: FIXED_COACHING_FEE }])
+      .insert([{ 
+        name: adminNewStudentName, 
+        phone: adminNewStudentPhone, 
+        dob: adminNewStudentDOB || null, 
+        email: adminNewStudentEmail || null, 
+        batch: adminNewStudentBatch,
+        monthly_fee: FIXED_COACHING_FEE 
+      }])
       .select().single();
 
     if (stError || !student) { alert(stError?.message || "Enrollment failure"); return; }
@@ -348,8 +389,8 @@ export default function AdminPage() {
 
     if (pmError) { alert(pmError.message); return; }
 
-    alert(`✅ ${adminNewStudentName} Enrolled & Marked as Paid via ${adminNewStudentMethod}`);
-    setAdminNewStudentName(""); setAdminNewStudentPhone(""); setAdminNewStudentDOB(""); setAdminNewStudentEmail("");
+    alert(`✅ ${adminNewStudentName} Enrolled in ${adminNewStudentBatch} & Marked as Paid via ${adminNewStudentMethod}`);
+    setAdminNewStudentName(""); setAdminNewStudentPhone(""); setAdminNewStudentDOB(""); setAdminNewStudentEmail(""); setAdminNewStudentBatch("Morning Batch");
     loadAcademyData();
   };
 
@@ -908,9 +949,11 @@ export default function AdminPage() {
     .filter((booking) => booking.booking_date?.split("T")[0] === getTodayStr())
     .reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
 
+  /* -------- DYNAMIC EXCEL EXPORT -------- */
   const exportToExcel = async () => {
     const XLSX = await import("xlsx");
     
+    // --- 1. Master Bookings Data ---
     const exportData = bookings.map((booking, index) => ({
       "S.No.": index + 1,
       "Booking ID": booking.id,
@@ -934,44 +977,77 @@ export default function AdminPage() {
       "Payment Status": booking.payment_completed ? "Paid" : "Pending",
     }));
 
-    const currentMonthYear = new Date().toISOString().slice(0, 7);
+    // --- 2. Coaching Data Processing ---
     const currentMonthNum = new Date().getMonth();
     const currentYearNum = new Date().getFullYear();
-    const { data: dbStudents } = await supabase.from("students").select(`*, student_payments(*)`).order("name", { ascending: true });
+    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    
+    const { data: dbStudents } = await supabase.from("students").select(`*, student_payments(*), student_attendance(*)`).order("name", { ascending: true });
 
-    const uniqueMonths = Array.from(
-      new Set([
-        ...((dbStudents || []).flatMap((s: any) => (s.student_payments || []).map((p: any) => p.month_year))),
-        currentMonthYear
-      ])
-    ).sort();
+    const morningStudents = [...(dbStudents || [])].filter(s => s.batch === "Morning Batch").sort((a, b) => a.name.localeCompare(b.name));
+    const eveningStudents = [...(dbStudents || [])].filter(s => s.batch === "Evening Batch").sort((a, b) => a.name.localeCompare(b.name));
 
-    const formatMonthLabel = (my: string) => {
-      const [year, month] = my.split("-");
-      const date = new Date(Number(year), Number(month) - 1, 1);
-      return date.toLocaleString("en-US", { month: "long", year: "numeric" });
+    let serialCounter = 1;
+    const rosterData: any[] = [];
+    const attendanceData: any[] = [];
+
+    const processBatch = (batchStudents: any[]) => {
+      batchStudents.forEach((s) => {
+        const joinDate = new Date(s.created_at);
+        const isNew = joinDate.getMonth() === currentMonthNum && joinDate.getFullYear() === currentYearNum;
+
+        const rRow: any = {
+          "ID": serialCounter,
+          "Student Name": s.name + (isNew ? " (NEW)" : ""),
+          "Batch": s.batch || "Unassigned",
+          "Phone Number": s.phone,
+          "Date of Birth": s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-",
+          "Email ID": s.email || "-",
+          "Monthly Fee (₹)": s.monthly_fee || FIXED_COACHING_FEE,
+          "Type": isNew ? "NEW STUDENT" : "EXISTING",
+        };
+
+        if (s.student_payments && s.student_payments.length > 0) {
+          s.student_payments.forEach((payment: any) => {
+            let formattedMonth = payment.month_year;
+            if (payment.month_year.includes("-")) {
+              const [yearStr, monthStr] = payment.month_year.split("-");
+              formattedMonth = `${monthNames[parseInt(monthStr, 10) - 1]} ${yearStr}`;
+            }
+            rRow[`Fee Status ${formattedMonth}`] = payment.status === "settled" ? "✅ SETTLED" : "❌ PENDING";
+          });
+        }
+        rosterData.push(rRow);
+
+        const aRow: any = {
+          "ID": serialCounter,
+          "Student Name": s.name,
+          "Batch": s.batch || "Unassigned",
+        };
+
+        if (s.student_attendance && s.student_attendance.length > 0) {
+          const sortedAtt = [...s.student_attendance].sort((a: any, b: any) => a.date.localeCompare(b.date));
+          sortedAtt.forEach((att: any) => {
+            aRow[att.date] = att.status;
+          });
+        }
+        attendanceData.push(aRow);
+
+        serialCounter++;
+      });
     };
 
-    const academyWorksheetData = (dbStudents || []).map((s: any, index: number) => {
-      const joinDate = new Date(s.created_at);
-      const isNew = joinDate.getMonth() === currentMonthNum && joinDate.getFullYear() === currentYearNum;
-      const row: any = {
-        "S.No.": index + 1,
-        "Student Name": s.name + (isNew ? " (NEW)" : ""),
-        "Phone Number": s.phone,
-        "Date of Birth": s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-",
-        "Email ID": s.email || "-",
-        "Monthly Fee (₹)": s.monthly_fee,
-        "Type": isNew ? "NEW REGISTRATION" : "EXISTING"
-      };
-      uniqueMonths.forEach((my) => {
-        const record = s.student_payments?.find((p: any) => p.month_year === my);
-        const colLabel = formatMonthLabel(my);
-        row[colLabel] = record?.status === "settled" ? `✅ PAID (${record.payment_method || "UPI"})` : "❌ PENDING";
-      });
-      return row;
-    });
+    processBatch(morningStudents);
+    if (morningStudents.length > 0 && eveningStudents.length > 0) {
+      rosterData.push({}); attendanceData.push({});
+    }
+    processBatch(eveningStudents);
 
+    // --- 3. Build Workbook ---
+    const workbook = XLSX.utils.book_new();
+    const todayStr = getTodayStr(); 
+
+    // A. Master Bookings Sheet
     const totalRevenue = bookings.reduce((sum, booking) => sum + (booking.total_amount || 0), 0);
     const totalAdvance = bookings.reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
     const totalBalance = bookings.reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
@@ -979,9 +1055,6 @@ export default function AdminPage() {
     const totalUpiCollected = bookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
     const totalCollection = totalCashCollected + totalUpiCollected;
     const moneyInHand = totalAdvance + totalCollection;
-
-    const workbook = XLSX.utils.book_new();
-    const todayStr = getTodayStr(); 
 
     const worksheet = XLSX.utils.aoa_to_sheet([
       ["SMES TURF BOOKING REPORT"],
@@ -998,16 +1071,11 @@ export default function AdminPage() {
       [], [],
     ]);
     XLSX.utils.sheet_add_json(worksheet, exportData, { origin: "A14" });
-    
     worksheet["!autofilter"] = { ref: `A14:T${14 + exportData.length}` };
-    worksheet["!cols"] = [
-      { wch: 8 }, { wch: 12 }, { wch: 18 }, { wch: 22 }, { wch: 25 },
-      { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 },
-      { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
-      { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 15 },
-    ];
+    worksheet["!cols"] = [ { wch: 8 }, { wch: 12 }, { wch: 18 }, { wch: 22 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 15 } ];
     XLSX.utils.book_append_sheet(workbook, worksheet, "Bookings");
 
+    // B. Today Sheet
     const todayBookings = bookings.filter((booking) => booking.booking_date?.split("T")[0] === todayStr);
     const todayRevenue = todaysAdvance + todaysBalance;
     const todayAdvance = todaysAdvance;
@@ -1031,6 +1099,7 @@ export default function AdminPage() {
     ]);
     XLSX.utils.book_append_sheet(workbook, todaySheet, "Today");
 
+    // C. Monthly Sheet
     const monthlyCash = bookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
     const monthlyUpi = bookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
     const monthlyCollection = monthlyCash + monthlyUpi;
@@ -1050,6 +1119,7 @@ export default function AdminPage() {
     ]);
     XLSX.utils.book_append_sheet(workbook, monthlySheet, "Monthly");
 
+    // D. Daily Summary Sheet
     const dailyStats: Record<string, any> = {};
     bookings.forEach(b => {
       const d = b.booking_date?.split("T")[0] || "Unknown";
@@ -1086,24 +1156,23 @@ export default function AdminPage() {
       "Settlement Status": stat["Pending Balance (₹)"] > 0 ? `⚠️ ₹${stat["Pending Balance (₹)"]} DUE` : `✅ SETTLED`
     })).sort((a: any, b: any) => a.Date.localeCompare(b.Date));
     const dailySheet = XLSX.utils.json_to_sheet(dailySummaryArray);
-    
     dailySheet["!autofilter"] = { ref: `A1:J${1 + dailySummaryArray.length}` };
-    dailySheet["!cols"] = [
-      { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 20 },
-      { wch: 20 }, { wch: 20 }, { wch: 28 }, { wch: 38 }, { wch: 20 }
-    ];
+    dailySheet["!cols"] = [ { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 28 }, { wch: 38 }, { wch: 20 } ];
     XLSX.utils.book_append_sheet(workbook, dailySheet, "Daily Summary");
 
-    const academySheet = XLSX.utils.json_to_sheet(academyWorksheetData);
-    const totalColumns = 7 + uniqueMonths.length; 
-    const endColumnChar = String.fromCharCode(64 + totalColumns); 
-    
-    academySheet["!autofilter"] = { ref: `A1:${endColumnChar}${1 + academyWorksheetData.length}` }; 
-    academySheet["!cols"] = [
-      { wch: 8 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 25 },
-      { wch: 15 }, { wch: 18 }, ...uniqueMonths.map(() => ({ wch: 22 }))
-    ];
-    XLSX.utils.book_append_sheet(workbook, academySheet, "Football Coaching");
+    // E. Coaching Roster Sheet
+    const rosterCols = [ { wch: 5 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 30 }, { wch: 15 }, { wch: 15 } ];
+    for (let i = 0; i < 24; i++) rosterCols.push({ wch: 22 });
+    const academySheet = XLSX.utils.json_to_sheet(rosterData);
+    academySheet["!cols"] = rosterCols;
+    XLSX.utils.book_append_sheet(workbook, academySheet, "Coaching Roster");
+
+    // F. Attendance Record Sheet
+    const attCols = [ { wch: 5 }, { wch: 25 }, { wch: 15 } ];
+    for (let i = 0; i < 31; i++) attCols.push({ wch: 12 });
+    const attendanceSheet = XLSX.utils.json_to_sheet(attendanceData);
+    attendanceSheet["!cols"] = attCols;
+    XLSX.utils.book_append_sheet(workbook, attendanceSheet, "Attendance Record");
 
     XLSX.writeFile(workbook, `SMES_Master_Report_${todayStr}.xlsx`);
   };
@@ -1208,6 +1277,10 @@ export default function AdminPage() {
       
       return 0;
     });
+
+  const filteredAcademyStudents = useMemo(() => {
+    return academyStudents.filter(s => s.batch === rosterTab);
+  }, [academyStudents, rosterTab]);
 
   const statCards = useMemo(() => [
     { label: "Gross Orders", value: bookings.length, accent: "text-white", tag: "01" },
@@ -1473,18 +1546,29 @@ export default function AdminPage() {
                           />
                         </div>
                         <div className="space-y-1.5">
+                          <label className="text-[10px] font-mono uppercase text-neutral-400">Assign Batch</label>
+                          <select
+                            value={adminNewStudentBatch}
+                            onChange={(e) => setAdminNewStudentBatch(e.target.value as BatchTabType)}
+                            className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors appearance-none"
+                          >
+                            <option value="Morning Batch">Morning Batch</option>
+                            <option value="Evening Batch">Evening Batch</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1.5">
                           <label className="text-[10px] font-mono uppercase text-neutral-400">Payment Method</label>
                           <select
                             value={adminNewStudentMethod}
                             onChange={(e) => setAdminNewStudentMethod(e.target.value)}
-                            className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors"
+                            className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors appearance-none"
                           >
                             <option value="UPI">UPI</option>
                             <option value="Cash">Cash</option>
                           </select>
                         </div>
                         <div className="p-3 bg-neutral-950 border border-neutral-800 text-xs font-mono font-black text-lime-400">
-                          Fixed Fee Rate: ₹3,500
+                          Fixed Fee Rate: ₹2,500
                         </div>
                         <motion.button
                           whileHover={{ y: -2, boxShadow: "0 10px 25px rgba(163,230,53,0.3)" }}
@@ -1529,7 +1613,7 @@ export default function AdminPage() {
                           </select>
                         </div>
                         <div className="p-3 bg-neutral-950 border border-neutral-800 text-xs font-mono font-black text-lime-400">
-                          Enforced Rate: ₹3,500
+                          Enforced Rate: ₹2,500
                         </div>
                         <motion.button
                           whileHover={{ y: -2, boxShadow: "0 10px 25px rgba(217,70,239,0.3)" }}
@@ -1567,10 +1651,44 @@ export default function AdminPage() {
                     </motion.button>
                   </div>
 
+                  {/* Animated Batch Tabs */}
+                  <LayoutGroup id="admin-roster-tabs">
+                    <div className="grid grid-cols-2 gap-2 p-3 border-b border-neutral-900 bg-neutral-900/50 backdrop-blur">
+                      {[
+                        { id: "Morning Batch", label: "Morning Batch" },
+                        { id: "Evening Batch", label: "Evening Batch" },
+                      ].map((t) => (
+                        <motion.button
+                          key={t.id}
+                          whileTap={{ scale: 0.97 }}
+                          onClick={() => setRosterTab(t.id as BatchTabType)}
+                          className={`relative py-2.5 text-[10px] font-mono uppercase tracking-widest transition-colors ${
+                            rosterTab === t.id
+                              ? "text-black font-black"
+                              : "text-neutral-500 hover:text-white"
+                          }`}
+                        >
+                          {rosterTab === t.id && (
+                            <motion.span
+                              layoutId="admin-roster-tab-highlight"
+                              className="absolute inset-0 bg-lime-400 -z-0"
+                              transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                            />
+                          )}
+                          <span className="relative z-10">{t.label}</span>
+                        </motion.button>
+                      ))}
+                    </div>
+                  </LayoutGroup>
+
                   {/* Mobile View */}
                   <div className="block sm:hidden max-h-[380px] overflow-y-auto p-3 space-y-3">
-                    {academyStudents.map((s) => {
+                    {filteredAcademyStudents.map((s) => {
                       const isUnpaid = s.payment_status !== "settled";
+                      const todayAtt = s.student_attendance?.find((a: any) => a.date === getTodayStr());
+                      const isPresent = todayAtt?.status === "Present";
+                      const isAbsent = todayAtt?.status === "Absent";
+
                       return (
                         <motion.div
                           key={s.id}
@@ -1578,7 +1696,7 @@ export default function AdminPage() {
                           initial={{ opacity: 0, y: 8 }}
                           animate={{ opacity: 1, y: 0 }}
                           className={`p-4 border transition-colors space-y-3 ${
-                            isUnpaid ? 'bg-red-500/[0.06] border-red-500/20' : 'bg-neutral-950/60 border-neutral-800'
+                            isUnpaid ? 'bg-red-500/[0.06] border-red-500/20' : 'bg-lime-400/[0.05] border-neutral-800'
                           }`}
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -1621,6 +1739,23 @@ export default function AdminPage() {
                               </span>
                             )}
                           </div>
+                          <div className="flex items-center justify-between pt-1 border-t border-neutral-900 mt-2">
+                            <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest font-black">Attendance</span>
+                            <div className="flex items-center gap-2">
+                              <button 
+                                onClick={() => markAttendance(s.id, "Present")}
+                                className={`w-8 h-8 flex items-center justify-center text-sm font-mono font-black transition-all rounded border ${
+                                  isPresent ? 'bg-lime-500 text-black border-lime-500 shadow-[0_0_15px_rgba(132,204,22,0.5)] scale-110' : 'bg-lime-500/10 text-lime-500 border-lime-500/30 hover:bg-lime-500/30'
+                                }`}
+                              >P</button>
+                              <button 
+                                onClick={() => markAttendance(s.id, "Absent")}
+                                className={`w-8 h-8 flex items-center justify-center text-sm font-mono font-black transition-all rounded border ${
+                                  isAbsent ? 'bg-red-600 text-white border-red-600 shadow-[0_0_15px_rgba(220,38,38,0.6)] scale-110' : 'bg-red-500/10 text-red-500 border-red-500/30 hover:bg-red-500/30'
+                                }`}
+                              >A</button>
+                            </div>
+                          </div>
                         </motion.div>
                       );
                     })}
@@ -1634,6 +1769,7 @@ export default function AdminPage() {
                           <th className="p-4">Student Profile</th>
                           <th className="p-4">Contact Logs</th>
                           <th className="p-4 text-center">Status</th>
+                          <th className="p-4 text-center">Attendance</th>
                         </tr>
                       </thead>
                       <motion.tbody
@@ -1642,8 +1778,12 @@ export default function AdminPage() {
                         animate="show"
                         className="divide-y divide-neutral-900 text-xs font-medium"
                       >
-                        {academyStudents.map((s) => {
+                        {filteredAcademyStudents.map((s) => {
                           const isUnpaid = s.payment_status !== "settled";
+                          const todayAtt = s.student_attendance?.find((a: any) => a.date === getTodayStr());
+                          const isPresent = todayAtt?.status === "Present";
+                          const isAbsent = todayAtt?.status === "Absent";
+
                           return (
                             <motion.tr
                               key={s.id}
@@ -1683,6 +1823,22 @@ export default function AdminPage() {
                                     ✅ Paid ({s.payment_method})
                                   </span>
                                 )}
+                              </td>
+                              <td className="p-4 text-center">
+                                <div className="flex items-center justify-center gap-2">
+                                  <button 
+                                    onClick={() => markAttendance(s.id, "Present")}
+                                    className={`w-8 h-8 flex items-center justify-center text-sm font-mono font-black transition-all rounded border ${
+                                      isPresent ? 'bg-lime-500 text-black border-lime-500 shadow-[0_0_15px_rgba(132,204,22,0.5)] scale-110' : 'bg-lime-500/10 text-lime-500 border-lime-500/30 hover:bg-lime-500/30'
+                                    }`}
+                                  >P</button>
+                                  <button 
+                                    onClick={() => markAttendance(s.id, "Absent")}
+                                    className={`w-8 h-8 flex items-center justify-center text-sm font-mono font-black transition-all rounded border ${
+                                      isAbsent ? 'bg-red-600 text-white border-red-600 shadow-[0_0_15px_rgba(220,38,38,0.6)] scale-110' : 'bg-red-500/10 text-red-500 border-red-500/30 hover:bg-red-500/30'
+                                    }`}
+                                  >A</button>
+                                </div>
                               </td>
                             </motion.tr>
                           );
