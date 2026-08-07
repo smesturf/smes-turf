@@ -34,11 +34,11 @@ export default function StaffPortal() {
 
     let staffEmail = "";
 
-    if (staffRole === "Admin") staffEmail = "sports+admin@smestuff.com";
+    if (staffRole === "Admin") staffEmail = "sports+admin@smesturf.com";
 
-    if (staffRole === "Sub-Admin") staffEmail = "sports+subadmin@smestuff.com";
+    if (staffRole === "Sub-Admin") staffEmail = "sports+subadmin@smesturf.com";
 
-    if (staffRole === "Coach") staffEmail = "sports+coach@smestuff.com";
+    if (staffRole === "Coach") staffEmail = "sports+coach@smesturf.com";
 
 
 
