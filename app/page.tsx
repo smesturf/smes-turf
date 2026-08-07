@@ -1055,7 +1055,7 @@ export default function Home() {
                     className="w-4 h-4 accent-[#FF9933] mt-0.5 cursor-pointer flex-shrink-0" 
                   />
                   <label htmlFor="insta-verification-checkbox" className="text-[10px] font-mono text-neutral-400 cursor-pointer leading-relaxed select-none">
-                    I agree my team will follow <span className="text-white font-bold">@turf</span>, post a story, mention us, and use <span className="text-[#FF9933] font-bold">#SMESTurf</span>. ⚠️ <span className="text-white font-bold underline">Strict Condition:</span> No player from my team will book duplicate promo slots.
+                    I agree my team will follow <span className="text-white font-bold">@smesturf</span>, post a story, mention us, and use <span className="text-[#FF9933] font-bold">#SMESTurf</span>. ⚠️ <span className="text-white font-bold underline">Strict Condition:</span> No player from my team will book duplicate promo slots.
                   </label>
                 </div>
               </div>
