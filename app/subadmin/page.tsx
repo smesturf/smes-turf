@@ -117,10 +117,24 @@ export default function AdminPage() {
     return `${formatString(startTotal)} to ${formatString(endTotal)}`;
   };
 
+  // ⚙️ Manage Slots State
   const [slotDate, setSlotDate] = useState("");
-  
-  // ⚙️ Hardcoded Time Slots
-  const adminTimeSlots = [
+  const [slotReason, setSlotReason] = useState("OFFLINE BOOKING");
+  const [slotTime, setSlotTime] = useState("");
+  const [slotDuration, setSlotDuration] = useState(60);
+  const [slotEndTime, setSlotEndTime] = useState("");
+  const [slotCourt, setSlotCourt] = useState("Full Court");
+
+  const [offlineAmount, setOfflineAmount] = useState("");
+  const [offlinePaymentMethod, setOfflinePaymentMethod] = useState("Cash");
+  const [offlineCashAmount, setOfflineCashAmount] = useState("");
+  const [offlineUpiAmount, setOfflineUpiAmount] = useState("");
+
+  const [availableAdminSlots, setAvailableAdminSlots] = useState<string[]>([]);
+  const availableCourts = ["Full Court", "Court 1", "Court 2"];
+
+  // Hardcoded Time Slots
+  const adminTimeSlots = useMemo(() => [
     "12:00 AM", "12:30 AM", "01:00 AM", "01:30 AM", "02:00 AM", "02:30 AM",
     "03:00 AM", "03:30 AM", "04:00 AM", "04:30 AM", "05:00 AM", "05:30 AM",
     "06:00 AM", "06:30 AM", "07:00 AM", "07:30 AM", "08:00 AM", "08:30 AM",
@@ -129,58 +143,8 @@ export default function AdminPage() {
     "03:00 PM", "03:30 PM", "04:00 PM", "04:30 PM", "05:00 PM", "05:30 PM",
     "06:00 PM", "06:30 PM", "07:00 PM", "07:30 PM", "08:00 PM", "08:30 PM",
     "09:00 PM", "09:30 PM", "10:00 PM", "10:30 PM", "11:00 PM", "11:30 PM"
-  ];
+  ], []);
 
-  const [slotReason, setSlotReason] = useState("OFFLINE BOOKING");
-  const [slotTime, setSlotTime] = useState("");
-  const [slotDuration, setSlotDuration] = useState(60);
-  const [slotEndTime, setSlotEndTime] = useState("");
-
-  const [offlineAmount, setOfflineAmount] = useState("");
-  const [offlinePaymentMethod, setOfflinePaymentMethod] = useState("Cash");
-  const [offlineCashAmount, setOfflineCashAmount] = useState("");
-  const [offlineUpiAmount, setOfflineUpiAmount] = useState("");
-
-  const [slotCourt, setSlotCourt] = useState("Full Court");
-  const [availableCourts, setAvailableCourts] = useState([
-    "Full Court",
-    "Court 1",
-    "Court 2",
-  ]);
-
-  const loadAvailableCourts = async (date: string, time: string) => {
-    const { data: bookings } = await supabase
-      .from("bookings")
-      .select("*")
-      .eq("booking_date", date);
-
-    const { data: blocked } = await supabase
-      .from("blocked_slots")
-      .select("*")
-      .eq("booking_date", date);
-
-    let courts = ["Full Court", "Court 1", "Court 2"];
-    const selectedMinutes = convertToMins(time);
-
-    [...(bookings || []), ...(blocked || [])].forEach((b: any) => {
-      const startMinutes = convertToMins(b.start_time);
-      const endMinutes = startMinutes + (b.duration_minutes || 60);
-      const overlaps = selectedMinutes >= startMinutes && selectedMinutes < endMinutes;
-      if (!overlaps) return;
-
-      if (b.booking_type === "Full Court" || b.court_number === "Full Court" || b.court_number === "Both Courts") {
-        courts = [];
-      } else if (b.court_number === "Court 1") {
-        courts = courts.filter((c) => c !== "Court 1" && c !== "Full Court");
-      } else if (b.court_number === "Court 2") {
-        courts = courts.filter((c) => c !== "Court 2" && c !== "Full Court");
-      }
-    });
-
-    setAvailableCourts(courts);
-  };
-
-  const [availableAdminSlots, setAvailableAdminSlots] = useState<string[]>([]);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
   const [paymentType, setPaymentType] = useState("Full Cash");
@@ -265,6 +229,59 @@ export default function AdminPage() {
       events.forEach((event) => window.removeEventListener(event, resetTimer));
     };
   }, [router]);
+
+  // -------------------------------------------------------------
+  // DYNAMIC MANAGE SLOTS TIME FILTERING LOGIC
+  // -------------------------------------------------------------
+  useEffect(() => {
+    const fetchAvailableTimes = async () => {
+      if (!showManageSlots || !slotDate) {
+        setAvailableAdminSlots([]);
+        return;
+      }
+
+      const { data: bData } = await supabase.from("bookings").select("start_time,duration_minutes,booking_type,court_number").eq("booking_date", slotDate);
+      const { data: blData } = await supabase.from("blocked_slots").select("start_time,duration_minutes,court_number").eq("booking_date", slotDate);
+
+      const allBusyItems = [...(bData || []), ...(blData || [])];
+      const freeTimes: string[] = [];
+
+      adminTimeSlots.forEach((slot) => {
+        const slotStart = convertToMins(slot);
+        const slotEnd = slotStart + slotDuration;
+
+        const isOverlapping = allBusyItems.some((item: any) => {
+          const itemStart = convertToMins(item.start_time);
+          const itemEnd = itemStart + (item.duration_minutes || 60);
+
+          const overlaps = slotStart < itemEnd && slotEnd > itemStart;
+          if (!overlaps) return false;
+
+          const targetIsFull = slotCourt === "Full Court" || slotCourt === "Both Courts";
+          const itemIsFull = item.booking_type === "Full Court" || item.court_number === "Full Court" || item.court_number === "Both Courts";
+
+          if (targetIsFull || itemIsFull) return true;
+          return item.court_number === slotCourt;
+        });
+
+        if (!isOverlapping) {
+          freeTimes.push(slot);
+        }
+      });
+
+      setAvailableAdminSlots(freeTimes);
+    };
+
+    fetchAvailableTimes();
+  }, [slotDate, slotDuration, slotCourt, showManageSlots, adminTimeSlots]);
+
+  // If the currently selected time becomes invalid due to duration/court changes, clear it
+  useEffect(() => {
+    if (slotTime && availableAdminSlots.length > 0 && !availableAdminSlots.includes(slotTime)) {
+      setSlotTime("");
+    }
+  }, [availableAdminSlots, slotTime]);
+  // -------------------------------------------------------------
 
   const loadAcademyData = async () => {
     const { data: stData } = await supabase
@@ -438,21 +455,24 @@ export default function AdminPage() {
     const todayStr = getTodayStr();
     const tomorrowStr = getTomorrowStr();
 
-    let orQuery = `booking_date.gte.${todayStr},balance_amount.gt.0,payment_date.eq.${todayStr}`;
-    if (filterDate && filterDate < todayStr) {
-      orQuery += `,booking_date.eq.${filterDate}`;
+    let query = supabase.from("bookings").select("*");
+
+    // Fix for specific Date Sorting to allow historical lookups
+    if (filterDate) {
+      query = query.eq("booking_date", filterDate);
+    } else {
+      query = query.or(`booking_date.gte.${todayStr},balance_amount.gt.0,payment_date.eq.${todayStr}`);
     }
 
-    const { data, error } = await supabase
-      .from("bookings")
-      .select("*")
-      .or(orQuery)
+    const { data, error } = await query
       .order("booking_date", { ascending: true })
       .order("start_time", { ascending: true });
 
     if (error) { console.log(error); return; }
 
     setBookings(data || []);
+    
+    // Stats calculation logic based on fetched data
     const currentMonth = new Date().getMonth() + 1;
     const currentYear = new Date().getFullYear();
 
@@ -475,6 +495,7 @@ export default function AdminPage() {
       .order("start_time", { ascending: true });
 
     setBlockedSlots(blockedData || []);
+    
     const todaysBookings = data?.filter((booking) => booking.booking_date?.split("T")[0] === todayStr) || [];
     const tomorrowsBookings = data?.filter((booking) => booking.booking_date?.split("T")[0] === tomorrowStr) || [];
 
@@ -518,39 +539,6 @@ export default function AdminPage() {
     setTodayCashCollection(cashVault);
     setTodayUpiCollection(upiNodes);
     setTodayTotalCollection(cashVault + upiNodes);
-  };
-
-  const loadAvailableAdminSlots = async (date: string) => {
-    const { data: bookings } = await supabase
-      .from("bookings")
-      .select("start_time,duration_minutes,booking_type,court_number")
-      .eq("booking_date", date);
-    const { data: blocked } = await supabase
-      .from("blocked_slots")
-      .select("start_time,duration_minutes,court_number")
-      .eq("booking_date", date);
-    const availableTimes: string[] = [];
-
-    adminTimeSlots.forEach((slot) => {
-      const selectedMinutes = convertToMins(slot);
-      let court1Available = true;
-      let court2Available = true;
-
-      [...(bookings || []), ...(blocked || [])].forEach((b: any) => {
-        const startMinutes = convertToMins(b.start_time);
-        const endMinutes = startMinutes + (b.duration_minutes || 60);
-        const overlaps = selectedMinutes >= startMinutes && selectedMinutes < endMinutes;
-        if (!overlaps) return;
-
-        if (b.booking_type === "Full Court" || b.court_number === "Full Court" || b.court_number === "Both Courts") {
-          court1Available = false; court2Available = false;
-        } else if (b.court_number === "Court 1") { court1Available = false; }
-        else if (b.court_number === "Court 2") { court2Available = false; }
-      });
-
-      if (court1Available || court2Available) availableTimes.push(slot);
-    });
-    setAvailableAdminSlots(availableTimes);
   };
 
   const loadRescheduleAvailableSlots = async (
@@ -610,6 +598,7 @@ export default function AdminPage() {
     const { data: existingBlocks } = await supabase.from("blocked_slots").select("*").eq("booking_date", slotDate);
     const selectedStart = convertToMins(slotTime);
     let selectedEnd = selectedStart + Number(slotDuration);
+    
     if (slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE") {
       if (!slotEndTime) { alert("Please select an End Time for the block"); return; }
       selectedEnd = convertToMins(slotEndTime);
@@ -628,6 +617,8 @@ export default function AdminPage() {
       if (item.booking_type === "Full Court" || item.court_number === "Full Court" || item.court_number === "Both Courts") return true;
       return item.court_number === slotCourt;
     });
+
+    // Double check just to be absolutely safe
     if (isOverlapping) { alert("⚠️ This court is already booked or blocked during the selected time period."); return; }
 
     if (slotReason === "OFFLINE BOOKING") {
@@ -687,7 +678,6 @@ export default function AdminPage() {
 
     alert("✅ Field Block Saved Successfully");
     await loadBookings();
-    if (slotDate) loadAvailableAdminSlots(slotDate);
 
     setSlotDate(""); setSlotTime(""); setSlotEndTime(""); setSlotDuration(60);
     setSlotReason("OFFLINE BOOKING"); setSlotCourt("Full Court");
@@ -1181,6 +1171,11 @@ export default function AdminPage() {
 
   const filteredBookings = bookings
     .filter((booking) => {
+      // Apply strict local filter if the date is set
+      if (filterDate && booking.booking_date?.split("T")[0] !== filterDate) {
+        return false;
+      }
+      
       const search = searchTerm.toLowerCase().trim();
       if (!search) return true;
       return (
@@ -1340,7 +1335,6 @@ export default function AdminPage() {
               onClick={() => {
                 setShowManageSlots(true);
                 setSlotDate(getTodayStr()); 
-                loadAvailableAdminSlots(getTodayStr()); 
               }}
             >
               ⚙️ Manage Slots
@@ -2421,184 +2415,6 @@ export default function AdminPage() {
                 <motion.button
                   whileTap={{ scale: 0.97 }}
                   onClick={() => { setShowPaymentModal(false); setSelectedBooking(null); }}
-                  className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
-                >
-                  Cancel
-                </motion.button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ---------- Manage Slots Modal ---------- */}
-      <AnimatePresence>
-        {showManageSlots && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] overflow-y-auto"
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 12, opacity: 0 }}
-              animate={{ scale: 1, y: 0, opacity: 1 }}
-              exit={{ scale: 0.9, y: 12, opacity: 0 }}
-              transition={{ duration: 0.3, ease: easeOut }}
-              className="bg-neutral-950 border border-neutral-800 p-6 w-full max-w-lg space-y-4 relative overflow-hidden my-8"
-            >
-              <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-fuchsia-500/10 to-transparent pointer-events-none" />
-              <div className="relative">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-fuchsia-400 block mb-1">
-                  // Slot Manager
-                </span>
-                <h2 className="text-xl font-black uppercase tracking-tight text-white">
-                  ⚙️ Manage Turf Slots
-                </h2>
-                <p className="text-neutral-400 text-xs mt-1 font-mono">
-                  Log offline bookings or block field slots for tournaments & maintenance.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 relative">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Reason</label>
-                  <input
-                    type="text"
-                    value="OFFLINE BOOKING"
-                    disabled
-                    className="w-full p-3.5 bg-neutral-900 text-neutral-500 border border-neutral-800 outline-none text-sm font-medium cursor-not-allowed"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Date</label>
-                  <input
-                    type="date"
-                    value={slotDate}
-                    min={getTodayStr()} // Prevents selecting past dates
-                    onChange={(e) => {
-                      setSlotDate(e.target.value);
-                      if (e.target.value) {
-                        loadAvailableAdminSlots(e.target.value);
-                        loadAvailableCourts(e.target.value, slotTime);
-                      }
-                    }}
-                    style={{ colorScheme: "dark" }}
-                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Start Time</label>
-                  <select
-                    value={slotTime}
-                    onChange={(e) => {
-                      setSlotTime(e.target.value);
-                      if (slotDate) loadAvailableCourts(slotDate, e.target.value);
-                    }}
-                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                  >
-                    <option value="">-- Select Time --</option>
-                    {availableAdminSlots.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Duration (mins)</label>
-                  <select
-                    value={slotDuration}
-                    onChange={(e) => setSlotDuration(Number(e.target.value))}
-                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                  >
-                    <option value={30}>30 mins</option>
-                    <option value={60}>60 mins</option>
-                    <option value={90}>90 mins</option>
-                    <option value={120}>120 mins</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5 sm:col-span-2">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Court</label>
-                  <select
-                    value={slotCourt}
-                    onChange={(e) => setSlotCourt(e.target.value)}
-                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
-                  >
-                    {availableCourts.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {slotReason === "OFFLINE BOOKING" && (
-                  <>
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <label className="text-[10px] font-mono uppercase text-neutral-400">Payment Method</label>
-                      <select
-                        value={offlinePaymentMethod}
-                        onChange={(e) => setOfflinePaymentMethod(e.target.value)}
-                        className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
-                      >
-                        <option value="Cash">Cash</option>
-                        <option value="UPI">UPI</option>
-                        <option value="Cash + UPI">Cash + UPI</option>
-                      </select>
-                    </div>
-
-                    {offlinePaymentMethod === "Cash + UPI" ? (
-                      <>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-mono uppercase text-neutral-400">Cash Amount</label>
-                          <input
-                            type="number"
-                            placeholder="₹"
-                            value={offlineCashAmount}
-                            onChange={(e) => setOfflineCashAmount(e.target.value)}
-                            className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-mono uppercase text-neutral-400">UPI Amount</label>
-                          <input
-                            type="number"
-                            placeholder="₹"
-                            value={offlineUpiAmount}
-                            onChange={(e) => setOfflineUpiAmount(e.target.value)}
-                            className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                          />
-                        </div>
-                      </>
-                    ) : (
-                      <div className="space-y-1.5 sm:col-span-2">
-                        <label className="text-[10px] font-mono uppercase text-neutral-400">Amount Received</label>
-                        <input
-                          type="number"
-                          placeholder="₹"
-                          value={offlineAmount}
-                          onChange={(e) => setOfflineAmount(e.target.value)}
-                          className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                        />
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-2 relative">
-                <motion.button
-                  whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.3)" }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={saveBlockedSlot}
-                  className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
-                >
-                  Save Slot
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => setShowManageSlots(false)}
                   className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
                 >
                   Cancel
