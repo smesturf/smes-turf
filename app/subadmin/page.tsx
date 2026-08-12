@@ -117,7 +117,7 @@ export default function AdminPage() {
     return `${formatString(startTotal)} to ${formatString(endTotal)}`;
   };
 
-  // ⚙️ Manage Slots State
+  // ⚙️ Manage Slots Logic
   const [slotDate, setSlotDate] = useState("");
   const [slotReason, setSlotReason] = useState("OFFLINE BOOKING");
   const [slotTime, setSlotTime] = useState("");
@@ -131,9 +131,7 @@ export default function AdminPage() {
   const [offlineUpiAmount, setOfflineUpiAmount] = useState("");
 
   const [availableAdminSlots, setAvailableAdminSlots] = useState<string[]>([]);
-  const availableCourts = ["Full Court", "Court 1", "Court 2"];
 
-  // Hardcoded Time Slots
   const adminTimeSlots = useMemo(() => [
     "12:00 AM", "12:30 AM", "01:00 AM", "01:30 AM", "02:00 AM", "02:30 AM",
     "03:00 AM", "03:30 AM", "04:00 AM", "04:30 AM", "05:00 AM", "05:30 AM",
@@ -201,6 +199,7 @@ export default function AdminPage() {
     return () => clearTimeout(timer);
   }, [activeDate]);
 
+  /* -------- Trigger reload when filterDate changes -------- */
   useEffect(() => {
     loadBookings();
   }, [filterDate]);
@@ -230,9 +229,7 @@ export default function AdminPage() {
     };
   }, [router]);
 
-  // -------------------------------------------------------------
-  // DYNAMIC MANAGE SLOTS TIME FILTERING LOGIC
-  // -------------------------------------------------------------
+  /* -------- DYNAMIC TIME FILTERING FOR MANAGE SLOTS -------- */
   useEffect(() => {
     const fetchAvailableTimes = async () => {
       if (!showManageSlots || !slotDate) {
@@ -275,13 +272,12 @@ export default function AdminPage() {
     fetchAvailableTimes();
   }, [slotDate, slotDuration, slotCourt, showManageSlots, adminTimeSlots]);
 
-  // If the currently selected time becomes invalid due to duration/court changes, clear it
+  // If selected slotTime becomes unavailable due to changing court/duration, reset it
   useEffect(() => {
     if (slotTime && availableAdminSlots.length > 0 && !availableAdminSlots.includes(slotTime)) {
       setSlotTime("");
     }
   }, [availableAdminSlots, slotTime]);
-  // -------------------------------------------------------------
 
   const loadAcademyData = async () => {
     const { data: stData } = await supabase
@@ -303,27 +299,29 @@ export default function AdminPage() {
     }
   };
 
+  /* -------- INSTANT OPTIMISTIC ATTENDANCE LOGIC -------- */
   const markAttendance = async (studentId: string, status: "Present" | "Absent") => {
     const today = getTodayStr();
-    const { error: deleteError } = await supabase
-      .from("student_attendance")
-      .delete()
-      .match({ student_id: studentId, date: today });
+    
+    // 1. Instant UI update
+    setAcademyStudents((prevStudents) =>
+      prevStudents.map((student) => {
+        if (student.id !== studentId) return student;
+        const filteredAtt = (student.student_attendance || []).filter((a: any) => a.date !== today);
+        return {
+          ...student,
+          student_attendance: [...filteredAtt, { id: "temp", date: today, status }]
+        };
+      })
+    );
 
-    if (deleteError) {
-      alert(`Database Error: ${deleteError.message}\nEnsure 'student_attendance' table RLS is disabled.`);
-      return;
-    }
+    // 2. Background Sync
+    await supabase.from("student_attendance").delete().match({ student_id: studentId, date: today });
+    const { error } = await supabase.from("student_attendance").insert([{ student_id: studentId, date: today, status }]);
 
-    const { error: insertError } = await supabase
-      .from("student_attendance")
-      .insert([{ student_id: studentId, date: today, status }]);
-
-    if (insertError) {
-      alert(`Database Insert Error: ${insertError.message}`);
-      console.error(insertError);
-    } else {
-      loadAcademyData();
+    if (error) {
+      alert("Failed to sync attendance with database.");
+      loadAcademyData(); 
     }
   };
 
@@ -413,7 +411,6 @@ export default function AdminPage() {
     }
   };
 
-  /* -------- Automated Email Reminders -------- */
   const sendEmailReminders = async () => {
     const pendingStudents = academyStudents.filter(s => s.payment_status !== "settled" && s.email);
     const noEmailStudents = academyStudents.filter(s => s.payment_status !== "settled" && !s.email);
@@ -451,16 +448,18 @@ export default function AdminPage() {
     }
   };
 
+  /* -------- HISTORY / ACTIVE FEED LOGIC -------- */
   const loadBookings = async () => {
     const todayStr = getTodayStr();
     const tomorrowStr = getTomorrowStr();
 
     let query = supabase.from("bookings").select("*");
 
-    // Fix for specific Date Sorting to allow historical lookups
     if (filterDate) {
+      // If a specific date is selected, pull exactly that date's history
       query = query.eq("booking_date", filterDate);
     } else {
+      // Otherwise, pull default live queue
       query = query.or(`booking_date.gte.${todayStr},balance_amount.gt.0,payment_date.eq.${todayStr}`);
     }
 
@@ -472,7 +471,6 @@ export default function AdminPage() {
 
     setBookings(data || []);
     
-    // Stats calculation logic based on fetched data
     const currentMonth = new Date().getMonth() + 1;
     const currentYear = new Date().getFullYear();
 
@@ -487,15 +485,17 @@ export default function AdminPage() {
     setMonthlyAdvance(thisMonthBookings.reduce((sum, b) => sum + (b.advance_amount || 0), 0));
     setMonthlyBalance(thisMonthBookings.reduce((sum, b) => sum + (b.balance_amount || 0), 0));
 
-    const { data: blockedData } = await supabase
-      .from("blocked_slots")
-      .select("*")
-      .gte("booking_date", todayStr)
+    let blocksQuery = supabase.from("blocked_slots").select("*");
+    if (filterDate) blocksQuery = blocksQuery.eq("booking_date", filterDate);
+    else blocksQuery = blocksQuery.gte("booking_date", todayStr);
+
+    const { data: blockedData } = await blocksQuery
       .order("booking_date", { ascending: true })
       .order("start_time", { ascending: true });
 
     setBlockedSlots(blockedData || []);
     
+    // Stats calculation
     const todaysBookings = data?.filter((booking) => booking.booking_date?.split("T")[0] === todayStr) || [];
     const tomorrowsBookings = data?.filter((booking) => booking.booking_date?.split("T")[0] === tomorrowStr) || [];
 
@@ -618,7 +618,6 @@ export default function AdminPage() {
       return item.court_number === slotCourt;
     });
 
-    // Double check just to be absolutely safe
     if (isOverlapping) { alert("⚠️ This court is already booked or blocked during the selected time period."); return; }
 
     if (slotReason === "OFFLINE BOOKING") {
@@ -865,6 +864,7 @@ export default function AdminPage() {
     loadBookings();
   };
 
+  // Safe checks for rendering stats 
   const todaysAdvance = bookings
     .filter((booking) => booking.created_at?.split("T")[0] === getTodayStr())
     .reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
@@ -1778,7 +1778,7 @@ export default function AdminPage() {
           // Showing {filteredBookings.length} booking(s) active
         </p>
 
-        {/* ---------- COMPACT BOOKINGS TABLE (Scrolls on mobile natively) ---------- */}
+        {/* ---------- COMPACT BOOKINGS TABLE ---------- */}
         <motion.section
           variants={fadeUp}
           initial="hidden"
@@ -2415,6 +2415,189 @@ export default function AdminPage() {
                 <motion.button
                   whileTap={{ scale: 0.97 }}
                   onClick={() => { setShowPaymentModal(false); setSelectedBooking(null); }}
+                  className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
+                >
+                  Cancel
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------- Manage Slots Modal ---------- */}
+      <AnimatePresence>
+        {showManageSlots && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] overflow-y-auto"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 12, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.9, y: 12, opacity: 0 }}
+              transition={{ duration: 0.3, ease: easeOut }}
+              className="bg-neutral-950 border border-neutral-800 p-6 w-full max-w-lg space-y-4 relative overflow-hidden my-8"
+            >
+              <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-fuchsia-500/10 to-transparent pointer-events-none" />
+              <div className="relative">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-fuchsia-400 block mb-1">
+                  // Slot Manager
+                </span>
+                <h2 className="text-xl font-black uppercase tracking-tight text-white">
+                  ⚙️ Manage Turf Slots
+                </h2>
+                <p className="text-neutral-400 text-xs mt-1 font-mono">
+                  Log offline bookings or block field slots for tournaments & maintenance.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 relative">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400">Reason</label>
+                  <select
+                    value={slotReason}
+                    onChange={(e) => setSlotReason(e.target.value)}
+                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
+                  >
+                    <option value="OFFLINE BOOKING">OFFLINE BOOKING</option>
+                    <option value="TOURNAMENT">TOURNAMENT</option>
+                    <option value="MAINTENANCE">MAINTENANCE</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400">Date</label>
+                  <input
+                    type="date"
+                    value={slotDate}
+                    min={getTodayStr()} // Prevents selecting past dates
+                    onChange={(e) => setSlotDate(e.target.value)}
+                    style={{ colorScheme: "dark" }}
+                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400">Court Section</label>
+                  <select
+                    value={slotCourt}
+                    onChange={(e) => setSlotCourt(e.target.value)}
+                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
+                  >
+                    <option value="Full Court">Full Court</option>
+                    <option value="Court 1">Court 1</option>
+                    <option value="Court 2">Court 2</option>
+                  </select>
+                </div>
+
+                {slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE" ? (
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono uppercase text-neutral-400">End Time (Optional)</label>
+                    <select
+                      value={slotEndTime}
+                      onChange={(e) => setSlotEndTime(e.target.value)}
+                      className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                    >
+                      <option value="">-- Select End Time --</option>
+                      {adminTimeSlots.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono uppercase text-neutral-400">Duration (Minutes)</label>
+                    <select
+                      value={slotDuration}
+                      onChange={(e) => setSlotDuration(Number(e.target.value))}
+                      className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                    >
+                      <option value={30}>30 mins</option>
+                      <option value={60}>60 mins</option>
+                      <option value={90}>90 mins</option>
+                      <option value={120}>120 mins</option>
+                    </select>
+                  </div>
+                )}
+
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400">Start Time</label>
+                  <select
+                    value={slotTime}
+                    onChange={(e) => setSlotTime(e.target.value)}
+                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                  >
+                    <option value="">-- Select Time --</option>
+                    {availableAdminSlots.length === 0 ? (
+                      <option value="" disabled>No slots available for this selection</option>
+                    ) : (
+                      availableAdminSlots.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))
+                    )}
+                  </select>
+                </div>
+
+                {slotReason === "OFFLINE BOOKING" && (
+                  <div className="sm:col-span-2 p-3 bg-neutral-900 border border-neutral-800 space-y-3 relative">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Payment Route</label>
+                      <select
+                        value={offlinePaymentMethod}
+                        onChange={(e) => setOfflinePaymentMethod(e.target.value)}
+                        className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors"
+                      >
+                        <option value="Cash">Cash</option>
+                        <option value="UPI">UPI</option>
+                        <option value="Cash + UPI">Cash + UPI</option>
+                      </select>
+                    </div>
+
+                    {offlinePaymentMethod === "Cash + UPI" ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="number"
+                          placeholder="Cash Amount (₹)"
+                          value={offlineCashAmount}
+                          onChange={(e) => setOfflineCashAmount(e.target.value)}
+                          className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                        />
+                        <input
+                          type="number"
+                          placeholder="UPI Amount (₹)"
+                          value={offlineUpiAmount}
+                          onChange={(e) => setOfflineUpiAmount(e.target.value)}
+                          className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                        />
+                      </div>
+                    ) : (
+                      <input
+                        type="number"
+                        placeholder="Total Amount Received (₹)"
+                        value={offlineAmount}
+                        onChange={(e) => setOfflineAmount(e.target.value)}
+                        className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2 relative">
+                <motion.button
+                  whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(217,70,239,0.3)" }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={saveBlockedSlot}
+                  className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
+                >
+                  Save Field Block
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setShowManageSlots(false)}
                   className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
                 >
                   Cancel
