@@ -1,69 +1,45 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
 
-// Create a global cache to store OTPs temporarily (Works well for Dev/Testing)
-const globalForOtp = global as unknown as { otpCache: Map<string, { otp: string; expires: number }> };
-export const otpCache = globalForOtp.otpCache || new Map();
-if (process.env.NODE_ENV !== "production") globalForOtp.otpCache = otpCache;
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY! // Must use service_role key to bypass RLS
+);
 
 export async function POST(request: Request) {
   try {
     const { email } = await request.json();
+    if (!email) return NextResponse.json({ error: "Email is required" }, { status: 400 });
 
-    if (!email) {
-      return NextResponse.json({ error: "Email is required" }, { status: 400 });
-    }
+    const safeEmail = email.toLowerCase().trim();
+    
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // 1. Generate a random 6-digit OTP right here in Next.js
-    const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    // Save to Supabase (Upsert so it overwrites if they request a new one)
+    const { error: dbError } = await supabaseAdmin
+      .from("otp_verifications")
+      .upsert({ email: safeEmail, otp: otp, created_at: new Date().toISOString() });
 
-    // --- DEBUG LINES ---
-    // These will print to your VS Code terminal so we can see if the password is correct
-    console.log("TESTING EMAIL:", process.env.EMAIL_USER);
-    console.log("TESTING PASS:", process.env.EMAIL_PASSWORD);
-    // -------------------
+    if (dbError) throw dbError;
 
-    // 2. Configure the email transporter
+    // Send Email
     const transporter = nodemailer.createTransport({
       service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD,
-      },
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_APP_PASSWORD },
     });
 
-    // 3. Format the email content
-    const mailOptions = {
-      from: `"SMES Sports Turf" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: "Your SMES Turf Pass Login OTP",
-      html: `
-        <div style="font-family: monospace; max-width: 400px; margin: auto; padding: 20px; background-color: #050505; color: #f5f5f5; border: 1px solid #262626;">
-          <h2 style="color: #a3e635; text-transform: uppercase;">SMES Turf Verification</h2>
-          <p style="color: #a3a3a3;">You requested access to view your Official Arena Passes.</p>
-          <div style="margin: 30px 0; padding: 20px; background-color: #171717; border-left: 4px solid #a3e635; text-align: center;">
-            <p style="margin: 0; font-size: 12px; color: #737373; text-transform: uppercase; letter-spacing: 2px;">Your Unlock Code</p>
-            <h1 style="margin: 10px 0 0 0; font-size: 32px; color: #ffffff; letter-spacing: 8px;">${generatedOtp}</h1>
-          </div>
-          <p style="color: #a3a3a3; font-size: 12px;">If you did not request this, please ignore this email.</p>
-          <hr style="border: none; border-top: 1px dashed #262626; margin: 20px 0;" />
-          <p style="color: #737373; font-size: 10px; text-transform: uppercase;">📍 SMES Sports Academy, Mysuru</p>
-        </div>
-      `,
-    };
-
-    // 4. Send the email
-    await transporter.sendMail(mailOptions);
-
-    // 5. Store the OTP in memory, set to expire in 5 minutes
-    otpCache.set(email, {
-      otp: generatedOtp,
-      expires: Date.now() + 5 * 60 * 1000, 
+    await transporter.sendMail({
+      from: `"SMES Turf" <${process.env.EMAIL_USER}>`,
+      to: safeEmail,
+      subject: "Your Arena Pass OTP",
+      html: `<h2>Your OTP is: <strong>${otp}</strong></h2><p>This code is valid for 5 minutes.</p>`,
     });
-    
-    return NextResponse.json({ success: true, message: "OTP Email Sent Successfully" });
+
+    return NextResponse.json({ success: true, message: "OTP Sent" });
   } catch (error: any) {
-    console.error("Nodemailer Error:", error);
-    return NextResponse.json({ error: "Failed to send OTP email" }, { status: 500 });
+    console.error("Send OTP Error:", error);
+    return NextResponse.json({ error: "Failed to send OTP" }, { status: 500 });
   }
 }

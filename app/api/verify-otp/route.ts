@@ -1,40 +1,42 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-// Access the same global cache we used in send-otp
-const globalForOtp = global as unknown as { otpCache: Map<string, { otp: string; expires: number }> };
-const otpCache = globalForOtp.otpCache || new Map();
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY! 
+);
 
 export async function POST(request: Request) {
   try {
     const { email, otp } = await request.json();
+    const safeEmail = email.toLowerCase().trim();
 
-    if (!email || !otp) {
-      return NextResponse.json({ error: "Email and OTP are required" }, { status: 400 });
+    // Check Supabase for the OTP
+    const { data, error } = await supabaseAdmin
+      .from("otp_verifications")
+      .select("otp, created_at")
+      .eq("email", safeEmail)
+      .single();
+
+    if (error || !data) {
+      return NextResponse.json({ error: "No OTP found for this email" }, { status: 400 });
     }
 
-    // 1. Retrieve the stored OTP data for this email
-    const storedData = otpCache.get(email);
-
-    // 2. Validation Checks
-    if (!storedData) {
-      return NextResponse.json({ error: "No OTP requested for this email" }, { status: 400 });
+    if (data.otp !== otp.trim()) {
+      return NextResponse.json({ error: "Incorrect OTP" }, { status: 400 });
     }
 
-    if (Date.now() > storedData.expires) {
-      otpCache.delete(email); // Clean up expired OTP
+    // Check if older than 5 minutes
+    const otpTime = new Date(data.created_at).getTime();
+    if (Date.now() - otpTime > 5 * 60 * 1000) {
       return NextResponse.json({ error: "OTP has expired" }, { status: 400 });
     }
 
-    if (storedData.otp !== otp) {
-      return NextResponse.json({ error: "Invalid OTP" }, { status: 400 });
-    }
+    // Success! Delete the used OTP so it can't be reused
+    await supabaseAdmin.from("otp_verifications").delete().eq("email", safeEmail);
 
-    // 3. Success! OTP matches and is not expired. Clear it from memory to prevent reuse.
-    otpCache.delete(email);
-
-    return NextResponse.json({ success: true, message: "OTP Verified Successfully" });
+    return NextResponse.json({ success: true, message: "Verified" });
   } catch (error: any) {
-    console.error("Verification Error:", error);
-    return NextResponse.json({ error: "Failed to verify OTP" }, { status: 500 });
+    return NextResponse.json({ error: "Verification failed" }, { status: 500 });
   }
 }

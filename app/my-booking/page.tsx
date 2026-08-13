@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { supabase } from "../lib/supabase"; // Kept ONLY for fetching the bookings database
+import { supabase } from "../lib/supabase"; 
 import { motion } from "framer-motion";
 
 interface Booking {
@@ -30,7 +30,6 @@ export default function BookingLookup() {
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
-  /* -------- Resend Cooldown Timer Logic -------- */
   const [countdown, setCountdown] = useState(30);
   const [canResend, setCanResend] = useState(false);
 
@@ -46,14 +45,12 @@ export default function BookingLookup() {
     return () => clearInterval(timer);
   }, [otpSent, countdown]);
 
-  /* -------- Fetch Bookings Logic -------- */
   const fetchUserBookings = async (targetEmail: string) => {
     setIsLoading(true);
     setHasSearched(true);
     setBookings([]);
 
     try {
-      // NOTE: This assumes your Supabase Database RLS policies allow reading rows by email.
       const { data, error } = await supabase
         .from("bookings")
         .select("*")
@@ -77,7 +74,6 @@ export default function BookingLookup() {
     }
   };
 
-  /* -------- Reset Search State & Logout -------- */
   const handleResetSearch = () => {
     setHasSearched(false);
     setOtpSent(false);
@@ -87,18 +83,17 @@ export default function BookingLookup() {
     setSelectedBooking(null);
   };
 
-  /* -------- 1. Send OTP via Custom Nodemailer API -------- */
   const handleSendOTP = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const trimmedEmail = email.trim();
-    if (!trimmedEmail) return alert("⚠️ Please enter your registered email address.");
+    const safeEmail = email.trim().toLowerCase();
+    if (!safeEmail) return alert("⚠️ Please enter your registered email address.");
 
     setIsLoading(true);
     try {
       const response = await fetch("/api/send-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmedEmail }),
+        body: JSON.stringify({ email: safeEmail }),
       });
 
       const data = await response.json();
@@ -117,18 +112,18 @@ export default function BookingLookup() {
     }
   };
 
-  /* -------- 2. Verify OTP via Custom API & Fetch Bookings -------- */
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     if (otp.length !== 6) return alert("❌ Invalid OTP format.");
 
     setIsLoading(true);
+    const safeEmail = email.trim().toLowerCase();
 
     try {
       const response = await fetch("/api/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), otp: otp.trim() }),
+        body: JSON.stringify({ email: safeEmail, otp: otp.trim() }),
       });
 
       const data = await response.json();
@@ -136,7 +131,7 @@ export default function BookingLookup() {
       if (!response.ok) throw new Error(data.error || "Invalid OTP");
 
       // OTP Verified successfully! Fetch the bookings.
-      await fetchUserBookings(email.trim());
+      await fetchUserBookings(safeEmail);
     } catch (err: any) {
       console.error(err);
       alert("❌ Invalid or Expired OTP. Please try again.");
@@ -146,7 +141,6 @@ export default function BookingLookup() {
     }
   };
 
-  /* -------- Helper: Format Booking ID (e.g., #68) -------- */
   const formatBookingId = (id: number | string) => {
     if (!id) return "#----";
     return `#${id}`;
