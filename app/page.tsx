@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Script from "next/script";
@@ -9,7 +9,7 @@ import { supabase } from "./lib/supabase";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 
 /* ------------------------------------------------------------------ */
-/* Motion Presets                                                    */
+/* Motion Presets & Constants                                        */
 /* ------------------------------------------------------------------ */
 const easeOut = [0.22, 1, 0.36, 1] as const;
 
@@ -28,6 +28,81 @@ const slotItem = {
   show: { opacity: 1, scale: 1, y: 0, transition: { duration: 0.25, ease: easeOut } },
 };
 
+const ALL_KICKOFF_SLOTS = [
+  "06:00 AM", "07:00 AM", "08:00 AM", "09:00 AM", "10:00 AM",
+  "11:00 AM", "12:00 PM", "01:00 PM", "02:00 PM", "03:00 PM",
+  "04:00 PM", "05:00 PM", "06:00 PM", "07:00 PM", "08:00 PM",
+  "09:00 PM", "10:00 PM", "11:00 PM"
+];
+
+/* -------- HELPER: CALCULATE BLOCKED SLOTS FOR A SPECIFIC DATE -------- */
+const calculateBlockedSlots = (
+  dateStr: string,
+  currentType: string,
+  bookingsData: any[],
+  blockedData: any[]
+) => {
+  const timeToMinutes = (timeStr: string) => {
+    if (!timeStr) return 0;
+    const clean = timeStr.trim().toUpperCase();
+    if (clean.includes("AM") || clean.includes("PM")) {
+      const parts = clean.split(" ");
+      const timePart = parts[0];
+      const ampm = parts[1];
+      let [h, m] = timePart.split(":").map(Number);
+      if (ampm === "PM" && h !== 12) h += 12;
+      if (ampm === "AM" && h === 12) h = 0;
+      return h * 60 + (m || 0);
+    } else {
+      const [h, m] = clean.split(":").map(Number);
+      return h * 60 + (m || 0);
+    }
+  };
+
+  const blockedList: string[] = [];
+
+  ALL_KICKOFF_SLOTS.forEach((slot) => {
+    const slotStart = timeToMinutes(slot);
+    const slotEnd = slotStart + 60; // 60 mins promo duration
+    let count = 0;
+
+    const checkOverlapAndCount = (items: any[]) => {
+      items
+        .filter((item) => item.booking_date === dateStr)
+        .forEach((item) => {
+          if (!item.start_time) return;
+          const bStart = timeToMinutes(item.start_time);
+          const bEnd = bStart + (Number(item.duration_minutes) || 60);
+
+          if (slotStart < bEnd && slotEnd > bStart) {
+            const isFull =
+              item.booking_type === "Full Court" ||
+              item.court_number === "Full Court" ||
+              item.court_number === "Both Courts";
+
+            if (isFull) {
+              count = 999;
+            } else {
+              count += 1;
+            }
+          }
+        });
+    };
+
+    checkOverlapAndCount(bookingsData);
+    checkOverlapAndCount(blockedData);
+
+    if (currentType === "Full Court") {
+      if (count >= 1) blockedList.push(slot);
+    } else {
+      if (count >= 2 || count === 999) blockedList.push(slot);
+    }
+  });
+
+  return blockedList;
+};
+
+
 /* ------------------------------------------------------------------ */
 /* Main Component (INDEPENDENCE DAY MEGA PROMO)                      */
 /* ------------------------------------------------------------------ */
@@ -39,19 +114,26 @@ export default function Home() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [instaHandle, setInstaHandle] = useState("");
-  const [sport, setSport] = useState(""); // Default empty
+  const [sport, setSport] = useState(""); 
   
-  // 🔓 DYNAMIC PROMO STATE (LIVE TODAY)
-  const isBookingOpen = true; // Gateway is OPEN
   const [bookingDate, setBookingDate] = useState(""); 
   const [startTime, setStartTime] = useState("");
   const duration = "60"; 
-  const [bookingType, setBookingType] = useState(""); // Default empty
+  const [bookingType, setBookingType] = useState(""); 
   
   // 🚫 BOOKED / BLOCKED SLOTS STATE
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
+  
+  // 🔒 PROMO DATES AVAILABILITY (Checks if day is entirely sold out)
+  const [promoDatesStatus, setPromoDatesStatus] = useState<Record<string, boolean>>({
+    "2026-08-15": true,
+    "2026-08-16": true,
+    "2026-08-17": true,
+    "2026-08-18": true,
+    "2026-08-19": true,
+  });
 
-  // 💰 DYNAMIC PRICING CONFIGURATION
+  // 💰 DYNAMIC PRICING CONFIGURATION (FULL PAYMENT)
   const totalAmount = bookingType === "Half Court" ? 205 : (bookingType === "Full Court" ? 410 : 0); 
   const regularAmount = bookingType === "Half Court" ? 1200 : (bookingType === "Full Court" ? 2400 : 0); 
   
@@ -63,17 +145,12 @@ export default function Home() {
   const [savedBooking, setSavedBooking] = useState({ date: "", time: "" });
   const [isPaymentLoading, setIsPaymentLoading] = useState(false);
   const [isProcessingBooking, setIsProcessingBooking] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [successData, setSuccessData] = useState<any>(null);
 
   const [weather, setWeather] = useState<{ temp: number; condition: string } | null>(null);
   const autoPassRef = useRef<HTMLDivElement>(null);
 
-  const allKickoffSlots = [
-    "06:00 AM", "07:00 AM", "08:00 AM", "09:00 AM", "10:00 AM",
-    "11:00 AM", "12:00 PM", "01:00 PM", "02:00 PM", "03:00 PM",
-    "04:00 PM", "05:00 PM", "06:00 PM", "07:00 PM", "08:00 PM",
-    "09:00 PM", "10:00 PM", "11:00 PM"
-  ];
 
   /* -------- HELPER: TIME RANGE FORMATTER -------- */
   const getTimeRangeLabel = (startTimeStr: string, durationMins: number | string) => {
@@ -100,106 +177,77 @@ export default function Home() {
     return `${startTimeStr} - ${formatString(endTotal)}`;
   };
 
-  /* -------- LOAD BOOKED SLOTS FROM SUPABASE -------- */
-  const loadBookedSlots = async (dateStr: string, currentType: string) => {
-    if (!dateStr) {
-      setBookedSlots([]);
-      return;
-    }
+  /* -------- FETCH PROMO DATES AVAILABILITY OVERVIEW -------- */
+  useEffect(() => {
+    const checkPromoDates = async () => {
+      if (!bookingType) return;
+      
+      const datesToCheck = ["2026-08-15", "2026-08-16", "2026-08-17", "2026-08-18", "2026-08-19"];
+      
+      const { data: bookingsData } = await supabase
+        .from("bookings")
+        .select("start_time, duration_minutes, booking_type, court_number, booking_date")
+        .in("booking_date", datesToCheck);
 
-    const { data: bookingsData, error } = await supabase
-      .from("bookings")
-      .select("start_time, duration_minutes, booking_type, court_number")
-      .eq("booking_date", dateStr);
+      const { data: blockedData } = await supabase
+        .from("blocked_slots")
+        .select("start_time, duration_minutes, court_number, booking_date")
+        .in("booking_date", datesToCheck);
 
-    const { data: blockedData } = await supabase
-      .from("blocked_slots")
-      .select("start_time, duration_minutes, court_number")
-      .eq("booking_date", dateStr);
+      const newStatus: Record<string, boolean> = {};
 
-    if (error) {
-      console.error("Error loading booked slots:", error);
-      return;
-    }
+      datesToCheck.forEach(dateStr => {
+        const blocked = calculateBlockedSlots(dateStr, bookingType, bookingsData || [], blockedData || []);
+        // If the amount of blocked slots is less than the total available slots, the day is available
+        newStatus[dateStr] = blocked.length < ALL_KICKOFF_SLOTS.length; 
+      });
 
-    const timeToMinutes = (timeStr: string) => {
-      if (!timeStr) return 0;
-      const clean = timeStr.trim().toUpperCase();
-      if (clean.includes("AM") || clean.includes("PM")) {
-        const parts = clean.split(" ");
-        const timePart = parts[0];
-        const ampm = parts[1];
-        let [h, m] = timePart.split(":").map(Number);
-        if (ampm === "PM" && h !== 12) h += 12;
-        if (ampm === "AM" && h === 12) h = 0;
-        return h * 60 + (m || 0);
-      } else {
-        const [h, m] = clean.split(":").map(Number);
-        return h * 60 + (m || 0);
-      }
+      setPromoDatesStatus(newStatus);
     };
 
-    const blockedList: string[] = [];
+    checkPromoDates();
+  }, [bookingType]);
 
-    allKickoffSlots.forEach((slot) => {
-      const slotStart = timeToMinutes(slot);
-      const slotEnd = slotStart + 60;
-      let count = 0;
 
-      const checkOverlapAndCount = (items: any[] | null) => {
-        if (!items) return;
-        items.forEach((item) => {
-          if (!item.start_time) return;
-          const bStart = timeToMinutes(item.start_time);
-          const bEnd = bStart + (Number(item.duration_minutes) || 60);
-
-          if (slotStart < bEnd && slotEnd > bStart) {
-            const isFull =
-              item.booking_type === "Full Court" ||
-              item.court_number === "Full Court" ||
-              item.court_number === "Both Courts";
-
-            if (isFull) {
-              count = 999;
-            } else {
-              count += 1;
-            }
-          }
-        });
-      };
-
-      checkOverlapAndCount(bookingsData);
-      checkOverlapAndCount(blockedData);
-
-      if (currentType === "Full Court") {
-        if (count >= 1) {
-          blockedList.push(slot);
-        }
-      } else {
-        if (count >= 2 || count === 999) {
-          blockedList.push(slot);
-        }
-      }
-    });
-
-    setBookedSlots(blockedList);
-  };
-
-  /* -------- RE-FETCH BOOKED SLOTS ON DATE OR COURT TYPE CHANGE -------- */
+  /* -------- RE-FETCH BOOKED SLOTS FOR SELECTED DATE -------- */
   useEffect(() => {
-    if (bookingDate) {
-      loadBookedSlots(bookingDate, bookingType);
-    } else {
-      setBookedSlots([]);
-    }
+    const loadSlotsForDate = async () => {
+      if (!bookingDate || !bookingType) {
+        setBookedSlots([]);
+        return;
+      }
+
+      const { data: bookingsData } = await supabase
+        .from("bookings")
+        .select("start_time, duration_minutes, booking_type, court_number, booking_date")
+        .eq("booking_date", bookingDate);
+
+      const { data: blockedData } = await supabase
+        .from("blocked_slots")
+        .select("start_time, duration_minutes, court_number, booking_date")
+        .eq("booking_date", bookingDate);
+
+      const blocked = calculateBlockedSlots(bookingDate, bookingType, bookingsData || [], blockedData || []);
+      setBookedSlots(blocked);
+    };
+    
+    loadSlotsForDate();
   }, [bookingDate, bookingType]);
 
-  /* -------- RESET START TIME IF CURRENTLY SELECTED TIME BECOMES BLOCKED -------- */
+
+  /* -------- RESET START TIME OR DATE IF IT BECOMES BLOCKED -------- */
   useEffect(() => {
-    if (startTime && bookedSlots.includes(startTime)) {
+    // If selected date becomes entirely blocked because of a scale change
+    if (bookingDate && promoDatesStatus[bookingDate] === false) {
+      setBookingDate("");
       setStartTime("");
     }
-  }, [bookedSlots, startTime]);
+    // If selected time becomes blocked
+    else if (startTime && bookedSlots.includes(startTime)) {
+      setStartTime("");
+    }
+  }, [bookedSlots, startTime, promoDatesStatus, bookingDate]);
+
 
   /* -------- AUTOMATIC PASS DOWNLOAD TRIGGER -------- */
   useEffect(() => {
@@ -284,7 +332,7 @@ export default function Home() {
           startTime,
           duration,
           bookingType,
-          amount: totalAmount 
+          amount: totalAmount // Passes strictly 410 or 205
         }),
       });
 
@@ -365,10 +413,12 @@ export default function Home() {
         return;
       }
 
-      const balanceAmount = 0; // Total is paid upfront for promo
+      // ⚡ MEGA PROMO FIX: Record 100% of the value as paid upfront, so zero balance due
+      const advancePaid = totalAmount; 
+      const balanceAmount = 0; 
+      
       const bookingId = verifyData.booking?.id ? `#${verifyData.booking.id}` : "#----";
       const referenceId = verifyData.booking?.booking_reference || paymentData.razorpay_payment_id || "N/A";
-      const advancePaid = totalAmount;
       
       const formattedTimeSlot = getTimeRangeLabel(startTime, duration);
 
@@ -910,20 +960,36 @@ export default function Home() {
                 </div>
               </motion.div>
 
-              {/* STRICT DATE DROPDOWN */}
+              {/* STRICT DATE DROPDOWN (AUTO-LOCKS SOLD OUT DAYS) */}
               <motion.div variants={fadeUp} className="space-y-2">
-                <label className="text-xs font-mono uppercase text-neutral-400">Promo Date</label>
+                <label className="text-xs font-mono uppercase text-neutral-400 flex justify-between">
+                  <span>Promo Date</span>
+                  {!bookingType && <span className="text-[9px] text-neutral-600">Select court scale first</span>}
+                </label>
                 <select
+                  disabled={!bookingType}
                   value={bookingDate}
                   onChange={(e) => setBookingDate(e.target.value)}
-                  className="w-full p-4 bg-neutral-900 text-white font-bold font-mono border border-neutral-800 focus:border-white outline-none rounded-none appearance-none text-base md:text-sm"
+                  className={`w-full p-4 font-bold font-mono border outline-none rounded-none appearance-none text-base md:text-sm transition-colors ${
+                    bookingType ? "bg-neutral-900 border-neutral-800 text-white focus:border-white" : "bg-neutral-950 border-neutral-900 text-neutral-600 cursor-not-allowed"
+                  }`}
                 >
-                  <option value="">-- Select Promo Date --</option>
-                  <option value="2026-08-15">Aug 15, 2026 🇮🇳 (Independence Day)</option>
-                  <option value="2026-08-16">Aug 16, 2026</option>
-                  <option value="2026-08-17">Aug 17, 2026</option>
-                  <option value="2026-08-18">Aug 18, 2026</option>
-                  <option value="2026-08-19">Aug 19, 2026</option>
+                  <option value="" disabled>-- Select Promo Date --</option>
+                  <option value="2026-08-15" disabled={!promoDatesStatus["2026-08-15"]}>
+                    Aug 15, 2026 🇮🇳 (Independence Day) {!promoDatesStatus["2026-08-15"] ? "— SOLD OUT" : ""}
+                  </option>
+                  <option value="2026-08-16" disabled={!promoDatesStatus["2026-08-16"]}>
+                    Aug 16, 2026 {!promoDatesStatus["2026-08-16"] ? "— SOLD OUT" : ""}
+                  </option>
+                  <option value="2026-08-17" disabled={!promoDatesStatus["2026-08-17"]}>
+                    Aug 17, 2026 {!promoDatesStatus["2026-08-17"] ? "— SOLD OUT" : ""}
+                  </option>
+                  <option value="2026-08-18" disabled={!promoDatesStatus["2026-08-18"]}>
+                    Aug 18, 2026 {!promoDatesStatus["2026-08-18"] ? "— SOLD OUT" : ""}
+                  </option>
+                  <option value="2026-08-19" disabled={!promoDatesStatus["2026-08-19"]}>
+                    Aug 19, 2026 {!promoDatesStatus["2026-08-19"] ? "— SOLD OUT" : ""}
+                  </option>
                 </select>
               </motion.div>
 
@@ -931,12 +997,15 @@ export default function Home() {
               <motion.div variants={fadeUp} className="space-y-2 relative">
                 <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Time</label>
                 <select
+                  disabled={!bookingDate || !bookingType}
                   value={startTime}
                   onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full p-4 bg-neutral-900 text-white font-bold border border-neutral-800 focus:border-white outline-none rounded-none appearance-none text-base md:text-sm"
+                  className={`w-full p-4 font-bold border outline-none rounded-none appearance-none text-base md:text-sm transition-colors ${
+                    bookingDate && bookingType ? "bg-neutral-900 border-neutral-800 text-white focus:border-white" : "bg-neutral-950 border-neutral-900 text-neutral-600 cursor-not-allowed"
+                  }`}
                 >
                   <option value="">-- Select Time Slot --</option>
-                  {allKickoffSlots
+                  {ALL_KICKOFF_SLOTS
                     .filter((t) => !bookedSlots.includes(t))
                     .map((t) => (
                       <option key={t} value={t}>
@@ -1042,12 +1111,12 @@ export default function Home() {
 
                 <div className="p-3 bg-white/5 border border-white/20 flex justify-between items-center">
                   <div>
-                    <span className="text-[10px] font-mono font-bold text-white uppercase tracking-widest block">Checkout Total</span>
-                    <span className="text-[9px] font-mono text-neutral-500 mt-0.5 block hidden sm:block">No balance due at venue</span>
+                    <span className="text-[10px] font-mono font-bold text-white uppercase tracking-widest block">Promo Payment</span>
+                    <span className="text-[9px] font-mono text-neutral-500 mt-0.5 block hidden sm:block">100% Secure Checkout</span>
                   </div>
                   <div className="text-right">
                     <span className="text-lg font-black text-white block leading-none">₹{totalAmount}</span>
-                    <span className="text-[8px] font-mono text-neutral-500 uppercase tracking-widest mt-1 block">Flat Rate Applied</span>
+                    <span className="text-[8px] font-mono text-neutral-500 uppercase tracking-widest mt-1 block">Flat Total Applied</span>
                   </div>
                 </div>
               </div>
@@ -1095,11 +1164,11 @@ export default function Home() {
 
             {/* DYNAMIC CHECKOUT BUTTON */}
             <motion.button
-              disabled={isPaymentLoading}
+              disabled={isPaymentLoading || !sport || !bookingType}
               onClick={openRazorpay}
               type="button"
               className={`w-full mt-4 font-mono text-xs sm:text-sm uppercase tracking-widest py-4 sm:py-5 transition-all font-black shadow-lg flex items-center justify-center gap-3 border ${
-                isPaymentLoading 
+                isPaymentLoading || !sport || !bookingType
                   ? "bg-neutral-900 border-neutral-800 text-neutral-500 cursor-not-allowed"
                   : "bg-white hover:bg-gray-200 text-black border-white cursor-pointer shadow-white/20" 
               }`}
