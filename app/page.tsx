@@ -39,21 +39,21 @@ export default function Home() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [instaHandle, setInstaHandle] = useState("");
-  const [sport, setSport] = useState("Football");
+  const [sport, setSport] = useState(""); // Default empty
   
   // 🔓 DYNAMIC PROMO STATE (LIVE TODAY)
   const isBookingOpen = true; // Gateway is OPEN
   const [bookingDate, setBookingDate] = useState(""); 
   const [startTime, setStartTime] = useState("");
   const duration = "60"; 
-  const [bookingType, setBookingType] = useState("Half Court");
+  const [bookingType, setBookingType] = useState(""); // Default empty
   
   // 🚫 BOOKED / BLOCKED SLOTS STATE
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
 
   // 💰 DYNAMIC PRICING CONFIGURATION
-  const totalAmount = bookingType === "Half Court" ? 205 : 410; // Flat pricing sent to Razorpay
-  const regularAmount = bookingType === "Half Court" ? 1200 : 2400; // Displayed for crossed-out value
+  const totalAmount = bookingType === "Half Court" ? 205 : (bookingType === "Full Court" ? 410 : 0); 
+  const regularAmount = bookingType === "Half Court" ? 1200 : (bookingType === "Full Court" ? 2400 : 0); 
   
   // 📸 INSTAGRAM MANDATORY VERIFICATION STATE
   const [instaAgreed, setInstaAgreed] = useState(false);
@@ -258,8 +258,8 @@ export default function Home() {
   /* -------- Secure Razorpay Intent -------- */
   const openRazorpay = async () => {
     try {
-      if (!name || !phone || !email || !instaHandle || !bookingDate || !startTime || !instaAgreed) {
-        alert("Please fulfill all registration fields, select a court type, pick a kickoff slot, and accept the promo agreement.");
+      if (!name || !phone || !email || !instaHandle || !sport || !bookingType || !bookingDate || !startTime || !instaAgreed) {
+        alert("Please fulfill all registration fields, select a sport, select a court type, pick a kickoff slot, and accept the promo agreement.");
         return;
       }
 
@@ -426,9 +426,9 @@ export default function Home() {
       setInstaHandle("");
       setBookingDate("");
       setStartTime("");
-      setBookingType("Half Court");
+      setBookingType(""); // Reset to empty
+      setSport(""); // Reset to empty
       setInstaAgreed(false);
-      setSport("Football");
 
     } catch (error) {
       console.error(error);
@@ -443,7 +443,7 @@ export default function Home() {
   };
 
   // ✅ SMART BUTTON VALIDATION VARIABLE 
-  const isFormComplete = Boolean(name && phone && email && instaHandle && bookingDate && startTime && instaAgreed);
+  const isFormComplete = Boolean(name && phone && email && instaHandle && sport && bookingType && bookingDate && startTime && instaAgreed);
 
   /* ================================================================ */
   /* RENDER                                                          */
@@ -822,6 +822,7 @@ export default function Home() {
                     onChange={(e) => setSport(e.target.value)}
                     className="w-full p-4 bg-neutral-900 text-white font-bold border border-neutral-800 focus:border-white outline-none rounded-none appearance-none text-base md:text-sm"
                   >
+                    <option value="" disabled>-- Select Sport --</option>
                     <option value="Football">⚽ Football</option>
                     <option value="Cricket">🏏 Cricket</option>
                   </select>
@@ -850,6 +851,7 @@ export default function Home() {
                   onChange={(e) => setBookingType(e.target.value)}
                   className="w-full p-4 bg-neutral-900 text-white font-bold border border-neutral-800 focus:border-white outline-none rounded-none appearance-none text-base md:text-sm"
                 >
+                  <option value="" disabled>-- Select Court Scale --</option>
                   <option value="Half Court">Half Court (5v5) — ₹205</option>
                   <option value="Full Court">Full Court (7v7 / 9v9) — ₹410</option>
                 </select>
@@ -860,7 +862,7 @@ export default function Home() {
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400 flex justify-between items-center">
                     <span>Arena Visualizer</span>
-                    <span className="text-[#FF9933] tracking-wider font-black">SELECTED: {bookingType.toUpperCase()}</span>
+                    <span className="text-[#FF9933] tracking-wider font-black">SELECTED: {bookingType ? bookingType.toUpperCase() : "PENDING"}</span>
                   </label>
                   
                   <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 bg-neutral-900/40 p-3 sm:p-4 border border-neutral-800">
@@ -889,10 +891,16 @@ export default function Home() {
                                </span>
                              </div>
                            </>
-                        ) : (
+                        ) : bookingType === "Full Court" ? (
                            <div className="w-full h-full bg-[#138808]/30 flex items-center justify-center backdrop-blur-[1px]">
                              <span className="text-[#138808] text-[10px] sm:text-xs font-black tracking-widest font-mono bg-black/80 px-2.5 py-1.5 shadow-lg border border-[#138808]/30 uppercase text-center">
                                Full Court Access
+                             </span>
+                           </div>
+                        ) : (
+                           <div className="w-full h-full flex items-center justify-center backdrop-blur-[2px] bg-black/50">
+                             <span className="text-neutral-400 text-[10px] sm:text-xs font-black tracking-widest font-mono uppercase text-center bg-black/80 px-3 py-2 border border-neutral-800">
+                               Select Scale to Preview
                              </span>
                            </div>
                         )}
@@ -976,7 +984,7 @@ export default function Home() {
                   <h3 className="text-xl font-black uppercase text-white tracking-tight">SMES Turf Promo</h3>
                  </div>
                 <div className="w-10 h-10 sm:w-12 sm:h-12 bg-neutral-900 border border-neutral-800 flex items-center justify-center rotate-3 shrink-0 shadow-[0_0_15px_rgba(255,255,255,0.15)]">
-                  <span className="text-white text-xl sm:text-2xl font-black">{sport === "Cricket" ? "🏏" : "⚽"}</span>
+                  <span className="text-white text-xl sm:text-2xl font-black">{sport === "Cricket" ? "🏏" : sport === "Football" ? "⚽" : "❓"}</span>
                 </div>
               </div>
 
@@ -993,11 +1001,11 @@ export default function Home() {
                 </div>
                 <div>
                   <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Sport</span>
-                  <span className="text-xs sm:text-sm font-bold text-[#FF9933] uppercase tracking-wider">{sport}</span>
+                  <span className="text-xs sm:text-sm font-bold text-[#FF9933] uppercase tracking-wider">{sport || "REQUIRED"}</span>
                 </div>
                 <div>
                   <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Scale</span>
-                  <span className="text-xs sm:text-sm font-bold text-neutral-300 uppercase tracking-wider">{bookingType}</span>
+                  <span className="text-xs sm:text-sm font-bold text-neutral-300 uppercase tracking-wider">{bookingType || "REQUIRED"}</span>
                 </div>
                  <div>
                   <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Date</span>
