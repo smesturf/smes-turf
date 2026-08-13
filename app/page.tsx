@@ -332,7 +332,7 @@ export default function Home() {
           startTime,
           duration,
           bookingType,
-          amount: totalAmount // Passes strictly 410 or 205
+          amount: totalAmount 
         }),
       });
 
@@ -413,12 +413,10 @@ export default function Home() {
         return;
       }
 
-      // ⚡ MEGA PROMO FIX: Record 100% of the value as paid upfront, so zero balance due
-      const advancePaid = totalAmount; 
-      const balanceAmount = 0; 
-      
+      const balanceAmount = 0; // Total is paid upfront for promo
       const bookingId = verifyData.booking?.id ? `#${verifyData.booking.id}` : "#----";
       const referenceId = verifyData.booking?.booking_reference || paymentData.razorpay_payment_id || "N/A";
+      const advancePaid = totalAmount;
       
       const formattedTimeSlot = getTimeRangeLabel(startTime, duration);
 
@@ -1005,13 +1003,14 @@ export default function Home() {
                   }`}
                 >
                   <option value="">-- Select Time Slot --</option>
-                  {ALL_KICKOFF_SLOTS
-                    .filter((t) => !bookedSlots.includes(t))
-                    .map((t) => (
-                      <option key={t} value={t}>
-                        {t}
+                  {ALL_KICKOFF_SLOTS.map((t) => {
+                    const isBooked = bookedSlots.includes(t);
+                    return (
+                      <option key={t} value={t} disabled={isBooked}>
+                        {t} {isBooked ? "— BOOKED" : ""}
                       </option>
-                    ))}
+                    );
+                  })}
                 </select>
               </motion.div>
 

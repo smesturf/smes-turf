@@ -84,9 +84,7 @@ export async function POST(req: Request) {
     const timePart = bookingDetails.startTime.substring(0, 5).replace(":", "");
     const bookingReference = `SMES-${datePart}-${timePart}`;
 
-    const totalPaid = Number(bookingDetails.totalAmount); // 410 or 205
-    const gatewayFee = totalPaid === 410 ? 10 : 5; // Dynamic fee calculation
-    const baseRate = totalPaid - gatewayFee; // 400 or 200
+    const gatewayFee = bookingDetails.totalAmount - 200; // Evaluates to ₹5 or ₹10 depending on scale
 
     const { data: insertedData, error } = await supabase.from("bookings").insert([
       {
@@ -100,20 +98,12 @@ export async function POST(req: Request) {
         booking_date: bookingDetails.bookingDate,
         start_time: convert12to24(bookingDetails.startTime),
         duration_minutes: Number(bookingDetails.duration),
-        
-        // --- ⚡ AUTO-SETTLEMENT FIELDS FOR ADMIN DASHBOARDS ---
-        total_amount: totalPaid, 
-        advance_amount: totalPaid,                // Full amount marks as advance
-        balance_amount: 0,                        // 0 balance due at the venue
-        payment_method: "Full UPI",               // Injects directly to Admin Matrix
-        upi_received: totalPaid,                  // Injects to UPI Nodes
-        cash_received: 0,
-        payment_completed: true,                  // Marks it completely settled
-        payment_date: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }),
-        payment_status: "paid",
-        
+        total_amount: bookingDetails.totalAmount, // 205 (or 410)
+        advance_amount: 200,                      // Your actual turf rate
+        balance_amount: 0,                        // 0 balance due at the venue!
         razorpay_order_id: paymentData.razorpay_order_id || null,
         razorpay_payment_id: paymentData.razorpay_payment_id || null,
+        payment_status: "paid",
       },
     ]).select();
 
@@ -156,7 +146,7 @@ export async function POST(req: Request) {
               </tr>
               <tr style="background-color: #171717; border-bottom: 1px solid #262626;">
                 <td style="padding: 15px; color: #a3a3a3; text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Promo Rate Paid</td>
-                <td style="padding: 15px; font-weight: bold; color: #a3e635; text-align: right;">₹${baseRate}</td>
+                <td style="padding: 15px; font-weight: bold; color: #a3e635; text-align: right;">₹200</td>
               </tr>
               <tr style="background-color: #171717; border-bottom: 1px solid #262626;">
                 <td style="padding: 15px; color: #a3a3a3; text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Gateway Fee</td>
