@@ -35,6 +35,34 @@ const ALL_KICKOFF_SLOTS = [
   "09:00 PM", "10:00 PM", "11:00 PM"
 ];
 
+/* -------- HELPER: TIME PASSED CHECKER (STRICT IST) -------- */
+const isSlotPassed = (dateStr: string, timeStr: string) => {
+  if (!dateStr || !timeStr) return false;
+  
+  const now = new Date();
+  const todayStr = now.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  
+  if (dateStr > todayStr) return false;
+  if (dateStr < todayStr) return true;
+
+  const istTimeStr = now.toLocaleTimeString("en-US", {
+    timeZone: "Asia/Kolkata",
+    hour12: false,
+  });
+  const [currentHours, currentMins] = istTimeStr.split(":").map(Number);
+  const currentMinutes = currentHours * 60 + currentMins;
+
+  const timeToMinutes = (tStr: string) => {
+    const [time, ampm] = tStr.split(" ");
+    let [h, m] = time.split(":").map(Number);
+    if (ampm === "PM" && h !== 12) h += 12;
+    if (ampm === "AM" && h === 12) h = 0;
+    return h * 60 + (m || 0);
+  };
+
+  return timeToMinutes(timeStr) <= currentMinutes;
+};
+
 /* -------- HELPER: CALCULATE BLOCKED SLOTS FOR A SPECIFIC DATE -------- */
 const calculateBlockedSlots = (
   dateStr: string,
@@ -198,8 +226,17 @@ export default function Home() {
 
       datesToCheck.forEach(dateStr => {
         const blocked = calculateBlockedSlots(dateStr, bookingType, bookingsData || [], blockedData || []);
-        // If the amount of blocked slots is less than the total available slots, the day is available
-        newStatus[dateStr] = blocked.length < ALL_KICKOFF_SLOTS.length; 
+        
+        let availableCount = 0;
+        ALL_KICKOFF_SLOTS.forEach(slot => {
+          // A slot is only available if it is NOT booked AND NOT in the past
+          if (!blocked.includes(slot) && !isSlotPassed(dateStr, slot)) {
+            availableCount++;
+          }
+        });
+
+        // If the available slots are greater than 0, the day is available
+        newStatus[dateStr] = availableCount > 0; 
       });
 
       setPromoDatesStatus(newStatus);
@@ -237,13 +274,13 @@ export default function Home() {
 
   /* -------- RESET START TIME OR DATE IF IT BECOMES BLOCKED -------- */
   useEffect(() => {
-    // If selected date becomes entirely blocked because of a scale change
+    // If selected date becomes entirely blocked because of a scale change or time passing
     if (bookingDate && promoDatesStatus[bookingDate] === false) {
       setBookingDate("");
       setStartTime("");
     }
-    // If selected time becomes blocked
-    else if (startTime && bookedSlots.includes(startTime)) {
+    // If selected time becomes booked or passes in real time
+    else if (startTime && (bookedSlots.includes(startTime) || isSlotPassed(bookingDate, startTime))) {
       setStartTime("");
     }
   }, [bookedSlots, startTime, promoDatesStatus, bookingDate]);
@@ -991,7 +1028,7 @@ export default function Home() {
                 </select>
               </motion.div>
 
-              {/* DYNAMIC START TIME (FILTERED BY BOOKED SLOTS) */}
+              {/* DYNAMIC START TIME (FILTERED BY BOOKED SLOTS & TIME PASSED) */}
               <motion.div variants={fadeUp} className="space-y-2 relative">
                 <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Time</label>
                 <select
@@ -1005,9 +1042,16 @@ export default function Home() {
                   <option value="">-- Select Time Slot --</option>
                   {ALL_KICKOFF_SLOTS.map((t) => {
                     const isBooked = bookedSlots.includes(t);
+                    const isPassed = isSlotPassed(bookingDate, t);
+                    const isDisabled = isBooked || isPassed;
+                    
+                    let statusLabel = "";
+                    if (isPassed) statusLabel = "— TIME PASSED";
+                    else if (isBooked) statusLabel = "— BOOKED";
+
                     return (
-                      <option key={t} value={t} disabled={isBooked}>
-                        {t} {isBooked ? "— BOOKED" : ""}
+                      <option key={t} value={t} disabled={isDisabled}>
+                        {t} {statusLabel}
                       </option>
                     );
                   })}
