@@ -448,21 +448,22 @@ export default function AdminPage() {
     const todayStr = getTodayStr();
     const tomorrowStr = getTomorrowStr();
 
-    let orQuery = `booking_date.gte.${todayStr},balance_amount.gt.0,payment_date.eq.${todayStr}`;
-    if (filterDate && filterDate < todayStr) {
-      orQuery += `,booking_date.eq.${filterDate}`;
+    let query = supabase.from("bookings").select("*");
+
+    if (filterDate) {
+      query = query.eq("booking_date", filterDate);
+    } else {
+      query = query.or(`booking_date.gte.${todayStr},balance_amount.gt.0,payment_date.eq.${todayStr}`);
     }
 
-    const { data, error } = await supabase
-      .from("bookings")
-      .select("*")
-      .or(orQuery)
+    const { data, error } = await query
       .order("booking_date", { ascending: true })
       .order("start_time", { ascending: true });
 
     if (error) { console.log(error); return; }
 
     setBookings(data || []);
+    
     const currentMonth = new Date().getMonth() + 1;
     const currentYear = new Date().getFullYear();
 
@@ -477,14 +478,17 @@ export default function AdminPage() {
     setMonthlyAdvance(thisMonthBookings.reduce((sum, b) => sum + (b.advance_amount || 0), 0));
     setMonthlyBalance(thisMonthBookings.reduce((sum, b) => sum + (b.balance_amount || 0), 0));
 
-    const { data: blockedData } = await supabase
-      .from("blocked_slots")
-      .select("*")
-      .gte("booking_date", todayStr)
+    let blocksQuery = supabase.from("blocked_slots").select("*");
+    if (filterDate) blocksQuery = blocksQuery.eq("booking_date", filterDate);
+    else blocksQuery = blocksQuery.gte("booking_date", todayStr);
+
+    const { data: blockedData } = await blocksQuery
       .order("booking_date", { ascending: true })
       .order("start_time", { ascending: true });
 
     setBlockedSlots(blockedData || []);
+    
+    // Stats calculation
     const todaysBookings = data?.filter((booking) => booking.booking_date?.split("T")[0] === todayStr) || [];
     const tomorrowsBookings = data?.filter((booking) => booking.booking_date?.split("T")[0] === tomorrowStr) || [];
 
@@ -616,6 +620,7 @@ export default function AdminPage() {
     const { data: existingBlocks } = await supabase.from("blocked_slots").select("*").eq("booking_date", slotDate);
     const selectedStart = convertToMins(slotTime);
     let selectedEnd = selectedStart + Number(slotDuration);
+    
     if (slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE") {
       if (!slotEndTime) { alert("Please select an End Time for the block"); return; }
       selectedEnd = convertToMins(slotEndTime);
@@ -634,6 +639,7 @@ export default function AdminPage() {
       if (item.booking_type === "Full Court" || item.court_number === "Full Court" || item.court_number === "Both Courts") return true;
       return item.court_number === slotCourt;
     });
+
     if (isOverlapping) { alert("⚠️ This court is already booked or blocked during the selected time period."); return; }
 
     if (slotReason === "OFFLINE BOOKING") {
@@ -699,7 +705,6 @@ export default function AdminPage() {
     setSlotReason("OFFLINE BOOKING"); setSlotCourt("Full Court");
     setShowManageSlots(false);
   };
-
 
   /* ========================================================================= */
   /* 🔒 MASTER OTP SECURITY LOGIC */
@@ -1219,17 +1224,18 @@ export default function AdminPage() {
   };
 
   const resetPayment = async (booking: any) => {
-    const confirmed = confirm("Reset this payment?");
+    const confirmed = confirm("Reset this payment? This will wipe the payment record and set the full amount as due.");
     if (!confirmed) return;
     const originalBalance = (booking.total_amount || 0) - (booking.advance_amount || 0);
     const { error = null } = await supabase
       .from("bookings")
       .update({
+        advance_amount: 0, 
         cash_received: 0,
         upi_received: 0,
         payment_method: null,
         payment_completed: false,
-        balance_amount: originalBalance,
+        balance_amount: booking.total_amount || 0, 
         payment_date: null,
       })
       .eq("id", booking.id);
@@ -1248,18 +1254,63 @@ export default function AdminPage() {
     loadBookings();
   };
 
+  /* -------- HELPER: AUTO-HIDE PAST COMPLETED BOOKINGS -------- */
+  const isBookingCompletedAndPassed = (booking: any) => {
+    // Keep pending dues visible always
+    if (Number(booking.balance_amount || 0) > 0) return false;
+    
+    const bDate = booking.booking_date?.split("T")[0];
+    const todayStr = getTodayStr();
+    
+    if (!bDate) return false;
+    if (bDate < todayStr) return true;
+    if (bDate > todayStr) return false;
+
+    // If it's today, check if end time has passed
+    const now = new Date();
+    const istTimeStr = now.toLocaleTimeString("en-US", { timeZone: "Asia/Kolkata", hour12: false });
+    const [currentHours, currentMins] = istTimeStr.split(":").map(Number);
+    const currentMinutes = currentHours * 60 + currentMins;
+
+    // Safe extraction of 24-hour time saved in Supabase
+    const timeParts = (booking.start_time || "").trim().split(" ");
+    if (!timeParts[0]) return false;
+
+    const [hStr, mStr] = timeParts[0].split(":");
+    let h = Number(hStr);
+    const m = parseInt(mStr || "0", 10);
+
+    // Handle legacy AM/PM format if it exists
+    if (timeParts[1]) {
+      const ampm = timeParts[1].toUpperCase();
+      if (ampm === "PM" && h !== 12) h += 12;
+      if (ampm === "AM" && h === 12) h = 0;
+    }
+
+    const durationMins = Number(booking.duration_minutes || 60);
+    const endMinutes = (h * 60 + m) + durationMins;
+    
+    return endMinutes <= currentMinutes;
+  };
+
   const filteredBookings = bookings
     .filter((booking) => {
-      if (filterDate && booking.booking_date?.split("T")[0] !== filterDate) {
-        return false;
+      // 1. Check Date Filter Logic
+      if (filterDate) {
+        // If a specific date is selected, respect it strictly
+        if (booking.booking_date?.split("T")[0] !== filterDate) return false;
+      } else {
+        // DEFAULT VIEW: Auto-hide fully paid bookings if their time has passed
+        if (isBookingCompletedAndPassed(booking)) return false;
       }
       
+      // 2. Apply Search Terms
       const search = searchTerm.toLowerCase().trim();
       if (!search) return true;
       return (
         booking.customer_name?.toLowerCase().includes(search) ||
         booking.phone?.toLowerCase().includes(search) ||
-        booking.email?.toLowerCase().includes(search) ||
+        booking.email?.toLowerCase().includes(search) || 
         booking.booking_date?.toLowerCase().includes(search) ||
         booking.booking_reference?.toLowerCase().includes(search) ||
         booking.id?.toString().includes(search) 
@@ -1275,14 +1326,14 @@ export default function AdminPage() {
       if (aIsExactId && !bIsExactId) return -1;
       if (!aIsExactId && bIsExactId) return 1;
       
-      return 0;
+      return 0; 
     });
 
   const filteredAcademyStudents = useMemo(() => {
     return academyStudents.filter(s => s.batch === rosterTab);
   }, [academyStudents, rosterTab]);
 
-  const statCards = useMemo(() => [
+  const statCards = [
     { label: "Gross Orders", value: bookings.length, accent: "text-white", tag: "01" },
     { label: "Today Slots", value: todaySlots, accent: "text-lime-400", tag: "02" },
     { label: "Tomorrow Slots", value: tomorrowSlots, accent: "text-neutral-300", tag: "03" },
@@ -1291,7 +1342,7 @@ export default function AdminPage() {
     { label: "Cash Vault", value: `₹${todayCashCollection}`, accent: "text-amber-400", tag: "06" },
     { label: "UPI Nodes", value: `₹${todayUpiCollection}`, accent: "text-cyan-400", tag: "07" },
     { label: "Total Collected", value: `₹${todayTotalCollection}`, accent: "text-fuchsia-400", tag: "08" },
-  ], [bookings.length, todaySlots, tomorrowSlots, todaysAdvance, todaysBalance, todayCashCollection, todayUpiCollection, todayTotalCollection]);
+  ];
 
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden selection:bg-lime-400 selection:text-black">
@@ -2427,105 +2478,6 @@ export default function AdminPage() {
         )}
       </AnimatePresence>
 
-      {/* ---------- Payment Modal ---------- */}
-      <AnimatePresence>
-        {showPaymentModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]"
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 12, opacity: 0 }}
-              animate={{ scale: 1, y: 0, opacity: 1 }}
-              exit={{ scale: 0.9, y: 12, opacity: 0 }}
-              transition={{ duration: 0.3, ease: easeOut }}
-              className="bg-neutral-950 border border-neutral-800 p-6 w-full max-w-sm space-y-4 relative overflow-hidden"
-            >
-              <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-lime-500/10 to-transparent pointer-events-none" />
-              <div className="relative">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-lime-400 block mb-1">
-                  // Payment Node
-                </span>
-                <h2 className="text-xl font-black uppercase tracking-tight text-white">
-                  💰 Balance Clearing
-                </h2>
-                <p className="text-neutral-400 text-xs mt-1 font-mono">
-                  Collect the remaining match dues directly below.
-                </p>
-              </div>
-
-              <div className="p-4 bg-neutral-900 border border-neutral-800 flex justify-between items-center relative">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">Outstanding Balance</span>
-                <span className="text-lg font-black text-red-400 font-mono">
-                  ₹{selectedBooking?.balance_amount || 0}
-                </span>
-              </div>
-
-              <div className="space-y-3 relative">
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-mono uppercase tracking-widest text-neutral-400">
-                    Payment Route
-                  </label>
-                  <select
-                    value={paymentType}
-                    onChange={(e) => setPaymentType(e.target.value)}
-                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
-                  >
-                    <option value="Full Cash">Full Cash</option>
-                    <option value="Full UPI">Full UPI</option>
-                    <option value="Cash + UPI">Cash + UPI</option>
-                  </select>
-                </div>
-
-                {paymentType === "Cash + UPI" && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="grid grid-cols-2 gap-2 p-3 bg-neutral-900 border border-neutral-800"
-                  >
-                    <input
-                      type="number"
-                      placeholder="Cash Amount"
-                      value={cashAmount}
-                      onChange={(e) => setCashAmount(e.target.value)}
-                      className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                    />
-                    <input
-                      type="number"
-                      placeholder="UPI Amount"
-                      value={upiAmount}
-                      onChange={(e) => setUpiAmount(e.target.value)}
-                      className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                    />
-                  </motion.div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-2 relative">
-                <motion.button
-                  whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.3)" }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={savePayment}
-                  className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
-                >
-                  Save Payment
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => { setShowPaymentModal(false); setSelectedBooking(null); }}
-                  className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
-                >
-                  Cancel
-                </motion.button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* ---------- Manage Slots Modal ---------- */}
       <AnimatePresence>
         {showManageSlots && (
@@ -2573,7 +2525,7 @@ export default function AdminPage() {
                   <label className="text-[10px] font-mono uppercase text-neutral-400">Date</label>
                   <input
                     type="date"
-                    min={getTodayStr()}
+                    min={getTodayStr()} // Prevents selecting past dates
                     value={slotDate}
                     onChange={(e) => {
                       setSlotDate(e.target.value);
@@ -2588,6 +2540,20 @@ export default function AdminPage() {
                 </div>
 
                 <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400">Court Section</label>
+                  <select
+                    value={slotCourt}
+                    onChange={(e) => setSlotCourt(e.target.value)}
+                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
+                  >
+                    <option value="Full Court">Full Court</option>
+                    <option value="Court 1">Court 1</option>
+                    <option value="Court 2">Court 2</option>
+                  </select>
+                </div>
+
+                {/* --- FIX: START TIME IS NOW PLACED BEFORE END TIME/DURATION --- */}
+                <div className="space-y-1.5">
                   <label className="text-[10px] font-mono uppercase text-neutral-400">Start Time</label>
                   <select
                     value={slotTime}
@@ -2598,32 +2564,19 @@ export default function AdminPage() {
                     className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
                   >
                     <option value="">-- Select Time --</option>
-                    {availableAdminSlots.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Court Section</label>
-                  <select
-                    value={slotCourt}
-                    onChange={(e) => setSlotCourt(e.target.value)}
-                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                  >
-                    {availableCourts.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
+                    {availableAdminSlots.length === 0 ? (
+                      <option value="" disabled>No slots available</option>
+                    ) : (
+                      availableAdminSlots.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))
+                    )}
                   </select>
                 </div>
 
                 {slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE" ? (
-                  <div className="space-y-1.5 sm:col-span-2">
-                    <label className="text-[10px] font-mono uppercase text-neutral-400">End Time</label>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono uppercase text-neutral-400">End Time (Optional)</label>
                     <select
                       value={slotEndTime}
                       onChange={(e) => setSlotEndTime(e.target.value)}
@@ -2631,14 +2584,12 @@ export default function AdminPage() {
                     >
                       <option value="">-- Select End Time --</option>
                       {adminTimeSlots.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
+                        <option key={t} value={t}>{t}</option>
                       ))}
                     </select>
                   </div>
                 ) : (
-                  <div className="space-y-1.5 sm:col-span-2">
+                  <div className="space-y-1.5">
                     <label className="text-[10px] font-mono uppercase text-neutral-400">Duration (Minutes)</label>
                     <select
                       value={slotDuration}
@@ -2652,51 +2603,51 @@ export default function AdminPage() {
                     </select>
                   </div>
                 )}
-              </div>
 
-              {slotReason === "OFFLINE BOOKING" && (
-                <div className="p-3 bg-neutral-900 border border-neutral-800 space-y-3 relative">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-mono uppercase text-neutral-400">Payment Route</label>
-                    <select
-                      value={offlinePaymentMethod}
-                      onChange={(e) => setOfflinePaymentMethod(e.target.value)}
-                      className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors"
-                    >
-                      <option value="Cash">Cash</option>
-                      <option value="UPI">UPI</option>
-                      <option value="Cash + UPI">Cash + UPI</option>
-                    </select>
-                  </div>
-
-                  {offlinePaymentMethod === "Cash + UPI" ? (
-                    <div className="grid grid-cols-2 gap-2">
-                      <input
-                        type="number"
-                        placeholder="Cash Amount (₹)"
-                        value={offlineCashAmount}
-                        onChange={(e) => setOfflineCashAmount(e.target.value)}
-                        className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                      />
-                      <input
-                        type="number"
-                        placeholder="UPI Amount (₹)"
-                        value={offlineUpiAmount}
-                        onChange={(e) => setOfflineUpiAmount(e.target.value)}
-                        className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                      />
+                {slotReason === "OFFLINE BOOKING" && (
+                  <div className="sm:col-span-2 p-3 bg-neutral-900 border border-neutral-800 space-y-3 relative">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Payment Route</label>
+                      <select
+                        value={offlinePaymentMethod}
+                        onChange={(e) => setOfflinePaymentMethod(e.target.value)}
+                        className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors"
+                      >
+                        <option value="Cash">Cash</option>
+                        <option value="UPI">UPI</option>
+                        <option value="Cash + UPI">Cash + UPI</option>
+                      </select>
                     </div>
-                  ) : (
-                    <input
-                      type="number"
-                      placeholder="Total Amount Received (₹)"
-                      value={offlineAmount}
-                      onChange={(e) => setOfflineAmount(e.target.value)}
-                      className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                    />
-                  )}
-                </div>
-              )}
+
+                    {offlinePaymentMethod === "Cash + UPI" ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="number"
+                          placeholder="Cash Amount (₹)"
+                          value={offlineCashAmount}
+                          onChange={(e) => setOfflineCashAmount(e.target.value)}
+                          className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                        />
+                        <input
+                          type="number"
+                          placeholder="UPI Amount (₹)"
+                          value={offlineUpiAmount}
+                          onChange={(e) => setOfflineUpiAmount(e.target.value)}
+                          className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                        />
+                      </div>
+                    ) : (
+                      <input
+                        type="number"
+                        placeholder="Total Amount Received (₹)"
+                        value={offlineAmount}
+                        onChange={(e) => setOfflineAmount(e.target.value)}
+                        className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
 
               <div className="grid grid-cols-2 gap-3 pt-2 relative">
                 <motion.button
