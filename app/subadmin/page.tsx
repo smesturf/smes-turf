@@ -1140,23 +1140,25 @@ export default function AdminPage() {
   };
 
   const resetPayment = async (booking: any) => {
-    const confirmed = confirm("Reset this payment?");
+    const confirmed = confirm("Reset this payment? This will wipe the payment record and set the full amount as due.");
     if (!confirmed) return;
-    const originalBalance = (booking.total_amount || 0) - (booking.advance_amount || 0);
+    
     const { error = null } = await supabase
       .from("bookings")
       .update({
+        advance_amount: 0, 
         cash_received: 0,
         upi_received: 0,
         payment_method: null,
         payment_completed: false,
-        balance_amount: originalBalance,
+        balance_amount: booking.total_amount || 0, 
         payment_date: null,
       })
       .eq("id", booking.id);
+      
     if (error) { alert(error.message); return; }
 
-    alert("✅ Payment Reset");
+    alert("✅ Payment Reset Successfully");
     loadBookings();
   };
 
@@ -1169,13 +1171,48 @@ export default function AdminPage() {
     loadBookings();
   };
 
+  /* -------- HELPER: AUTO-HIDE PAST COMPLETED BOOKINGS -------- */
+  const isBookingCompletedAndPassed = (booking: any) => {
+    // Keep pending dues visible always
+    if (booking.balance_amount > 0) return false;
+    
+    const bDate = booking.booking_date?.split("T")[0];
+    const todayStr = getTodayStr();
+    
+    if (!bDate) return false;
+    if (bDate < todayStr) return true;
+    if (bDate > todayStr) return false;
+
+    // If it's today, check if end time has passed
+    const now = new Date();
+    const istTimeStr = now.toLocaleTimeString("en-US", { timeZone: "Asia/Kolkata", hour12: false });
+    const [currentHours, currentMins] = istTimeStr.split(":").map(Number);
+    const currentMinutes = currentHours * 60 + currentMins;
+
+    const [timePart, ampm] = (booking.start_time || "").split(" ");
+    if (!timePart || !ampm) return false;
+    
+    let [h, m] = timePart.split(":").map(Number);
+    if (ampm.toUpperCase() === "PM" && h !== 12) h += 12;
+    if (ampm.toUpperCase() === "AM" && h === 12) h = 0;
+    
+    const endMinutes = (h * 60 + m) + (booking.duration_minutes || 60);
+    
+    return endMinutes <= currentMinutes;
+  };
+
   const filteredBookings = bookings
     .filter((booking) => {
-      // Apply strict local filter if the date is set
-      if (filterDate && booking.booking_date?.split("T")[0] !== filterDate) {
-        return false;
+      // 1. Check Date Filter Logic
+      if (filterDate) {
+        // If a specific date is selected, respect it strictly
+        if (booking.booking_date?.split("T")[0] !== filterDate) return false;
+      } else {
+        // DEFAULT VIEW: Auto-hide fully paid bookings if their time has passed
+        if (isBookingCompletedAndPassed(booking)) return false;
       }
       
+      // 2. Apply Search Terms
       const search = searchTerm.toLowerCase().trim();
       if (!search) return true;
       return (
