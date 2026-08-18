@@ -667,7 +667,7 @@ export default function AdminPage() {
         booking_type: slotCourt === "Full Court" ? "Full Court" : "Half Court",
         court_number: slotCourt,
         total_amount: totalAmount,
-        advance_amount: totalAmount,
+        advance_amount: totalAmount, // Offline full pay logs full amount as advance
         balance_amount: 0,
         payment_status: "paid",
         payment_method: offlinePaymentMethod,
@@ -954,12 +954,26 @@ export default function AdminPage() {
     .filter((booking) => booking.booking_date?.split("T")[0] === getTodayStr())
     .reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
 
-  /* -------- DYNAMIC EXCEL EXPORT -------- */
+  /* -------- DYNAMIC EXCEL EXPORT (FIXED FOR FULL HISTORY) -------- */
   const exportToExcel = async () => {
     const XLSX = await import("xlsx");
     
+    // FETCH FULL DB HISTORY FOR EXPORT (Not just active feed)
+    const { data: dbBookings, error: dbError } = await supabase
+      .from("bookings")
+      .select("*")
+      .order("booking_date", { ascending: true })
+      .order("start_time", { ascending: true });
+
+    if (dbError) {
+      alert("Failed to fetch full booking history for export.");
+      return;
+    }
+    
+    const fullBookings = dbBookings || [];
+    
     // --- 1. Master Bookings Data ---
-    const exportData = bookings.map((booking, index) => ({
+    const exportData = fullBookings.map((booking, index) => ({
       "S.No.": index + 1,
       "Booking ID": booking.id,
       "Reference ID": booking.booking_reference || "N/A",
@@ -1052,20 +1066,20 @@ export default function AdminPage() {
     const workbook = XLSX.utils.book_new();
     const todayStr = getTodayStr(); 
 
-    // A. Master Bookings Sheet
-    const totalRevenue = bookings.reduce((sum, booking) => sum + (booking.total_amount || 0), 0);
-    const totalAdvance = bookings.reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
-    const totalBalance = bookings.reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
-    const totalCashCollected = bookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
-    const totalUpiCollected = bookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
+    // A. Master Bookings Sheet (Using FULL DB)
+    const totalRevenue = fullBookings.reduce((sum, booking) => sum + (booking.total_amount || 0), 0);
+    const totalAdvance = fullBookings.reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
+    const totalBalance = fullBookings.reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
+    const totalCashCollected = fullBookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
+    const totalUpiCollected = fullBookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
     const totalCollection = totalCashCollected + totalUpiCollected;
     const moneyInHand = totalAdvance + totalCollection;
 
     const worksheet = XLSX.utils.aoa_to_sheet([
-      ["SMES TURF BOOKING REPORT"],
+      ["SMES TURF FULL BOOKING REPORT"],
       [`Export Date: ${new Date().toLocaleString("en-IN")}`],
       [],
-      ["Total Bookings", bookings.length],
+      ["Total Bookings", fullBookings.length],
       ["Total Revenue Expected (₹)", totalRevenue],
       ["Advance Collected (₹)", totalAdvance],
       ["Pending Balance (₹)", totalBalance],
@@ -1080,53 +1094,62 @@ export default function AdminPage() {
     worksheet["!cols"] = [ { wch: 8 }, { wch: 12 }, { wch: 18 }, { wch: 22 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 15 } ];
     XLSX.utils.book_append_sheet(workbook, worksheet, "Bookings");
 
-    // B. Today Sheet
-    const todayBookings = bookings.filter((booking) => booking.booking_date?.split("T")[0] === todayStr);
-    const todayRevenue = todaysAdvance + todaysBalance;
-    const todayAdvance = todaysAdvance;
-    const todayBalance = todaysBalance;
-    const todayCash = todayBookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
-    const todayUpi = todayBookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
-    const todayCollection = todayCash + todayUpi;
-    const todayMoneyInHand = todayAdvance + todayCollection;
+    // B. Today Sheet (Using FULL DB filtered to today)
+    const todayBookings = fullBookings.filter((booking) => booking.booking_date?.split("T")[0] === todayStr);
+    const tRevenue = todayBookings.reduce((sum, booking) => sum + (booking.total_amount || 0), 0);
+    const tAdvance = todayBookings.reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
+    const tBalance = todayBookings.reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
+    const tCash = todayBookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
+    const tUpi = todayBookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
+    const tCollection = tCash + tUpi;
+    const tMoneyInHand = tAdvance + tCollection;
 
     const todaySheet = XLSX.utils.aoa_to_sheet([
       ["TODAY'S COLLECTION"], [],
       ["Total Bookings", todayBookings.length],
-      ["Total Revenue Expected (₹)", todayRevenue],
-      ["Advance Collected (₹)", todayAdvance],
-      ["Pending Balance (₹)", todayBalance],
-      ["Cash Collected (₹)", todayCash],
-      ["UPI Collected (₹)", todayUpi],
-      ["Total Collected (Cash + UPI) (₹)", todayCollection],
-      ["Actual Money In Hand (Adv + Cash + UPI) (₹)", todayMoneyInHand],
-      ["Settlement Status", todayBalance > 0 ? `⚠️ ₹${todayBalance} DUE` : "✅ SETTLED"],
+      ["Total Revenue Expected (₹)", tRevenue],
+      ["Advance Collected (₹)", tAdvance],
+      ["Pending Balance (₹)", tBalance],
+      ["Cash Collected (₹)", tCash],
+      ["UPI Collected (₹)", tUpi],
+      ["Total Collected (Cash + UPI) (₹)", tCollection],
+      ["Actual Money In Hand (Adv + Cash + UPI) (₹)", tMoneyInHand],
+      ["Settlement Status", tBalance > 0 ? `⚠️ ₹${tBalance} DUE` : "✅ SETTLED"],
     ]);
     XLSX.utils.book_append_sheet(workbook, todaySheet, "Today");
 
-    // C. Monthly Sheet
-    const monthlyCash = bookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
-    const monthlyUpi = bookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
-    const monthlyCollection = monthlyCash + monthlyUpi;
-    const monthlyMoneyInHand = monthlyAdvance + monthlyCollection;
+    // C. Monthly Sheet (Using FULL DB filtered to current month)
+    const thisMonthBookings = fullBookings.filter((booking) => {
+        const d = new Date(booking.booking_date);
+        return d.getMonth() + 1 === (new Date().getMonth() + 1) && d.getFullYear() === new Date().getFullYear();
+    });
+    
+    const mBookings = thisMonthBookings.length;
+    const mRevenue = thisMonthBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0);
+    const mAdvance = thisMonthBookings.reduce((sum, b) => sum + (b.advance_amount || 0), 0);
+    const mBalance = thisMonthBookings.reduce((sum, b) => sum + (b.balance_amount || 0), 0);
+    const mCash = thisMonthBookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
+    const mUpi = thisMonthBookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
+    const mCollection = mCash + mUpi;
+    const mMoneyInHand = mAdvance + mCollection;
 
     const monthlySheet = XLSX.utils.aoa_to_sheet([
       ["MONTHLY COLLECTION"], [],
-      ["Total Bookings", monthlyBookings],
-      ["Total Revenue Expected (₹)", monthlyRevenue],
-      ["Advance Collected (₹)", monthlyAdvance],
-      ["Pending Balance (₹)", monthlyBalance],
-      ["Cash Collected (₹)", monthlyCash],
-      ["UPI Collected (₹)", monthlyUpi],
-      ["Total Collected (Cash + UPI) (₹)", monthlyCollection],
-      ["Actual Money In Hand (Adv + Cash + UPI) (₹)", monthlyMoneyInHand],
-      ["Settlement Status", monthlyBalance > 0 ? `⚠️ ₹${monthlyBalance} DUE` : "✅ SETTLED"],
+      ["Total Bookings", mBookings],
+      ["Total Revenue Expected (₹)", mRevenue],
+      ["Advance Collected (₹)", mAdvance],
+      ["Pending Balance (₹)", mBalance],
+      ["Cash Collected (₹)", mCash],
+      ["UPI Collected (₹)", mUpi],
+      ["Total Collected (Cash + UPI) (₹)", mCollection],
+      ["Actual Money In Hand (Adv + Cash + UPI) (₹)", mMoneyInHand],
+      ["Settlement Status", mBalance > 0 ? `⚠️ ₹${mBalance} DUE` : "✅ SETTLED"],
     ]);
     XLSX.utils.book_append_sheet(workbook, monthlySheet, "Monthly");
 
     // D. Daily Summary Sheet
     const dailyStats: Record<string, any> = {};
-    bookings.forEach(b => {
+    fullBookings.forEach(b => {
       const d = b.booking_date?.split("T")[0] || "Unknown";
       if (!dailyStats[d]) {
         dailyStats[d] = {
@@ -1179,7 +1202,7 @@ export default function AdminPage() {
     attendanceSheet["!cols"] = attCols;
     XLSX.utils.book_append_sheet(workbook, attendanceSheet, "Attendance Record");
 
-    XLSX.writeFile(workbook, `SMES_Master_Report_${todayStr}.xlsx`);
+    XLSX.writeFile(workbook, `SMES_Full_Master_Report_${todayStr}.xlsx`);
   };
 
   const handleLogout = async () => {
@@ -1224,24 +1247,27 @@ export default function AdminPage() {
   };
 
   const resetPayment = async (booking: any) => {
-    const confirmed = confirm("Reset this payment? This will wipe the payment record and set the full amount as due.");
+    const confirmed = confirm("Reset this payment? The advance will remain untouched, but the remaining balance will be marked as DUE again.");
     if (!confirmed) return;
+    
+    // Maintain the fixed ₹200 advance (or whatever it is in DB), only restore the pending balance
     const originalBalance = (booking.total_amount || 0) - (booking.advance_amount || 0);
+    
     const { error = null } = await supabase
       .from("bookings")
       .update({
-        advance_amount: 0, 
         cash_received: 0,
         upi_received: 0,
         payment_method: null,
         payment_completed: false,
-        balance_amount: booking.total_amount || 0, 
+        balance_amount: originalBalance, 
         payment_date: null,
       })
       .eq("id", booking.id);
+      
     if (error) { alert(error.message); return; }
 
-    alert("✅ Payment Reset");
+    alert("✅ Payment Reset Successfully");
     loadBookings();
   };
 
@@ -1333,7 +1359,7 @@ export default function AdminPage() {
     return academyStudents.filter(s => s.batch === rosterTab);
   }, [academyStudents, rosterTab]);
 
-  const statCards = [
+  const statCards = useMemo(() => [
     { label: "Gross Orders", value: bookings.length, accent: "text-white", tag: "01" },
     { label: "Today Slots", value: todaySlots, accent: "text-lime-400", tag: "02" },
     { label: "Tomorrow Slots", value: tomorrowSlots, accent: "text-neutral-300", tag: "03" },
@@ -1342,7 +1368,7 @@ export default function AdminPage() {
     { label: "Cash Vault", value: `₹${todayCashCollection}`, accent: "text-amber-400", tag: "06" },
     { label: "UPI Nodes", value: `₹${todayUpiCollection}`, accent: "text-cyan-400", tag: "07" },
     { label: "Total Collected", value: `₹${todayTotalCollection}`, accent: "text-fuchsia-400", tag: "08" },
-  ];
+  ], [bookings.length, todaySlots, tomorrowSlots, todaysAdvance, todaysBalance, todayCashCollection, todayUpiCollection, todayTotalCollection]);
 
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden selection:bg-lime-400 selection:text-black">
@@ -2472,199 +2498,6 @@ export default function AdminPage() {
                 >
                   Close Modal
                 </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ---------- Manage Slots Modal ---------- */}
-      <AnimatePresence>
-        {showManageSlots && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] overflow-y-auto"
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 12, opacity: 0 }}
-              animate={{ scale: 1, y: 0, opacity: 1 }}
-              exit={{ scale: 0.9, y: 12, opacity: 0 }}
-              transition={{ duration: 0.3, ease: easeOut }}
-              className="bg-neutral-950 border border-neutral-800 p-6 w-full max-w-lg space-y-4 relative overflow-hidden my-8"
-            >
-              <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-fuchsia-500/10 to-transparent pointer-events-none" />
-              <div className="relative">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-fuchsia-400 block mb-1">
-                  // Slot Manager
-                </span>
-                <h2 className="text-xl font-black uppercase tracking-tight text-white">
-                  ⚙️ Manage Turf Slots
-                </h2>
-                <p className="text-neutral-400 text-xs mt-1 font-mono">
-                  Log offline bookings or block field slots for tournaments & maintenance.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 relative">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Reason</label>
-                  <select
-                    value={slotReason}
-                    onChange={(e) => setSlotReason(e.target.value)}
-                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
-                  >
-                    <option value="OFFLINE BOOKING">OFFLINE BOOKING</option>
-                    <option value="TOURNAMENT">TOURNAMENT</option>
-                    <option value="MAINTENANCE">MAINTENANCE</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Date</label>
-                  <input
-                    type="date"
-                    min={getTodayStr()} // Prevents selecting past dates
-                    value={slotDate}
-                    onChange={(e) => {
-                      setSlotDate(e.target.value);
-                      if (e.target.value) {
-                        loadAvailableAdminSlots(e.target.value);
-                        loadAvailableCourts(e.target.value, slotTime);
-                      }
-                    }}
-                    style={{ colorScheme: "dark" }}
-                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Court Section</label>
-                  <select
-                    value={slotCourt}
-                    onChange={(e) => setSlotCourt(e.target.value)}
-                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
-                  >
-                    <option value="Full Court">Full Court</option>
-                    <option value="Court 1">Court 1</option>
-                    <option value="Court 2">Court 2</option>
-                  </select>
-                </div>
-
-                {/* --- FIX: START TIME IS NOW PLACED BEFORE END TIME/DURATION --- */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Start Time</label>
-                  <select
-                    value={slotTime}
-                    onChange={(e) => {
-                      setSlotTime(e.target.value);
-                      if (slotDate) loadAvailableCourts(slotDate, e.target.value);
-                    }}
-                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                  >
-                    <option value="">-- Select Time --</option>
-                    {availableAdminSlots.length === 0 ? (
-                      <option value="" disabled>No slots available</option>
-                    ) : (
-                      availableAdminSlots.map((t) => (
-                        <option key={t} value={t}>{t}</option>
-                      ))
-                    )}
-                  </select>
-                </div>
-
-                {slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE" ? (
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-mono uppercase text-neutral-400">End Time (Optional)</label>
-                    <select
-                      value={slotEndTime}
-                      onChange={(e) => setSlotEndTime(e.target.value)}
-                      className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                    >
-                      <option value="">-- Select End Time --</option>
-                      {adminTimeSlots.map((t) => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-mono uppercase text-neutral-400">Duration (Minutes)</label>
-                    <select
-                      value={slotDuration}
-                      onChange={(e) => setSlotDuration(Number(e.target.value))}
-                      className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                    >
-                      <option value={30}>30 mins</option>
-                      <option value={60}>60 mins</option>
-                      <option value={90}>90 mins</option>
-                      <option value={120}>120 mins</option>
-                    </select>
-                  </div>
-                )}
-
-                {slotReason === "OFFLINE BOOKING" && (
-                  <div className="sm:col-span-2 p-3 bg-neutral-900 border border-neutral-800 space-y-3 relative">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono uppercase text-neutral-400">Payment Route</label>
-                      <select
-                        value={offlinePaymentMethod}
-                        onChange={(e) => setOfflinePaymentMethod(e.target.value)}
-                        className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors"
-                      >
-                        <option value="Cash">Cash</option>
-                        <option value="UPI">UPI</option>
-                        <option value="Cash + UPI">Cash + UPI</option>
-                      </select>
-                    </div>
-
-                    {offlinePaymentMethod === "Cash + UPI" ? (
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          type="number"
-                          placeholder="Cash Amount (₹)"
-                          value={offlineCashAmount}
-                          onChange={(e) => setOfflineCashAmount(e.target.value)}
-                          className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                        />
-                        <input
-                          type="number"
-                          placeholder="UPI Amount (₹)"
-                          value={offlineUpiAmount}
-                          onChange={(e) => setOfflineUpiAmount(e.target.value)}
-                          className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                        />
-                      </div>
-                    ) : (
-                      <input
-                        type="number"
-                        placeholder="Total Amount Received (₹)"
-                        value={offlineAmount}
-                        onChange={(e) => setOfflineAmount(e.target.value)}
-                        className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                      />
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-2 relative">
-                <motion.button
-                  whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(217,70,239,0.3)" }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={saveBlockedSlot}
-                  className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
-                >
-                  Save Field Block
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => setShowManageSlots(false)}
-                  className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
-                >
-                  Cancel
-                </motion.button>
               </div>
             </motion.div>
           </motion.div>
