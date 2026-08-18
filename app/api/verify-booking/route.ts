@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     nextDate.setDate(nextDate.getDate() + 1);
     const nextDateStr = nextDate.toISOString().split("T")[0];
 
-    // 3. FETCH ALL RELEVANT DATA IN ONE SINGLE QUERY (Performance Boost)
+    // 3. FETCH ALL RELEVANT DATA IN ONE SINGLE QUERY
     const { data: allBookings, error: checkError } = await supabase
       .from("bookings")
       .select("start_time, duration_minutes, booking_type, court_number, booking_date")
@@ -52,7 +52,6 @@ export async function POST(req: Request) {
 
     if (checkError) throw checkError;
 
-    // Filter the single dataset into the separate arrays your booking rules expect
     const existingBookings = allBookings?.filter(b => b.booking_date === bookingDate) || [];
     const previousDayBookings = allBookings?.filter(b => b.booking_date === prevDateStr) || [];
     const nextDayBookings = allBookings?.filter(b => b.booking_date === nextDateStr) || [];
@@ -79,12 +78,16 @@ export async function POST(req: Request) {
     }
 
     // 5. SECURE SERVER-SIDE DATABASE INSERTION
-    // Generate the official Barcode / Reference ID
+    // ⚡ FIX: Added a random 4-digit token to prevent "Unique Constraint" database crashes for parallel bookings!
     const datePart = bookingDetails.bookingDate.replace(/-/g, "");
     const timePart = bookingDetails.startTime.substring(0, 5).replace(":", "");
-    const bookingReference = `SMES-${datePart}-${timePart}`;
+    const randomTag = Math.floor(1000 + Math.random() * 9000); 
+    const bookingReference = `SMES-${datePart}-${timePart}-${randomTag}`;
 
-    const gatewayFee = bookingDetails.totalAmount - 200; // Evaluates to ₹5 or ₹10 depending on scale
+    // ⚡ FIX: Enforce Strict ₹200 Advance Math
+    const fullTotal = Number(bookingDetails.totalAmount);
+    const advancePaid = 200; // Hardcoded fixed ₹200 advance
+    const balanceDue = fullTotal - advancePaid;
 
     const { data: insertedData, error } = await supabase.from("bookings").insert([
       {
@@ -98,16 +101,27 @@ export async function POST(req: Request) {
         booking_date: bookingDetails.bookingDate,
         start_time: convert12to24(bookingDetails.startTime),
         duration_minutes: Number(bookingDetails.duration),
-        total_amount: bookingDetails.totalAmount, // 205 (or 410)
-        advance_amount: 200,                      // Your actual turf rate
-        balance_amount: 0,                        // 0 balance due at the venue!
+        
+        // --- ⚡ ADMIN MATRIX SETTLEMENT FIELDS ---
+        total_amount: fullTotal, 
+        advance_amount: advancePaid,              
+        balance_amount: balanceDue,                       
+        payment_method: "UPI",              
+        upi_received: advancePaid,                 
+        cash_received: 0,
+        payment_completed: balanceDue <= 0,
+        payment_date: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }),
+        payment_status: "paid",
+
         razorpay_order_id: paymentData.razorpay_order_id || null,
         razorpay_payment_id: paymentData.razorpay_payment_id || null,
-        payment_status: "paid",
       },
     ]).select();
 
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase Database Insert Error:", error);
+      throw error;
+    }
 
     // 6. SEND CONFIRMATION EMAIL VIA NODEMAILER
     if (bookingDetails.email) {
@@ -145,21 +159,21 @@ export async function POST(req: Request) {
                 <td style="padding: 15px; font-weight: bold; color: #ffffff; text-align: right;">${bookingDetails.startTime} (${bookingDetails.duration} Mins)</td>
               </tr>
               <tr style="background-color: #171717; border-bottom: 1px solid #262626;">
-                <td style="padding: 15px; color: #a3a3a3; text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Promo Rate Paid</td>
-                <td style="padding: 15px; font-weight: bold; color: #a3e635; text-align: right;">₹200</td>
+                <td style="padding: 15px; color: #a3a3a3; text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Gross Total</td>
+                <td style="padding: 15px; font-weight: bold; color: #ffffff; text-align: right;">₹${fullTotal}</td>
               </tr>
               <tr style="background-color: #171717; border-bottom: 1px solid #262626;">
-                <td style="padding: 15px; color: #a3a3a3; text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Gateway Fee</td>
-                <td style="padding: 15px; font-weight: bold; color: #a3e635; text-align: right;">₹${gatewayFee}</td>
+                <td style="padding: 15px; color: #a3a3a3; text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Advance Paid</td>
+                <td style="padding: 15px; font-weight: bold; color: #a3e635; text-align: right;">₹200 (+ ₹5 Fee)</td>
               </tr>
               <tr style="background-color: #171717;">
                 <td style="padding: 15px; color: #a3a3a3; text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Balance Due at Venue</td>
-                <td style="padding: 15px; font-weight: bold; color: #ef4444; font-size: 18px; text-align: right;">₹0</td>
+                <td style="padding: 15px; font-weight: bold; color: #ef4444; font-size: 18px; text-align: right;">₹${balanceDue}</td>
               </tr>
             </table>
 
             <p style="color: #a3a3a3; font-size: 13px; margin-top: 30px; line-height: 1.5;">
-              ⚠️ <strong>Rules:</strong> Please arrive 10 minutes prior to kickoff. Non-marking turf shoes only. Don't forget your Instagram post requirement!
+              ⚠️ <strong>Rules:</strong> Please arrive 10 minutes prior to kickoff. Non-marking turf shoes only.
             </p>
             
             <hr style="border: 0; height: 1px; background-color: #262626; margin: 30px 0;" />
