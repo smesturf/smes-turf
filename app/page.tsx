@@ -336,6 +336,7 @@ export default function Home() {
     setIsPaymentLoading(true); 
 
     try {
+      // ⚡ WEBHOOK FIX: Pack ALL the user's details into the order so the server can access them in the background
       const response = await fetch("/api/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -344,7 +345,12 @@ export default function Home() {
           startTime,
           duration,
           bookingType,
-          amount: 205 // ₹200 Advance + ₹5 Razorpay Convenience Fee
+          amount: 205, // ₹200 Advance + ₹5 Razorpay Convenience Fee
+          totalAmount, // Webhook Needs This
+          name,        // Webhook Needs This
+          phone,       // Webhook Needs This
+          email,       // Webhook Needs This
+          sport        // Webhook Needs This
         })
       });
 
@@ -424,7 +430,6 @@ export default function Home() {
       const advancePaid = 200;
       
       const formattedTimeSlot = getTimeRangeLabel(startTime, duration);
-      const [startT, endT] = formattedTimeSlot.split(" - "); 
 
       const whatsappRes = await fetch("/api/whatsapp", {
         method: "POST",

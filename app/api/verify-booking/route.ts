@@ -25,6 +25,19 @@ export async function POST(req: Request) {
       if (generatedSignature !== paymentData.razorpay_signature) {
         return NextResponse.json({ error: "Payment verification failed. Invalid Signature." }, { status: 400 });
       }
+
+      // --- ⚡ CRITICAL FIX: PREVENT DUPLICATE BOOKINGS ---
+      // If the background webhook already saved this order, do not crash! Just return success.
+      const { data: existingOrder } = await supabase
+        .from("bookings")
+        .select("*")
+        .eq("razorpay_order_id", paymentData.razorpay_order_id)
+        .single();
+
+      if (existingOrder) {
+        return NextResponse.json({ success: true, booking: existingOrder });
+      }
+      // ---------------------------------------------------
     }
 
     // 2. CALCULATE ADJACENT DATES (Yesterday, Today, Tomorrow)
@@ -78,13 +91,11 @@ export async function POST(req: Request) {
     }
 
     // 5. SECURE SERVER-SIDE DATABASE INSERTION
-    // ⚡ FIX: Added a random 4-digit token to prevent "Unique Constraint" database crashes for parallel bookings!
     const datePart = bookingDetails.bookingDate.replace(/-/g, "");
     const timePart = bookingDetails.startTime.substring(0, 5).replace(":", "");
     const randomTag = Math.floor(1000 + Math.random() * 9000); 
     const bookingReference = `SMES-${datePart}-${timePart}-${randomTag}`;
 
-    // ⚡ FIX: Enforce Strict ₹200 Advance Math
     const fullTotal = Number(bookingDetails.totalAmount);
     const advancePaid = 200; // Hardcoded fixed ₹200 advance
     const balanceDue = fullTotal - advancePaid;
