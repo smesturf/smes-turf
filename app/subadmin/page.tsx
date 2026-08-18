@@ -117,6 +117,29 @@ export default function AdminPage() {
     return `${formatString(startTotal)} to ${formatString(endTotal)}`;
   };
 
+  const formatDurationLabel = (mins: number | string) => {
+    const m = Number(mins);
+    if (m === 60) return "60 Mins (1 Hour)";
+    if (m === 90) return "90 Mins (1.5 Hours)";
+    if (m === 120) return "120 Mins (2 Hours)";
+    if (m === 150) return "150 Mins (2.5 Hours)";
+    if (m === 180) return "180 Mins (3 Hours)";
+    return `${m} Mins`;
+  };
+
+  // Strictly 05:00 AM to 11:00 PM Grid
+  const adminTimeSlots = useMemo(() => {
+    const slots = [];
+    for (let i = 10; i <= 46; i++) { 
+      const h = Math.floor(i / 2);
+      const m = i % 2 === 0 ? "00" : "30";
+      const ampm = h >= 12 ? "PM" : "AM";
+      const displayH = h % 12 === 0 ? 12 : h % 12;
+      slots.push(`${String(displayH).padStart(2, "0")}:${m} ${ampm}`);
+    }
+    return slots;
+  }, []);
+
   // ⚙️ Manage Slots Logic
   const [slotDate, setSlotDate] = useState("");
   const [slotReason, setSlotReason] = useState("OFFLINE BOOKING");
@@ -131,17 +154,6 @@ export default function AdminPage() {
   const [offlineUpiAmount, setOfflineUpiAmount] = useState("");
 
   const [availableAdminSlots, setAvailableAdminSlots] = useState<string[]>([]);
-
-  const adminTimeSlots = useMemo(() => [
-    "12:00 AM", "12:30 AM", "01:00 AM", "01:30 AM", "02:00 AM", "02:30 AM",
-    "03:00 AM", "03:30 AM", "04:00 AM", "04:30 AM", "05:00 AM", "05:30 AM",
-    "06:00 AM", "06:30 AM", "07:00 AM", "07:30 AM", "08:00 AM", "08:30 AM",
-    "09:00 AM", "09:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM",
-    "12:00 PM", "12:30 PM", "01:00 PM", "01:30 PM", "02:00 PM", "02:30 PM",
-    "03:00 PM", "03:30 PM", "04:00 PM", "04:30 PM", "05:00 PM", "05:30 PM",
-    "06:00 PM", "06:30 PM", "07:00 PM", "07:30 PM", "08:00 PM", "08:30 PM",
-    "09:00 PM", "09:30 PM", "10:00 PM", "10:30 PM", "11:00 PM", "11:30 PM"
-  ], []);
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
@@ -246,6 +258,9 @@ export default function AdminPage() {
       adminTimeSlots.forEach((slot) => {
         const slotStart = convertToMins(slot);
         const slotEnd = slotStart + slotDuration;
+
+        // Strictly enforce 11 PM Closing Rule
+        if (slotEnd > 23 * 60) return;
 
         const isOverlapping = allBusyItems.some((item: any) => {
           const itemStart = convertToMins(item.start_time);
@@ -521,11 +536,7 @@ export default function AdminPage() {
       }
 
       if (createdToday && booking.customer_name === "Offline Booking") {
-        if (booking.payment_method === "Cash") {
-          cashVault += Number(booking.total_amount || 0);
-        } else if (booking.payment_method === "UPI") {
-          upiNodes += Number(booking.total_amount || 0);
-        } else if (booking.payment_method === "Cash + UPI") {
+        if (!paidToday) {
           cashVault += Number(booking.cash_received || 0);
           upiNodes += Number(booking.upi_received || 0);
         }
@@ -569,6 +580,9 @@ export default function AdminPage() {
       const slotStart = convertToMins(slot);
       const slotEnd = slotStart + duration;
 
+      // Restrict Reschedule to 11 PM
+      if (slotEnd > 23 * 60) return;
+
       const isConflict = allBusy.some((b: any) => {
         const bStart = convertToMins(b.start_time);
         const bEnd = bStart + (b.duration_minutes || 60);
@@ -596,13 +610,14 @@ export default function AdminPage() {
 
     const { data: existingBookings } = await supabase.from("bookings").select("*").eq("booking_date", slotDate);
     const { data: existingBlocks } = await supabase.from("blocked_slots").select("*").eq("booking_date", slotDate);
+    
     const selectedStart = convertToMins(slotTime);
     let selectedEnd = selectedStart + Number(slotDuration);
     
     if (slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE") {
       if (!slotEndTime) { alert("Please select an End Time for the block"); return; }
       selectedEnd = convertToMins(slotEndTime);
-      if (selectedEnd <= selectedStart) { alert("End time must be after the launch time"); return; }
+      if (selectedEnd <= selectedStart) { alert("End time must be after the start time"); return; }
     }
 
     const actualCalculatedDuration = selectedEnd - selectedStart;
@@ -645,8 +660,8 @@ export default function AdminPage() {
         booking_type: slotCourt === "Full Court" ? "Full Court" : "Half Court",
         court_number: slotCourt,
         total_amount: totalAmount,
-        advance_amount: totalAmount,
-        balance_amount: 0,
+        advance_amount: 200, // Strictly log 200 as advance for consistency
+        balance_amount: 0,   // Marking fully paid internally
         payment_status: "paid",
         payment_method: offlinePaymentMethod,
         cash_received: cashReceived,
@@ -808,6 +823,12 @@ export default function AdminPage() {
     const extensionStart = startMins + currentDur;
     const extensionEnd = extensionStart + Number(extendMinutes);
 
+    // Hard Boundary Check for 11 PM
+    if (extensionEnd > 23 * 60) {
+       alert("⚠️ Extension Failed: The turf closes strictly at 11:00 PM.");
+       return;
+    }
+
     const { data: existingBookings } = await supabase.from("bookings").select("*").eq("booking_date", bDate);
     const { data: existingBlocks } = await supabase.from("blocked_slots").select("*").eq("booking_date", bDate);
 
@@ -872,12 +893,26 @@ export default function AdminPage() {
     .filter((booking) => booking.booking_date?.split("T")[0] === getTodayStr())
     .reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
 
-  /* -------- DYNAMIC EXCEL EXPORT -------- */
+  /* -------- DYNAMIC EXCEL EXPORT (FIXED FOR FULL HISTORY) -------- */
   const exportToExcel = async () => {
     const XLSX = await import("xlsx");
     
+    // FETCH FULL DB HISTORY FOR EXPORT (Not just active feed)
+    const { data: dbBookings, error: dbError } = await supabase
+      .from("bookings")
+      .select("*")
+      .order("booking_date", { ascending: true })
+      .order("start_time", { ascending: true });
+
+    if (dbError) {
+      alert("Failed to fetch full booking history for export.");
+      return;
+    }
+    
+    const fullBookings = dbBookings || [];
+    
     // --- 1. Master Bookings Data ---
-    const exportData = bookings.map((booking, index) => ({
+    const exportData = fullBookings.map((booking, index) => ({
       "S.No.": index + 1,
       "Booking ID": booking.id,
       "Reference ID": booking.booking_reference || "N/A",
@@ -970,20 +1005,20 @@ export default function AdminPage() {
     const workbook = XLSX.utils.book_new();
     const todayStr = getTodayStr(); 
 
-    // A. Master Bookings Sheet
-    const totalRevenue = bookings.reduce((sum, booking) => sum + (booking.total_amount || 0), 0);
-    const totalAdvance = bookings.reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
-    const totalBalance = bookings.reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
-    const totalCashCollected = bookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
-    const totalUpiCollected = bookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
+    // A. Master Bookings Sheet (Using FULL DB)
+    const totalRevenue = fullBookings.reduce((sum, booking) => sum + (booking.total_amount || 0), 0);
+    const totalAdvance = fullBookings.reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
+    const totalBalance = fullBookings.reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
+    const totalCashCollected = fullBookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
+    const totalUpiCollected = fullBookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
     const totalCollection = totalCashCollected + totalUpiCollected;
     const moneyInHand = totalAdvance + totalCollection;
 
     const worksheet = XLSX.utils.aoa_to_sheet([
-      ["SMES TURF BOOKING REPORT"],
+      ["SMES TURF FULL BOOKING REPORT"],
       [`Export Date: ${new Date().toLocaleString("en-IN")}`],
       [],
-      ["Total Bookings", bookings.length],
+      ["Total Bookings", fullBookings.length],
       ["Total Revenue Expected (₹)", totalRevenue],
       ["Advance Collected (₹)", totalAdvance],
       ["Pending Balance (₹)", totalBalance],
@@ -998,53 +1033,62 @@ export default function AdminPage() {
     worksheet["!cols"] = [ { wch: 8 }, { wch: 12 }, { wch: 18 }, { wch: 22 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 15 } ];
     XLSX.utils.book_append_sheet(workbook, worksheet, "Bookings");
 
-    // B. Today Sheet
-    const todayBookings = bookings.filter((booking) => booking.booking_date?.split("T")[0] === todayStr);
-    const todayRevenue = todaysAdvance + todaysBalance;
-    const todayAdvance = todaysAdvance;
-    const todayBalance = todaysBalance;
-    const todayCash = todayBookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
-    const todayUpi = todayBookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
-    const todayCollection = todayCash + todayUpi;
-    const todayMoneyInHand = todayAdvance + todayCollection;
+    // B. Today Sheet (Using FULL DB filtered to today)
+    const todayBookings = fullBookings.filter((booking) => booking.booking_date?.split("T")[0] === todayStr);
+    const tRevenue = todayBookings.reduce((sum, booking) => sum + (booking.total_amount || 0), 0);
+    const tAdvance = todayBookings.reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
+    const tBalance = todayBookings.reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
+    const tCash = todayBookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
+    const tUpi = todayBookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
+    const tCollection = tCash + tUpi;
+    const tMoneyInHand = tAdvance + tCollection;
 
     const todaySheet = XLSX.utils.aoa_to_sheet([
       ["TODAY'S COLLECTION"], [],
       ["Total Bookings", todayBookings.length],
-      ["Total Revenue Expected (₹)", todayRevenue],
-      ["Advance Collected (₹)", todayAdvance],
-      ["Pending Balance (₹)", todayBalance],
-      ["Cash Collected (₹)", todayCash],
-      ["UPI Collected (₹)", todayUpi],
-      ["Total Collected (Cash + UPI) (₹)", todayCollection],
-      ["Actual Money In Hand (Adv + Cash + UPI) (₹)", todayMoneyInHand],
-      ["Settlement Status", todayBalance > 0 ? `⚠️ ₹${todayBalance} DUE` : "✅ SETTLED"],
+      ["Total Revenue Expected (₹)", tRevenue],
+      ["Advance Collected (₹)", tAdvance],
+      ["Pending Balance (₹)", tBalance],
+      ["Cash Collected (₹)", tCash],
+      ["UPI Collected (₹)", tUpi],
+      ["Total Collected (Cash + UPI) (₹)", tCollection],
+      ["Actual Money In Hand (Adv + Cash + UPI) (₹)", tMoneyInHand],
+      ["Settlement Status", tBalance > 0 ? `⚠️ ₹${tBalance} DUE` : "✅ SETTLED"],
     ]);
     XLSX.utils.book_append_sheet(workbook, todaySheet, "Today");
 
-    // C. Monthly Sheet
-    const monthlyCash = bookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
-    const monthlyUpi = bookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
-    const monthlyCollection = monthlyCash + monthlyUpi;
-    const monthlyMoneyInHand = monthlyAdvance + monthlyCollection;
+    // C. Monthly Sheet (Using FULL DB filtered to current month)
+    const thisMonthBookings = fullBookings.filter((booking) => {
+        const d = new Date(booking.booking_date);
+        return d.getMonth() + 1 === (new Date().getMonth() + 1) && d.getFullYear() === new Date().getFullYear();
+    });
+    
+    const mBookings = thisMonthBookings.length;
+    const mRevenue = thisMonthBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0);
+    const mAdvance = thisMonthBookings.reduce((sum, b) => sum + (b.advance_amount || 0), 0);
+    const mBalance = thisMonthBookings.reduce((sum, b) => sum + (b.balance_amount || 0), 0);
+    const mCash = thisMonthBookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
+    const mUpi = thisMonthBookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
+    const mCollection = mCash + mUpi;
+    const mMoneyInHand = mAdvance + mCollection;
 
     const monthlySheet = XLSX.utils.aoa_to_sheet([
       ["MONTHLY COLLECTION"], [],
-      ["Total Bookings", monthlyBookings],
-      ["Total Revenue Expected (₹)", monthlyRevenue],
-      ["Advance Collected (₹)", monthlyAdvance],
-      ["Pending Balance (₹)", monthlyBalance],
-      ["Cash Collected (₹)", monthlyCash],
-      ["UPI Collected (₹)", monthlyUpi],
-      ["Total Collected (Cash + UPI) (₹)", monthlyCollection],
-      ["Actual Money In Hand (Adv + Cash + UPI) (₹)", monthlyMoneyInHand],
-      ["Settlement Status", monthlyBalance > 0 ? `⚠️ ₹${monthlyBalance} DUE` : "✅ SETTLED"],
+      ["Total Bookings", mBookings],
+      ["Total Revenue Expected (₹)", mRevenue],
+      ["Advance Collected (₹)", mAdvance],
+      ["Pending Balance (₹)", mBalance],
+      ["Cash Collected (₹)", mCash],
+      ["UPI Collected (₹)", mUpi],
+      ["Total Collected (Cash + UPI) (₹)", mCollection],
+      ["Actual Money In Hand (Adv + Cash + UPI) (₹)", mMoneyInHand],
+      ["Settlement Status", mBalance > 0 ? `⚠️ ₹${mBalance} DUE` : "✅ SETTLED"],
     ]);
     XLSX.utils.book_append_sheet(workbook, monthlySheet, "Monthly");
 
     // D. Daily Summary Sheet
     const dailyStats: Record<string, any> = {};
-    bookings.forEach(b => {
+    fullBookings.forEach(b => {
       const d = b.booking_date?.split("T")[0] || "Unknown";
       if (!dailyStats[d]) {
         dailyStats[d] = {
@@ -1097,7 +1141,7 @@ export default function AdminPage() {
     attendanceSheet["!cols"] = attCols;
     XLSX.utils.book_append_sheet(workbook, attendanceSheet, "Attendance Record");
 
-    XLSX.writeFile(workbook, `SMES_Master_Report_${todayStr}.xlsx`);
+    XLSX.writeFile(workbook, `SMES_Full_Master_Report_${todayStr}.xlsx`);
   };
 
   const handleLogout = async () => {
@@ -1140,18 +1184,20 @@ export default function AdminPage() {
   };
 
   const resetPayment = async (booking: any) => {
-    const confirmed = confirm("Reset this payment? This will wipe the payment record and set the full amount as due.");
+    const confirmed = confirm("Reset this payment? The advance will remain untouched, but the remaining balance will be marked as DUE again.");
     if (!confirmed) return;
+    
+    // Maintain the fixed ₹200 advance (or whatever it is in DB), only restore the pending balance
+    const originalBalance = (booking.total_amount || 0) - (booking.advance_amount || 0);
     
     const { error = null } = await supabase
       .from("bookings")
       .update({
-        advance_amount: 0, 
         cash_received: 0,
         upi_received: 0,
         payment_method: null,
         payment_completed: false,
-        balance_amount: booking.total_amount || 0, 
+        balance_amount: originalBalance, 
         payment_date: null,
       })
       .eq("id", booking.id);
@@ -1935,7 +1981,7 @@ export default function AdminPage() {
                               {getTimeRangeLabel(booking.start_time, booking.duration_minutes || 60)}
                             </span>
                             <span className="text-[11px] text-neutral-500 font-mono whitespace-nowrap">
-                              {booking.duration_minutes || 60} mins
+                              {formatDurationLabel(booking.duration_minutes || 60)}
                             </span>
                           </div>
                         </td>
@@ -2090,7 +2136,7 @@ export default function AdminPage() {
                       <td className="p-4 font-mono text-xs text-white font-black whitespace-nowrap">
                         {getTimeRangeLabel(slot.start_time, slot.duration_minutes || 60)}
                       </td>
-                      <td className="p-4 text-xs font-mono">{slot.duration_minutes} mins</td>
+                      <td className="p-4 text-xs font-mono">{formatDurationLabel(slot.duration_minutes)}</td>
                       <td className="p-4 font-mono text-xs font-black text-cyan-400">{slot.court_number}</td>
                       <td className="p-4 font-mono text-xs text-neutral-400 uppercase tracking-widest">{slot.reason}</td>
                       <td className="p-4 text-center whitespace-nowrap">
@@ -2241,10 +2287,10 @@ export default function AdminPage() {
                         }}
                         className="w-full p-3 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
                       >
-                        {[30, 60, 90, 120]
+                        {[60, 90, 120, 150, 180]
                           .filter((d) => d >= (selectedManageBooking?.duration_minutes || 60))
                           .map((d) => (
-                            <option key={d} value={d}>{d} mins</option>
+                            <option key={d} value={d}>{formatDurationLabel(d)}</option>
                           ))}
                       </select>
                     </div>
@@ -2278,9 +2324,9 @@ export default function AdminPage() {
                       whileHover={{ y: -1 }}
                       whileTap={{ scale: 0.97 }}
                       onClick={handleRescheduleBooking}
-                      className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors"
+                      className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors flex items-center justify-center gap-2"
                     >
-                      Confirm Reschedule
+                      🔒 OTP & Reschedule
                     </motion.button>
 
                     <button
@@ -2304,7 +2350,7 @@ export default function AdminPage() {
                     </div>
                     <div className="flex justify-between text-neutral-400">
                       <span>Current Duration:</span>
-                      <span className="text-cyan-400 font-bold">{selectedManageBooking.duration_minutes || 60} mins</span>
+                      <span className="text-cyan-400 font-bold">{formatDurationLabel(selectedManageBooking.duration_minutes || 60)}</span>
                     </div>
                   </div>
 
@@ -2315,10 +2361,12 @@ export default function AdminPage() {
                       onChange={(e) => setExtendMinutes(Number(e.target.value))}
                       className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-cyan-400 outline-none text-sm font-mono font-medium transition-colors"
                     >
-                      <option value={30}>+ 30 minutes</option>
-                      <option value={60}>+ 60 minutes (1 hour)</option>
-                      <option value={90}>+ 90 minutes (1.5 hours)</option>
-                      <option value={120}>+ 120 minutes (2 hours)</option>
+                      <option value={30}>+ 30 Mins</option>
+                      <option value={60}>+ 60 Mins (1 Hour)</option>
+                      <option value={90}>+ 90 Mins (1.5 Hours)</option>
+                      <option value={120}>+ 120 Mins (2 Hours)</option>
+                      <option value={150}>+ 150 Mins (2.5 Hours)</option>
+                      <option value={180}>+ 180 Mins (3 Hours)</option>
                     </select>
                   </div>
 
@@ -2342,9 +2390,9 @@ export default function AdminPage() {
                       whileHover={{ y: -1 }}
                       whileTap={{ scale: 0.97 }}
                       onClick={checkAndExtendBooking}
-                      className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors"
+                      className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors flex items-center justify-center gap-2"
                     >
-                      Check & Extend
+                      🔒 Check & Extend
                     </motion.button>
 
                     <button
@@ -2581,9 +2629,11 @@ export default function AdminPage() {
                       className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
                     >
                       <option value={30}>30 mins</option>
-                      <option value={60}>60 mins</option>
-                      <option value={90}>90 mins</option>
-                      <option value={120}>120 mins</option>
+                      <option value={60}>60 Mins (1 Hour)</option>
+                      <option value={90}>90 Mins (1.5 Hours)</option>
+                      <option value={120}>120 Mins (2 Hours)</option>
+                      <option value={150}>150 Mins (2.5 Hours)</option>
+                      <option value={180}>180 Mins (3 Hours)</option>
                     </select>
                   </div>
                 )}
