@@ -44,15 +44,6 @@ export default function AdminPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterDate, setFilterDate] = useState<string>(""); 
   const [blockedSlots, setBlockedSlots] = useState<any[]>([]);
-  const [todaySlots, setTodaySlots] = useState(0);
-  const [tomorrowSlots, setTomorrowSlots] = useState(0);
-  const [monthlyBookings, setMonthlyBookings] = useState(0);
-  const [monthlyRevenue, setMonthlyRevenue] = useState(0);
-  const [monthlyAdvance, setMonthlyAdvance] = useState(0);
-  const [monthlyBalance, setMonthlyBalance] = useState(0);
-  const [todayCashCollection, setTodayCashCollection] = useState(0);
-  const [todayUpiCollection, setTodayUpiCollection] = useState(0);
-  const [todayTotalCollection, setTodayTotalCollection] = useState(0);
   const [showManageSlots, setShowManageSlots] = useState(false);
   const [activeDate, setActiveDate] = useState(getTodayStr());
 
@@ -466,15 +457,12 @@ export default function AdminPage() {
   /* -------- HISTORY / ACTIVE FEED LOGIC -------- */
   const loadBookings = async () => {
     const todayStr = getTodayStr();
-    const tomorrowStr = getTomorrowStr();
 
     let query = supabase.from("bookings").select("*");
 
     if (filterDate) {
-      // If a specific date is selected, pull exactly that date's history
       query = query.eq("booking_date", filterDate);
     } else {
-      // Otherwise, pull default live queue
       query = query.or(`booking_date.gte.${todayStr},balance_amount.gt.0,payment_date.eq.${todayStr}`);
     }
 
@@ -485,20 +473,6 @@ export default function AdminPage() {
     if (error) { console.log(error); return; }
 
     setBookings(data || []);
-    
-    const currentMonth = new Date().getMonth() + 1;
-    const currentYear = new Date().getFullYear();
-
-    const thisMonthBookings =
-      data?.filter((booking) => {
-        const d = new Date(booking.booking_date);
-        return d.getMonth() + 1 === currentMonth && d.getFullYear() === currentYear;
-      }) || [];
-
-    setMonthlyBookings(thisMonthBookings.length);
-    setMonthlyRevenue(thisMonthBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0));
-    setMonthlyAdvance(thisMonthBookings.reduce((sum, b) => sum + (b.advance_amount || 0), 0));
-    setMonthlyBalance(thisMonthBookings.reduce((sum, b) => sum + (b.balance_amount || 0), 0));
 
     let blocksQuery = supabase.from("blocked_slots").select("*");
     if (filterDate) blocksQuery = blocksQuery.eq("booking_date", filterDate);
@@ -509,48 +483,77 @@ export default function AdminPage() {
       .order("start_time", { ascending: true });
 
     setBlockedSlots(blockedData || []);
-    
-    // Stats calculation
-    const todaysBookings = data?.filter((booking) => booking.booking_date?.split("T")[0] === todayStr) || [];
-    const tomorrowsBookings = data?.filter((booking) => booking.booking_date?.split("T")[0] === tomorrowStr) || [];
+  };
 
-    setTodaySlots(todaysBookings.length);
-    setTomorrowSlots(tomorrowsBookings.length);
+  /* -------- ⚡ MATH ENGINE FOR DASHBOARD STAT CARDS -------- */
+  const dashboardStats = useMemo(() => {
+    const targetDateStr = filterDate || getTodayStr();
+    let dSlots = 0;
+    let dAdvance = 0;
+    let dBalance = 0;
+    let dCash = 0;
+    let dUpi = 0;
+    let tomSlots = 0;
 
-    let cashVault = 0;
-    let upiNodes = 0;
+    const tomorrowStr = getTomorrowStr();
 
-    data?.forEach((booking) => {
-      const createdToday = booking.created_at?.split("T")[0] === todayStr;
-      const paidToday = booking.payment_date === todayStr;
+    bookings.forEach((booking) => {
+      const bDate = booking.booking_date?.split("T")[0];
+      const cDate = booking.created_at?.split("T")[0];
+      const pDate = booking.payment_date;
+      
+      const advance = Number(booking.advance_amount || 0);
+      const totalPaid = Number(booking.total_amount || 0) - Number(booking.balance_amount || 0);
+      const cashTotal = Number(booking.cash_received || 0);
+      const upiTotal = Math.max(0, totalPaid - cashTotal);
 
-      if (paidToday) {
-        if (booking.payment_method === "Full Cash") {
-          cashVault += Number(booking.cash_received || 0);
-        } else if (booking.payment_method === "Full UPI") {
-          upiNodes += Number(booking.upi_received || 0);
-        } else if (booking.payment_method === "Cash + UPI") {
-          cashVault += Number(booking.cash_received || 0);
-          upiNodes += Number(booking.upi_received || 0);
-        }
+      // 1. Match Schedule Logic (How many matches playing today?)
+      if (bDate === targetDateStr) {
+        dSlots += 1;
+        dBalance += Number(booking.balance_amount || 0);
+      }
+      if (bDate === tomorrowStr) {
+        tomSlots += 1;
       }
 
-      if (createdToday && booking.customer_name === "Offline Booking") {
-        if (!paidToday) {
-          cashVault += Number(booking.cash_received || 0);
-          upiNodes += Number(booking.upi_received || 0);
-        }
-      }
-
-      if (createdToday && booking.customer_name !== "Offline Booking") {
-        upiNodes += Number(booking.advance_amount || 0);
+      // 2. Exact Cash Flow Logic (Money collected ON the Target Date)
+      if (cDate === targetDateStr) {
+         dAdvance += advance; // Advance was collected today
+         
+         if (booking.customer_name === "Offline Booking") {
+             if (pDate === targetDateStr) {
+                 dCash += cashTotal;
+                 dUpi += upiTotal;
+             }
+         } else {
+             // Online booking advance is ALWAYS UPI
+             dUpi += advance;
+             
+             // Did they ALSO pay the balance today? 
+             if (pDate === targetDateStr && booking.balance_amount === 0 && booking.total_amount > advance) {
+                 dCash += cashTotal;
+                 dUpi += Math.max(0, upiTotal - advance); 
+             }
+         }
+      } 
+      // If the match was booked previously, but the balance was collected TODAY
+      else if (pDate === targetDateStr && booking.balance_amount === 0) {
+         dCash += cashTotal;
+         dUpi += Math.max(0, upiTotal - advance); // Extract the advance, add only new UPI collected
       }
     });
 
-    setTodayCashCollection(cashVault);
-    setTodayUpiCollection(upiNodes);
-    setTodayTotalCollection(cashVault + upiNodes);
-  };
+    return [
+      { label: "Total Active", value: bookings.length, accent: "text-white", tag: "01" },
+      { label: filterDate ? "Selected Matches" : "Today's Matches", value: dSlots, accent: "text-lime-400", tag: "02" },
+      { label: "Pending Due", value: `₹${dBalance}`, accent: "text-red-400", tag: "03" },
+      { label: filterDate ? "Selected Adv" : "Today's Advance", value: `₹${dAdvance}`, accent: "text-emerald-400", tag: "04" },
+      { label: "Cash Vault", value: `₹${dCash}`, accent: "text-amber-400", tag: "05" },
+      { label: "UPI Nodes", value: `₹${dUpi}`, accent: "text-cyan-400", tag: "06" },
+      { label: "Total Collected", value: `₹${dCash + dUpi}`, accent: "text-fuchsia-400", tag: "07" },
+      { label: "Tomorrow Matches", value: tomSlots, accent: "text-neutral-300", tag: "08" },
+    ];
+  }, [bookings, filterDate]);
 
   const loadRescheduleAvailableSlots = async (
     date: string,
@@ -885,15 +888,7 @@ export default function AdminPage() {
     loadBookings();
   };
 
-  // Safe checks for rendering stats 
-  const todaysAdvance = bookings
-    .filter((booking) => booking.created_at?.split("T")[0] === getTodayStr())
-    .reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
-  const todaysBalance = bookings
-    .filter((booking) => booking.booking_date?.split("T")[0] === getTodayStr())
-    .reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
-
-  /* -------- DYNAMIC EXCEL EXPORT (FIXED FOR FULL HISTORY) -------- */
+  /* -------- DYNAMIC EXCEL EXPORT (FIXED MATH & DOUBLE COUNT) -------- */
   const exportToExcel = async () => {
     const XLSX = await import("xlsx");
     
@@ -1001,18 +996,25 @@ export default function AdminPage() {
     }
     processBatch(eveningStudents);
 
-    // --- 3. Build Workbook ---
+    // --- 3. Build Workbook & Perfect Accounting Math ---
     const workbook = XLSX.utils.book_new();
     const todayStr = getTodayStr(); 
 
-    // A. Master Bookings Sheet (Using FULL DB)
+    // A. Master Bookings Sheet
     const totalRevenue = fullBookings.reduce((sum, booking) => sum + (booking.total_amount || 0), 0);
     const totalAdvance = fullBookings.reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
     const totalBalance = fullBookings.reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
-    const totalCashCollected = fullBookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
-    const totalUpiCollected = fullBookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
+    
+    let totalCashCollected = 0;
+    let totalUpiCollected = 0;
+    fullBookings.forEach(booking => {
+       const totalPaid = (booking.total_amount || 0) - (booking.balance_amount || 0);
+       const cash = Number(booking.cash_received || 0);
+       const upi = Math.max(0, totalPaid - cash);
+       totalCashCollected += cash;
+       totalUpiCollected += upi;
+    });
     const totalCollection = totalCashCollected + totalUpiCollected;
-    const moneyInHand = totalAdvance + totalCollection;
 
     const worksheet = XLSX.utils.aoa_to_sheet([
       ["SMES TURF FULL BOOKING REPORT"],
@@ -1023,25 +1025,29 @@ export default function AdminPage() {
       ["Advance Collected (₹)", totalAdvance],
       ["Pending Balance (₹)", totalBalance],
       ["Cash Collected (₹)", totalCashCollected],
-      ["UPI Collected (₹)", totalUpiCollected],
-      ["Total Collected (Cash + UPI) (₹)", totalCollection],
-      ["Actual Money In Hand (Adv + Cash + UPI) (₹)", moneyInHand],
+      ["UPI / Online Collected (₹)", totalUpiCollected],
+      ["Total Money In Hand (₹)", totalCollection],
       [], [],
     ]);
-    XLSX.utils.sheet_add_json(worksheet, exportData, { origin: "A14" });
-    worksheet["!autofilter"] = { ref: `A14:T${14 + exportData.length}` };
+    XLSX.utils.sheet_add_json(worksheet, exportData, { origin: "A13" });
+    worksheet["!autofilter"] = { ref: `A13:T${13 + exportData.length}` };
     worksheet["!cols"] = [ { wch: 8 }, { wch: 12 }, { wch: 18 }, { wch: 22 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 15 } ];
     XLSX.utils.book_append_sheet(workbook, worksheet, "Bookings");
 
-    // B. Today Sheet (Using FULL DB filtered to today)
+    // B. Today Sheet
     const todayBookings = fullBookings.filter((booking) => booking.booking_date?.split("T")[0] === todayStr);
     const tRevenue = todayBookings.reduce((sum, booking) => sum + (booking.total_amount || 0), 0);
     const tAdvance = todayBookings.reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
     const tBalance = todayBookings.reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
-    const tCash = todayBookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
-    const tUpi = todayBookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
+    
+    let tCash = 0; let tUpi = 0;
+    todayBookings.forEach(booking => {
+       const totalPaid = (booking.total_amount || 0) - (booking.balance_amount || 0);
+       const cash = Number(booking.cash_received || 0);
+       const upi = Math.max(0, totalPaid - cash);
+       tCash += cash; tUpi += upi;
+    });
     const tCollection = tCash + tUpi;
-    const tMoneyInHand = tAdvance + tCollection;
 
     const todaySheet = XLSX.utils.aoa_to_sheet([
       ["TODAY'S COLLECTION"], [],
@@ -1050,14 +1056,13 @@ export default function AdminPage() {
       ["Advance Collected (₹)", tAdvance],
       ["Pending Balance (₹)", tBalance],
       ["Cash Collected (₹)", tCash],
-      ["UPI Collected (₹)", tUpi],
-      ["Total Collected (Cash + UPI) (₹)", tCollection],
-      ["Actual Money In Hand (Adv + Cash + UPI) (₹)", tMoneyInHand],
+      ["UPI / Online Collected (₹)", tUpi],
+      ["Total Money In Hand (₹)", tCollection],
       ["Settlement Status", tBalance > 0 ? `⚠️ ₹${tBalance} DUE` : "✅ SETTLED"],
     ]);
     XLSX.utils.book_append_sheet(workbook, todaySheet, "Today");
 
-    // C. Monthly Sheet (Using FULL DB filtered to current month)
+    // C. Monthly Sheet
     const thisMonthBookings = fullBookings.filter((booking) => {
         const d = new Date(booking.booking_date);
         return d.getMonth() + 1 === (new Date().getMonth() + 1) && d.getFullYear() === new Date().getFullYear();
@@ -1067,10 +1072,15 @@ export default function AdminPage() {
     const mRevenue = thisMonthBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0);
     const mAdvance = thisMonthBookings.reduce((sum, b) => sum + (b.advance_amount || 0), 0);
     const mBalance = thisMonthBookings.reduce((sum, b) => sum + (b.balance_amount || 0), 0);
-    const mCash = thisMonthBookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
-    const mUpi = thisMonthBookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
+    
+    let mCash = 0; let mUpi = 0;
+    thisMonthBookings.forEach(booking => {
+       const totalPaid = (booking.total_amount || 0) - (booking.balance_amount || 0);
+       const cash = Number(booking.cash_received || 0);
+       const upi = Math.max(0, totalPaid - cash);
+       mCash += cash; mUpi += upi;
+    });
     const mCollection = mCash + mUpi;
-    const mMoneyInHand = mAdvance + mCollection;
 
     const monthlySheet = XLSX.utils.aoa_to_sheet([
       ["MONTHLY COLLECTION"], [],
@@ -1079,9 +1089,8 @@ export default function AdminPage() {
       ["Advance Collected (₹)", mAdvance],
       ["Pending Balance (₹)", mBalance],
       ["Cash Collected (₹)", mCash],
-      ["UPI Collected (₹)", mUpi],
-      ["Total Collected (Cash + UPI) (₹)", mCollection],
-      ["Actual Money In Hand (Adv + Cash + UPI) (₹)", mMoneyInHand],
+      ["UPI / Online Collected (₹)", mUpi],
+      ["Total Money In Hand (₹)", mCollection],
       ["Settlement Status", mBalance > 0 ? `⚠️ ₹${mBalance} DUE` : "✅ SETTLED"],
     ]);
     XLSX.utils.book_append_sheet(workbook, monthlySheet, "Monthly");
@@ -1099,14 +1108,14 @@ export default function AdminPage() {
           "Pending Balance (₹)": 0,
           "Cash Collected (₹)": 0,
           "UPI Collected (₹)": 0,
-          "Total Collected (Cash+UPI) (₹)": 0,
-          "Actual Money In Hand (Adv+Cash+UPI) (₹)": 0,
+          "Total Money In Hand (₹)": 0,
         };
       }
       const advance = b.advance_amount || 0;
-      const cash = Number(b.cash_received) || 0;
-      const upi = Number(b.upi_received) || 0;
       const balance = b.balance_amount || 0;
+      const totalPaid = (b.total_amount || 0) - balance;
+      const cash = Number(b.cash_received || 0);
+      const upi = Math.max(0, totalPaid - cash);
 
       dailyStats[d]["Total Bookings"] += 1;
       dailyStats[d]["Total Revenue (₹)"] += (b.total_amount || 0);
@@ -1114,8 +1123,7 @@ export default function AdminPage() {
       dailyStats[d]["Pending Balance (₹)"] += balance;
       dailyStats[d]["Cash Collected (₹)"] += cash;
       dailyStats[d]["UPI Collected (₹)"] += upi;
-      dailyStats[d]["Total Collected (Cash+UPI) (₹)"] += (cash + upi);
-      dailyStats[d]["Actual Money In Hand (Adv+Cash+UPI) (₹)"] += (advance + cash + upi);
+      dailyStats[d]["Total Money In Hand (₹)"] += (cash + upi);
     });
 
     const dailySummaryArray = Object.values(dailyStats).map((stat: any) => ({
@@ -1123,8 +1131,8 @@ export default function AdminPage() {
       "Settlement Status": stat["Pending Balance (₹)"] > 0 ? `⚠️ ₹${stat["Pending Balance (₹)"]} DUE` : `✅ SETTLED`
     })).sort((a: any, b: any) => a.Date.localeCompare(b.Date));
     const dailySheet = XLSX.utils.json_to_sheet(dailySummaryArray);
-    dailySheet["!autofilter"] = { ref: `A1:J${1 + dailySummaryArray.length}` };
-    dailySheet["!cols"] = [ { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 28 }, { wch: 38 }, { wch: 20 } ];
+    dailySheet["!autofilter"] = { ref: `A1:I${1 + dailySummaryArray.length}` };
+    dailySheet["!cols"] = [ { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 28 }, { wch: 20 } ];
     XLSX.utils.book_append_sheet(workbook, dailySheet, "Daily Summary");
 
     // E. Coaching Roster Sheet
@@ -1149,34 +1157,50 @@ export default function AdminPage() {
     router.push("/staff");
   };
 
+  // ⚡ FIX: Adjusted savePayment to properly accumulate cash/UPI on top of the original Razorpay advance
   const savePayment = async () => {
     if (!selectedBooking) return;
-    const balance = selectedBooking.balance_amount || 0;
-    let cash = 0;
-    let upi = 0;
+    const balance = Number(selectedBooking.balance_amount || 0);
+    
+    let addCash = 0;
+    let addUpi = 0;
 
-    if (paymentType === "Full Cash") cash = balance;
-    if (paymentType === "Full UPI") upi = balance;
+    if (paymentType === "Full Cash") addCash = balance;
+    if (paymentType === "Full UPI") addUpi = balance;
     if (paymentType === "Cash + UPI") {
-      cash = Number(cashAmount);
-      upi = Number(upiAmount);
-      if (cash + upi !== balance) { alert(`Cash + UPI must equal ₹${balance}`); return; }
+      addCash = Number(cashAmount || 0);
+      addUpi = Number(upiAmount || 0);
+      if (addCash + addUpi !== balance) { 
+        alert(`Cash + UPI must exactly equal the due balance of ₹${balance}`); 
+        return; 
+      }
     }
+
+    const newCash = Number(selectedBooking.cash_received || 0) + addCash;
+    const newUpi = Number(selectedBooking.upi_received || 0) + addUpi;
+
+    // Smart payment method label update
+    let finalMethod = selectedBooking.payment_method || "Cash + UPI";
+    if (selectedBooking.payment_method === "UPI" && paymentType === "Full Cash") finalMethod = "Cash + UPI";
+    else if (selectedBooking.payment_method === "Cash" && paymentType === "Full UPI") finalMethod = "Cash + UPI";
+    else if (paymentType === "Cash + UPI") finalMethod = "Cash + UPI";
+    else if (!selectedBooking.payment_method) finalMethod = paymentType;
 
     const { error } = await supabase
       .from("bookings")
       .update({
-        cash_received: cash,
-        upi_received: upi,
-        payment_method: paymentType,
+        cash_received: newCash,
+        upi_received: newUpi,
+        payment_method: finalMethod,
         payment_completed: true,
         balance_amount: 0,
         payment_date: getTodayStr(), 
       })
       .eq("id", selectedBooking.id);
+      
     if (error) { alert(error.message); return; }
 
-    alert("✅ Payment Saved");
+    alert("✅ Payment Collected & Saved Successfully");
     setShowPaymentModal(false);
     setCashAmount("");
     setUpiAmount("");
@@ -1194,8 +1218,8 @@ export default function AdminPage() {
       .from("bookings")
       .update({
         cash_received: 0,
-        upi_received: 0,
-        payment_method: null,
+        upi_received: booking.advance_amount || 0, // Preserve the original Razorpay advance in the UPI vault
+        payment_method: booking.advance_amount > 0 ? "UPI" : null,
         payment_completed: false,
         balance_amount: originalBalance, 
         payment_date: null,
@@ -1296,17 +1320,6 @@ export default function AdminPage() {
     return academyStudents.filter(s => s.batch === rosterTab);
   }, [academyStudents, rosterTab]);
 
-  const statCards = [
-    { label: "Gross Orders", value: bookings.length, accent: "text-white", tag: "01" },
-    { label: "Today Slots", value: todaySlots, accent: "text-lime-400", tag: "02" },
-    { label: "Tomorrow Slots", value: tomorrowSlots, accent: "text-neutral-300", tag: "03" },
-    { label: "Today Advance", value: `₹${todaysAdvance}`, accent: "text-emerald-400", tag: "04" },
-    { label: "Today Balance", value: `₹${todaysBalance}`, accent: "text-red-400", tag: "05" },
-    { label: "Cash Vault", value: `₹${todayCashCollection}`, accent: "text-amber-400", tag: "06" },
-    { label: "UPI Nodes", value: `₹${todayUpiCollection}`, accent: "text-cyan-400", tag: "07" },
-    { label: "Total Collected", value: `₹${todayTotalCollection}`, accent: "text-fuchsia-400", tag: "08" },
-  ];
-
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden selection:bg-lime-400 selection:text-black">
 
@@ -1375,7 +1388,7 @@ export default function AdminPage() {
           animate="show"
           className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 sm:gap-4 mb-10"
         >
-          {statCards.map((s) => (
+          {dashboardStats.map((s) => (
             <motion.div
               key={s.label}
               variants={fadeUp}
@@ -1802,7 +1815,7 @@ export default function AdminPage() {
                               key={s.id}
                               variants={rowItem}
                               layout
-                              className={`transition-colors ${isUnpaid ? 'bg-red-500/[0.04] hover:bg-red-500/[0.08]' : 'bg-lime-400/[0.02] hover:bg-lime-400/[0.05]'}`}
+                              className={`transition-colors ${isUnpaid ? 'bg-red-500/[0.04] hover:bg-red-500/[0.08]' : 'hover:bg-lime-400/[0.03]'}`}
                             >
                               <td className="p-4">
                                 <div className="font-black text-white flex items-center gap-2">
@@ -1941,7 +1954,6 @@ export default function AdminPage() {
                         layout
                         className={`${rowColor} hover:bg-white/[0.03] transition-colors`}
                       >
-                        {/* 1. COMPACT COLUMN: Client, Booking ID & Reference */}
                         <td className="p-4 align-top">
                           <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -1959,7 +1971,6 @@ export default function AdminPage() {
                           </div>
                         </td>
 
-                        {/* 2. COMPACT COLUMN: Schedule & Time */}
                         <td className="p-4 align-top">
                           <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-2 whitespace-nowrap">
@@ -1986,7 +1997,6 @@ export default function AdminPage() {
                           </div>
                         </td>
 
-                        {/* 3. COMPACT COLUMN: Arena Details */}
                         <td className="p-4 align-top">
                           <div className="flex flex-col gap-1 items-start whitespace-nowrap">
                             <span className="text-xs uppercase tracking-widest font-black text-neutral-300">
@@ -2005,7 +2015,6 @@ export default function AdminPage() {
                           </div>
                         </td>
 
-                        {/* 4. COMPACT COLUMN: Financials */}
                         <td className="p-4 align-top">
                           <div className="flex flex-col gap-1 font-mono text-xs min-w-[120px] whitespace-nowrap">
                             <div className="flex justify-between">
@@ -2018,7 +2027,7 @@ export default function AdminPage() {
                             </div>
                             <div className="flex justify-between border-t border-neutral-800 pt-1 mt-0.5">
                               <span className="text-neutral-500">Due:</span> 
-                              {booking.balance_amount > 0 ? (
+                              {Number(booking.balance_amount || 0) > 0 ? (
                                 <span className="text-red-400 font-black">₹{booking.balance_amount}</span>
                               ) : (
                                 <span className="text-lime-400 font-black">₹0</span>
@@ -2027,10 +2036,9 @@ export default function AdminPage() {
                           </div>
                         </td>
 
-                        {/* 5. COMPACT COLUMN: Operations */}
                         <td className="p-4 align-top text-center">
                           <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
-                            {booking.balance_amount > 0 ? (
+                            {Number(booking.balance_amount || 0) > 0 ? (
                               <motion.button
                                 whileHover={{ y: -1 }}
                                 whileTap={{ scale: 0.96 }}
@@ -2159,7 +2167,7 @@ export default function AdminPage() {
 
         {/* Footer */}
         <div className="text-[10px] font-mono text-neutral-600 uppercase tracking-widest text-center pt-8">
-          // SMES Sports Academy · Admin Terminal · Live Sync Enabled
+          // SMES Sports Academy · Sub-Admin Terminal · Live Sync Enabled
         </div>
       </div>
 
@@ -2287,10 +2295,10 @@ export default function AdminPage() {
                         }}
                         className="w-full p-3 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
                       >
-                        {[60, 90, 120, 150, 180]
+                        {[30, 60, 90, 120]
                           .filter((d) => d >= (selectedManageBooking?.duration_minutes || 60))
                           .map((d) => (
-                            <option key={d} value={d}>{formatDurationLabel(d)}</option>
+                            <option key={d} value={d}>{d} mins</option>
                           ))}
                       </select>
                     </div>
@@ -2324,9 +2332,9 @@ export default function AdminPage() {
                       whileHover={{ y: -1 }}
                       whileTap={{ scale: 0.97 }}
                       onClick={handleRescheduleBooking}
-                      className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors flex items-center justify-center gap-2"
+                      className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors"
                     >
-                      🔒 OTP & Reschedule
+                      Confirm Reschedule
                     </motion.button>
 
                     <button
@@ -2350,7 +2358,7 @@ export default function AdminPage() {
                     </div>
                     <div className="flex justify-between text-neutral-400">
                       <span>Current Duration:</span>
-                      <span className="text-cyan-400 font-bold">{formatDurationLabel(selectedManageBooking.duration_minutes || 60)}</span>
+                      <span className="text-cyan-400 font-bold">{selectedManageBooking.duration_minutes || 60} mins</span>
                     </div>
                   </div>
 
@@ -2361,12 +2369,10 @@ export default function AdminPage() {
                       onChange={(e) => setExtendMinutes(Number(e.target.value))}
                       className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-cyan-400 outline-none text-sm font-mono font-medium transition-colors"
                     >
-                      <option value={30}>+ 30 Mins</option>
-                      <option value={60}>+ 60 Mins (1 Hour)</option>
-                      <option value={90}>+ 90 Mins (1.5 Hours)</option>
-                      <option value={120}>+ 120 Mins (2 Hours)</option>
-                      <option value={150}>+ 150 Mins (2.5 Hours)</option>
-                      <option value={180}>+ 180 Mins (3 Hours)</option>
+                      <option value={30}>+ 30 minutes</option>
+                      <option value={60}>+ 60 minutes (1 hour)</option>
+                      <option value={90}>+ 90 minutes (1.5 hours)</option>
+                      <option value={120}>+ 120 minutes (2 hours)</option>
                     </select>
                   </div>
 
@@ -2390,9 +2396,9 @@ export default function AdminPage() {
                       whileHover={{ y: -1 }}
                       whileTap={{ scale: 0.97 }}
                       onClick={checkAndExtendBooking}
-                      className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors flex items-center justify-center gap-2"
+                      className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors"
                     >
-                      🔒 Check & Extend
+                      Check & Extend
                     </motion.button>
 
                     <button
@@ -2422,7 +2428,7 @@ export default function AdminPage() {
 
       {/* ---------- Payment Modal ---------- */}
       <AnimatePresence>
-        {showPaymentModal && (
+        {showPaymentModal && selectedBooking && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -2568,7 +2574,9 @@ export default function AdminPage() {
                     type="date"
                     value={slotDate}
                     min={getTodayStr()} // Prevents selecting past dates
-                    onChange={(e) => setSlotDate(e.target.value)}
+                    onChange={(e) => {
+                      setSlotDate(e.target.value);
+                    }}
                     style={{ colorScheme: "dark" }}
                     className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
                   />

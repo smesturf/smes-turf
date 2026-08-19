@@ -44,15 +44,6 @@ export default function AdminPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterDate, setFilterDate] = useState<string>(""); 
   const [blockedSlots, setBlockedSlots] = useState<any[]>([]);
-  const [todaySlots, setTodaySlots] = useState(0);
-  const [tomorrowSlots, setTomorrowSlots] = useState(0);
-  const [monthlyBookings, setMonthlyBookings] = useState(0);
-  const [monthlyRevenue, setMonthlyRevenue] = useState(0);
-  const [monthlyAdvance, setMonthlyAdvance] = useState(0);
-  const [monthlyBalance, setMonthlyBalance] = useState(0);
-  const [todayCashCollection, setTodayCashCollection] = useState(0);
-  const [todayUpiCollection, setTodayUpiCollection] = useState(0);
-  const [todayTotalCollection, setTodayTotalCollection] = useState(0);
   const [showManageSlots, setShowManageSlots] = useState(false);
   const [activeDate, setActiveDate] = useState(getTodayStr());
 
@@ -153,6 +144,7 @@ export default function AdminPage() {
   const [offlineUpiAmount, setOfflineUpiAmount] = useState("");
 
   const [availableAdminSlots, setAvailableAdminSlots] = useState<string[]>([]);
+  const [availableCourts, setAvailableCourts] = useState(["Full Court", "Court 1", "Court 2"]);
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
@@ -472,7 +464,6 @@ export default function AdminPage() {
 
   const loadBookings = async () => {
     const todayStr = getTodayStr();
-    const tomorrowStr = getTomorrowStr();
 
     let query = supabase.from("bookings").select("*");
 
@@ -489,20 +480,6 @@ export default function AdminPage() {
     if (error) { console.log(error); return; }
 
     setBookings(data || []);
-    
-    const currentMonth = new Date().getMonth() + 1;
-    const currentYear = new Date().getFullYear();
-
-    const thisMonthBookings =
-      data?.filter((booking) => {
-        const d = new Date(booking.booking_date);
-        return d.getMonth() + 1 === currentMonth && d.getFullYear() === currentYear;
-      }) || [];
-
-    setMonthlyBookings(thisMonthBookings.length);
-    setMonthlyRevenue(thisMonthBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0));
-    setMonthlyAdvance(thisMonthBookings.reduce((sum, b) => sum + (b.advance_amount || 0), 0));
-    setMonthlyBalance(thisMonthBookings.reduce((sum, b) => sum + (b.balance_amount || 0), 0));
 
     let blocksQuery = supabase.from("blocked_slots").select("*");
     if (filterDate) blocksQuery = blocksQuery.eq("booking_date", filterDate);
@@ -513,47 +490,141 @@ export default function AdminPage() {
       .order("start_time", { ascending: true });
 
     setBlockedSlots(blockedData || []);
-    
-    // Stats calculation
-    const todaysBookings = data?.filter((booking) => booking.booking_date?.split("T")[0] === todayStr) || [];
-    const tomorrowsBookings = data?.filter((booking) => booking.booking_date?.split("T")[0] === tomorrowStr) || [];
+  };
 
-    setTodaySlots(todaysBookings.length);
-    setTomorrowSlots(tomorrowsBookings.length);
+  /* -------- ⚡ MATH ENGINE FOR DASHBOARD STAT CARDS -------- */
+  const dashboardStats = useMemo(() => {
+    const targetDateStr = filterDate || getTodayStr();
+    let dSlots = 0;
+    let dAdvance = 0;
+    let dBalance = 0;
+    let dCash = 0;
+    let dUpi = 0;
+    let tomSlots = 0;
 
-    let cashVault = 0;
-    let upiNodes = 0;
+    const tomorrowStr = getTomorrowStr();
 
-    data?.forEach((booking) => {
-      const createdToday = booking.created_at?.split("T")[0] === todayStr;
-      const paidToday = booking.payment_date === todayStr;
+    bookings.forEach((booking) => {
+      const bDate = booking.booking_date?.split("T")[0];
+      const cDate = booking.created_at?.split("T")[0];
+      const pDate = booking.payment_date;
+      
+      const advance = Number(booking.advance_amount || 0);
+      const totalPaid = Number(booking.total_amount || 0) - Number(booking.balance_amount || 0);
+      const cashTotal = Number(booking.cash_received || 0);
+      const upiTotal = Math.max(0, totalPaid - cashTotal);
 
-      if (paidToday) {
-        if (booking.payment_method === "Full Cash") {
-          cashVault += Number(booking.cash_received || 0);
-        } else if (booking.payment_method === "Full UPI") {
-          upiNodes += Number(booking.upi_received || 0);
-        } else if (booking.payment_method === "Cash + UPI") {
-          cashVault += Number(booking.cash_received || 0);
-          upiNodes += Number(booking.upi_received || 0);
-        }
+      // 1. Match Schedule Logic (How many matches playing today?)
+      if (bDate === targetDateStr) {
+        dSlots += 1;
+        dBalance += Number(booking.balance_amount || 0);
+      }
+      if (bDate === tomorrowStr) {
+        tomSlots += 1;
       }
 
-      if (createdToday && booking.customer_name === "Offline Booking") {
-        if (!paidToday) {
-          cashVault += Number(booking.cash_received || 0);
-          upiNodes += Number(booking.upi_received || 0);
-        }
-      }
-
-      if (createdToday && booking.customer_name !== "Offline Booking") {
-        upiNodes += Number(booking.advance_amount || 0);
+      // 2. Exact Cash Flow Logic (Money collected ON the Target Date)
+      if (cDate === targetDateStr) {
+         dAdvance += advance; // Advance was collected today
+         
+         if (booking.customer_name === "Offline Booking") {
+             if (pDate === targetDateStr) {
+                 dCash += cashTotal;
+                 dUpi += upiTotal;
+             }
+         } else {
+             // Online booking advance is ALWAYS UPI
+             dUpi += advance;
+             
+             // Did they ALSO pay the balance today? 
+             if (pDate === targetDateStr && booking.balance_amount === 0 && booking.total_amount > advance) {
+                 dCash += cashTotal;
+                 dUpi += Math.max(0, upiTotal - advance); 
+             }
+         }
+      } 
+      // If the match was booked previously, but the balance was collected TODAY
+      else if (pDate === targetDateStr && booking.balance_amount === 0) {
+         dCash += cashTotal;
+         dUpi += Math.max(0, upiTotal - advance); // Extract the advance, add only new UPI collected
       }
     });
 
-    setTodayCashCollection(cashVault);
-    setTodayUpiCollection(upiNodes);
-    setTodayTotalCollection(cashVault + upiNodes);
+    return [
+      { label: "Total Active", value: bookings.length, accent: "text-white", tag: "01" },
+      { label: filterDate ? "Selected Matches" : "Today's Matches", value: dSlots, accent: "text-lime-400", tag: "02" },
+      { label: "Pending Due", value: `₹${dBalance}`, accent: "text-red-400", tag: "03" },
+      { label: filterDate ? "Selected Adv" : "Today's Advance", value: `₹${dAdvance}`, accent: "text-emerald-400", tag: "04" },
+      { label: "Cash Vault", value: `₹${dCash}`, accent: "text-amber-400", tag: "05" },
+      { label: "UPI Nodes", value: `₹${dUpi}`, accent: "text-cyan-400", tag: "06" },
+      { label: "Total Collected", value: `₹${dCash + dUpi}`, accent: "text-fuchsia-400", tag: "07" },
+      { label: "Tomorrow Matches", value: tomSlots, accent: "text-neutral-300", tag: "08" },
+    ];
+  }, [bookings, filterDate]);
+
+  const loadAvailableAdminSlots = async (date: string) => {
+    const { data: bookings } = await supabase
+      .from("bookings")
+      .select("start_time,duration_minutes,booking_type,court_number")
+      .eq("booking_date", date);
+    const { data: blocked } = await supabase
+      .from("blocked_slots")
+      .select("start_time,duration_minutes,court_number")
+      .eq("booking_date", date);
+    const availableTimes: string[] = [];
+
+    adminTimeSlots.forEach((slot) => {
+      const selectedMinutes = convertToMins(slot);
+      let court1Available = true;
+      let court2Available = true;
+
+      [...(bookings || []), ...(blocked || [])].forEach((b: any) => {
+        const startMinutes = convertToMins(b.start_time);
+        const endMinutes = startMinutes + (b.duration_minutes || 60);
+        const overlaps = selectedMinutes >= startMinutes && selectedMinutes < endMinutes;
+        if (!overlaps) return;
+
+        if (b.booking_type === "Full Court" || b.court_number === "Full Court" || b.court_number === "Both Courts") {
+          court1Available = false; court2Available = false;
+        } else if (b.court_number === "Court 1") { court1Available = false; }
+        else if (b.court_number === "Court 2") { court2Available = false; }
+      });
+
+      if (court1Available || court2Available) availableTimes.push(slot);
+    });
+    setAvailableAdminSlots(availableTimes);
+  };
+
+  const loadAvailableCourts = async (date: string, time: string) => {
+    const { data: bookings } = await supabase
+      .from("bookings")
+      .select("*")
+      .eq("booking_date", date);
+
+    const { data: blocked } = await supabase
+      .from("blocked_slots")
+      .select("*")
+      .eq("booking_date", date);
+
+    let courts = ["Full Court", "Court 1", "Court 2"];
+    const selectedMinutes = convertToMins(time);
+
+    [...(bookings || []), ...(blocked || [])].forEach((b: any) => {
+      const startMinutes = convertToMins(b.start_time);
+      const endMinutes = startMinutes + (b.duration_minutes || 60);
+      const overlaps = selectedMinutes >= startMinutes && selectedMinutes < endMinutes;
+      if (!overlaps) return;
+
+      if (b.booking_type === "Full Court" || b.court_number === "Full Court" || b.court_number === "Both Courts") {
+        courts = [];
+      } else if (b.court_number === "Court 1") {
+        courts = courts.filter((c) => c !== "Court 1" && c !== "Full Court");
+      } else if (b.court_number === "Court 2") {
+        courts = courts.filter((c) => c !== "Court 2" && c !== "Full Court");
+      }
+    });
+
+    setAvailableCourts(courts);
   };
 
   const loadRescheduleAvailableSlots = async (
@@ -697,6 +768,7 @@ export default function AdminPage() {
 
     alert("✅ Field Block Saved Successfully");
     await loadBookings();
+    if (slotDate) loadAvailableAdminSlots(slotDate);
 
     setSlotDate(""); setSlotTime(""); setSlotEndTime(""); setSlotDuration(60);
     setSlotReason("OFFLINE BOOKING"); setSlotCourt("Full Court");
@@ -950,14 +1022,7 @@ export default function AdminPage() {
 
   /* ========================================================================= */
 
-  const todaysAdvance = bookings
-    .filter((booking) => booking.created_at?.split("T")[0] === getTodayStr())
-    .reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
-  const todaysBalance = bookings
-    .filter((booking) => booking.booking_date?.split("T")[0] === getTodayStr())
-    .reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
-
-  /* -------- DYNAMIC EXCEL EXPORT (FIXED FOR FULL HISTORY) -------- */
+  /* -------- DYNAMIC EXCEL EXPORT (FIXED MATH & DOUBLE COUNT) -------- */
   const exportToExcel = async () => {
     const XLSX = await import("xlsx");
     
@@ -1065,18 +1130,25 @@ export default function AdminPage() {
     }
     processBatch(eveningStudents);
 
-    // --- 3. Build Workbook ---
+    // --- 3. Build Workbook & Perfect Accounting Math ---
     const workbook = XLSX.utils.book_new();
     const todayStr = getTodayStr(); 
 
-    // A. Master Bookings Sheet (Using FULL DB)
+    // A. Master Bookings Sheet
     const totalRevenue = fullBookings.reduce((sum, booking) => sum + (booking.total_amount || 0), 0);
     const totalAdvance = fullBookings.reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
     const totalBalance = fullBookings.reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
-    const totalCashCollected = fullBookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
-    const totalUpiCollected = fullBookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
+    
+    let totalCashCollected = 0;
+    let totalUpiCollected = 0;
+    fullBookings.forEach(booking => {
+       const totalPaid = (booking.total_amount || 0) - (booking.balance_amount || 0);
+       const cash = Number(booking.cash_received || 0);
+       const upi = Math.max(0, totalPaid - cash);
+       totalCashCollected += cash;
+       totalUpiCollected += upi;
+    });
     const totalCollection = totalCashCollected + totalUpiCollected;
-    const moneyInHand = totalAdvance + totalCollection;
 
     const worksheet = XLSX.utils.aoa_to_sheet([
       ["SMES TURF FULL BOOKING REPORT"],
@@ -1087,25 +1159,29 @@ export default function AdminPage() {
       ["Advance Collected (₹)", totalAdvance],
       ["Pending Balance (₹)", totalBalance],
       ["Cash Collected (₹)", totalCashCollected],
-      ["UPI Collected (₹)", totalUpiCollected],
-      ["Total Collected (Cash + UPI) (₹)", totalCollection],
-      ["Actual Money In Hand (Adv + Cash + UPI) (₹)", moneyInHand],
+      ["UPI / Online Collected (₹)", totalUpiCollected],
+      ["Total Money In Hand (₹)", totalCollection],
       [], [],
     ]);
-    XLSX.utils.sheet_add_json(worksheet, exportData, { origin: "A14" });
-    worksheet["!autofilter"] = { ref: `A14:T${14 + exportData.length}` };
+    XLSX.utils.sheet_add_json(worksheet, exportData, { origin: "A13" });
+    worksheet["!autofilter"] = { ref: `A13:T${13 + exportData.length}` };
     worksheet["!cols"] = [ { wch: 8 }, { wch: 12 }, { wch: 18 }, { wch: 22 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 15 } ];
     XLSX.utils.book_append_sheet(workbook, worksheet, "Bookings");
 
-    // B. Today Sheet (Using FULL DB filtered to today)
+    // B. Today Sheet
     const todayBookings = fullBookings.filter((booking) => booking.booking_date?.split("T")[0] === todayStr);
     const tRevenue = todayBookings.reduce((sum, booking) => sum + (booking.total_amount || 0), 0);
     const tAdvance = todayBookings.reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
     const tBalance = todayBookings.reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
-    const tCash = todayBookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
-    const tUpi = todayBookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
+    
+    let tCash = 0; let tUpi = 0;
+    todayBookings.forEach(booking => {
+       const totalPaid = (booking.total_amount || 0) - (booking.balance_amount || 0);
+       const cash = Number(booking.cash_received || 0);
+       const upi = Math.max(0, totalPaid - cash);
+       tCash += cash; tUpi += upi;
+    });
     const tCollection = tCash + tUpi;
-    const tMoneyInHand = tAdvance + tCollection;
 
     const todaySheet = XLSX.utils.aoa_to_sheet([
       ["TODAY'S COLLECTION"], [],
@@ -1114,14 +1190,13 @@ export default function AdminPage() {
       ["Advance Collected (₹)", tAdvance],
       ["Pending Balance (₹)", tBalance],
       ["Cash Collected (₹)", tCash],
-      ["UPI Collected (₹)", tUpi],
-      ["Total Collected (Cash + UPI) (₹)", tCollection],
-      ["Actual Money In Hand (Adv + Cash + UPI) (₹)", tMoneyInHand],
+      ["UPI / Online Collected (₹)", tUpi],
+      ["Total Money In Hand (₹)", tCollection],
       ["Settlement Status", tBalance > 0 ? `⚠️ ₹${tBalance} DUE` : "✅ SETTLED"],
     ]);
     XLSX.utils.book_append_sheet(workbook, todaySheet, "Today");
 
-    // C. Monthly Sheet (Using FULL DB filtered to current month)
+    // C. Monthly Sheet
     const thisMonthBookings = fullBookings.filter((booking) => {
         const d = new Date(booking.booking_date);
         return d.getMonth() + 1 === (new Date().getMonth() + 1) && d.getFullYear() === new Date().getFullYear();
@@ -1131,10 +1206,15 @@ export default function AdminPage() {
     const mRevenue = thisMonthBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0);
     const mAdvance = thisMonthBookings.reduce((sum, b) => sum + (b.advance_amount || 0), 0);
     const mBalance = thisMonthBookings.reduce((sum, b) => sum + (b.balance_amount || 0), 0);
-    const mCash = thisMonthBookings.reduce((sum, booking) => sum + Number(booking.cash_received || 0), 0);
-    const mUpi = thisMonthBookings.reduce((sum, booking) => sum + Number(booking.upi_received || 0), 0);
+    
+    let mCash = 0; let mUpi = 0;
+    thisMonthBookings.forEach(booking => {
+       const totalPaid = (booking.total_amount || 0) - (booking.balance_amount || 0);
+       const cash = Number(booking.cash_received || 0);
+       const upi = Math.max(0, totalPaid - cash);
+       mCash += cash; mUpi += upi;
+    });
     const mCollection = mCash + mUpi;
-    const mMoneyInHand = mAdvance + mCollection;
 
     const monthlySheet = XLSX.utils.aoa_to_sheet([
       ["MONTHLY COLLECTION"], [],
@@ -1143,9 +1223,8 @@ export default function AdminPage() {
       ["Advance Collected (₹)", mAdvance],
       ["Pending Balance (₹)", mBalance],
       ["Cash Collected (₹)", mCash],
-      ["UPI Collected (₹)", mUpi],
-      ["Total Collected (Cash + UPI) (₹)", mCollection],
-      ["Actual Money In Hand (Adv + Cash + UPI) (₹)", mMoneyInHand],
+      ["UPI / Online Collected (₹)", mUpi],
+      ["Total Money In Hand (₹)", mCollection],
       ["Settlement Status", mBalance > 0 ? `⚠️ ₹${mBalance} DUE` : "✅ SETTLED"],
     ]);
     XLSX.utils.book_append_sheet(workbook, monthlySheet, "Monthly");
@@ -1163,14 +1242,14 @@ export default function AdminPage() {
           "Pending Balance (₹)": 0,
           "Cash Collected (₹)": 0,
           "UPI Collected (₹)": 0,
-          "Total Collected (Cash+UPI) (₹)": 0,
-          "Actual Money In Hand (Adv+Cash+UPI) (₹)": 0,
+          "Total Money In Hand (₹)": 0,
         };
       }
       const advance = b.advance_amount || 0;
-      const cash = Number(b.cash_received) || 0;
-      const upi = Number(b.upi_received) || 0;
       const balance = b.balance_amount || 0;
+      const totalPaid = (b.total_amount || 0) - balance;
+      const cash = Number(b.cash_received || 0);
+      const upi = Math.max(0, totalPaid - cash);
 
       dailyStats[d]["Total Bookings"] += 1;
       dailyStats[d]["Total Revenue (₹)"] += (b.total_amount || 0);
@@ -1178,8 +1257,7 @@ export default function AdminPage() {
       dailyStats[d]["Pending Balance (₹)"] += balance;
       dailyStats[d]["Cash Collected (₹)"] += cash;
       dailyStats[d]["UPI Collected (₹)"] += upi;
-      dailyStats[d]["Total Collected (Cash+UPI) (₹)"] += (cash + upi);
-      dailyStats[d]["Actual Money In Hand (Adv+Cash+UPI) (₹)"] += (advance + cash + upi);
+      dailyStats[d]["Total Money In Hand (₹)"] += (cash + upi);
     });
 
     const dailySummaryArray = Object.values(dailyStats).map((stat: any) => ({
@@ -1187,8 +1265,8 @@ export default function AdminPage() {
       "Settlement Status": stat["Pending Balance (₹)"] > 0 ? `⚠️ ₹${stat["Pending Balance (₹)"]} DUE` : `✅ SETTLED`
     })).sort((a: any, b: any) => a.Date.localeCompare(b.Date));
     const dailySheet = XLSX.utils.json_to_sheet(dailySummaryArray);
-    dailySheet["!autofilter"] = { ref: `A1:J${1 + dailySummaryArray.length}` };
-    dailySheet["!cols"] = [ { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 28 }, { wch: 38 }, { wch: 20 } ];
+    dailySheet["!autofilter"] = { ref: `A1:I${1 + dailySummaryArray.length}` };
+    dailySheet["!cols"] = [ { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 28 }, { wch: 20 } ];
     XLSX.utils.book_append_sheet(workbook, dailySheet, "Daily Summary");
 
     // E. Coaching Roster Sheet
@@ -1378,17 +1456,6 @@ export default function AdminPage() {
     return academyStudents.filter(s => s.batch === rosterTab);
   }, [academyStudents, rosterTab]);
 
-  const statCards = useMemo(() => [
-    { label: "Gross Orders", value: bookings.length, accent: "text-white", tag: "01" },
-    { label: "Today Slots", value: todaySlots, accent: "text-lime-400", tag: "02" },
-    { label: "Tomorrow Slots", value: tomorrowSlots, accent: "text-neutral-300", tag: "03" },
-    { label: "Today Advance", value: `₹${todaysAdvance}`, accent: "text-emerald-400", tag: "04" },
-    { label: "Today Balance", value: `₹${todaysBalance}`, accent: "text-red-400", tag: "05" },
-    { label: "Cash Vault", value: `₹${todayCashCollection}`, accent: "text-amber-400", tag: "06" },
-    { label: "UPI Nodes", value: `₹${todayUpiCollection}`, accent: "text-cyan-400", tag: "07" },
-    { label: "Total Collected", value: `₹${todayTotalCollection}`, accent: "text-fuchsia-400", tag: "08" },
-  ], [bookings.length, todaySlots, tomorrowSlots, todaysAdvance, todaysBalance, todayCashCollection, todayUpiCollection, todayTotalCollection]);
-
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden selection:bg-lime-400 selection:text-black">
 
@@ -1457,7 +1524,7 @@ export default function AdminPage() {
           animate="show"
           className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 sm:gap-4 mb-10"
         >
-          {statCards.map((s) => (
+          {dashboardStats.map((s) => (
             <motion.div
               key={s.label}
               variants={fadeUp}
@@ -1509,6 +1576,7 @@ export default function AdminPage() {
               onClick={() => {
                 setShowManageSlots(true);
                 setSlotDate(getTodayStr());
+                loadAvailableAdminSlots(getTodayStr());
               }}
             >
               ⚙️ Manage Slots
@@ -2672,7 +2740,12 @@ export default function AdminPage() {
                     type="date"
                     value={slotDate}
                     min={getTodayStr()} // Prevents selecting past dates
-                    onChange={(e) => setSlotDate(e.target.value)}
+                    onChange={(e) => {
+                      setSlotDate(e.target.value);
+                      if (e.target.value) {
+                        loadAvailableAdminSlots(e.target.value);
+                      }
+                    }}
                     style={{ colorScheme: "dark" }}
                     className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
                   />
