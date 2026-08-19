@@ -144,7 +144,6 @@ export default function AdminPage() {
   const [offlineUpiAmount, setOfflineUpiAmount] = useState("");
 
   const [availableAdminSlots, setAvailableAdminSlots] = useState<string[]>([]);
-  const [availableCourts, setAvailableCourts] = useState(["Full Court", "Court 1", "Court 2"]);
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
@@ -562,71 +561,6 @@ export default function AdminPage() {
     ];
   }, [bookings, filterDate]);
 
-  const loadAvailableAdminSlots = async (date: string) => {
-    const { data: bookings } = await supabase
-      .from("bookings")
-      .select("start_time,duration_minutes,booking_type,court_number")
-      .eq("booking_date", date);
-    const { data: blocked } = await supabase
-      .from("blocked_slots")
-      .select("start_time,duration_minutes,court_number")
-      .eq("booking_date", date);
-    const availableTimes: string[] = [];
-
-    adminTimeSlots.forEach((slot) => {
-      const selectedMinutes = convertToMins(slot);
-      let court1Available = true;
-      let court2Available = true;
-
-      [...(bookings || []), ...(blocked || [])].forEach((b: any) => {
-        const startMinutes = convertToMins(b.start_time);
-        const endMinutes = startMinutes + (b.duration_minutes || 60);
-        const overlaps = selectedMinutes >= startMinutes && selectedMinutes < endMinutes;
-        if (!overlaps) return;
-
-        if (b.booking_type === "Full Court" || b.court_number === "Full Court" || b.court_number === "Both Courts") {
-          court1Available = false; court2Available = false;
-        } else if (b.court_number === "Court 1") { court1Available = false; }
-        else if (b.court_number === "Court 2") { court2Available = false; }
-      });
-
-      if (court1Available || court2Available) availableTimes.push(slot);
-    });
-    setAvailableAdminSlots(availableTimes);
-  };
-
-  const loadAvailableCourts = async (date: string, time: string) => {
-    const { data: bookings } = await supabase
-      .from("bookings")
-      .select("*")
-      .eq("booking_date", date);
-
-    const { data: blocked } = await supabase
-      .from("blocked_slots")
-      .select("*")
-      .eq("booking_date", date);
-
-    let courts = ["Full Court", "Court 1", "Court 2"];
-    const selectedMinutes = convertToMins(time);
-
-    [...(bookings || []), ...(blocked || [])].forEach((b: any) => {
-      const startMinutes = convertToMins(b.start_time);
-      const endMinutes = startMinutes + (b.duration_minutes || 60);
-      const overlaps = selectedMinutes >= startMinutes && selectedMinutes < endMinutes;
-      if (!overlaps) return;
-
-      if (b.booking_type === "Full Court" || b.court_number === "Full Court" || b.court_number === "Both Courts") {
-        courts = [];
-      } else if (b.court_number === "Court 1") {
-        courts = courts.filter((c) => c !== "Court 1" && c !== "Full Court");
-      } else if (b.court_number === "Court 2") {
-        courts = courts.filter((c) => c !== "Court 2" && c !== "Full Court");
-      }
-    });
-
-    setAvailableCourts(courts);
-  };
-
   const loadRescheduleAvailableSlots = async (
     date: string,
     duration: number = rescheduleDuration,
@@ -735,7 +669,7 @@ export default function AdminPage() {
         booking_type: slotCourt === "Full Court" ? "Full Court" : "Half Court",
         court_number: slotCourt,
         total_amount: totalAmount,
-        advance_amount: 200, // Strictly log 200 as advance for consistency
+        advance_amount: 0, // ⚡ OFFLINE ADVANCE STRICTLY SET TO 0
         balance_amount: 0,   // Marking fully paid internally
         payment_status: "paid",
         payment_method: offlinePaymentMethod,
@@ -768,7 +702,6 @@ export default function AdminPage() {
 
     alert("✅ Field Block Saved Successfully");
     await loadBookings();
-    if (slotDate) loadAvailableAdminSlots(slotDate);
 
     setSlotDate(""); setSlotTime(""); setSlotEndTime(""); setSlotDuration(60);
     setSlotReason("OFFLINE BOOKING"); setSlotCourt("Full Court");
@@ -1576,7 +1509,6 @@ export default function AdminPage() {
               onClick={() => {
                 setShowManageSlots(true);
                 setSlotDate(getTodayStr());
-                loadAvailableAdminSlots(getTodayStr());
               }}
             >
               ⚙️ Manage Slots
@@ -2742,9 +2674,6 @@ export default function AdminPage() {
                     min={getTodayStr()} // Prevents selecting past dates
                     onChange={(e) => {
                       setSlotDate(e.target.value);
-                      if (e.target.value) {
-                        loadAvailableAdminSlots(e.target.value);
-                      }
                     }}
                     style={{ colorScheme: "dark" }}
                     className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"

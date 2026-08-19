@@ -85,7 +85,8 @@ export async function POST(req: Request) {
               { type: "text", text: String(totalAmount || 0) },// {{9}}
               { type: "text", text: String(advanceAmount || 0)},// {{10}}
               { type: "text", text: String(balanceAmount || 0)},// {{11}}
-              { type: "text", text: String(referenceId || "") },// {{12}}
+              // ⚡ COMBINED BOOKING ID & REFERENCE ID INTO VARIABLE 12 
+              { type: "text", text: `${bookingId || ""} | ${referenceId || ""}` },// {{12}}
             ],
           }],
         },

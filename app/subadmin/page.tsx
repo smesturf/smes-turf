@@ -6,7 +6,7 @@ import { supabase } from "../lib/supabase";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 
 /* ------------------------------------------------------------------ */
-/*  Motion Presets                                                    */
+/* Motion Presets                                                     */
 /* ------------------------------------------------------------------ */
 const easeOut = [0.22, 1, 0.36, 1] as const;
 
@@ -25,7 +25,7 @@ const rowItem = {
   show: { opacity: 1, x: 0, transition: { duration: 0.35, ease: easeOut } },
 };
 
-// ⚙️ Midnight Rollover Helpers
+// ⚙️ Midnight Rollover Helpers 
 const getTodayStr = () => {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 };
@@ -37,7 +37,7 @@ const getTomorrowStr = () => {
 
 type BatchTabType = "Morning Batch" | "Evening Batch";
 
-export default function AdminPage() {
+export default function SubAdminPage() {
   const router = useRouter();
 
   const [bookings, setBookings] = useState<any[]>([]);
@@ -62,7 +62,7 @@ export default function AdminPage() {
   const [adminExistingMethod, setAdminExistingMethod] = useState("UPI");
   const [isSendingEmails, setIsSendingEmails] = useState(false);
 
-  // ⚙️ Manage Booking Pop-Up States (Sub-Admin Restricted)
+  // ⚙️ Manage Booking Pop-Up States
   const [showManageModal, setShowManageModal] = useState(false);
   const [selectedManageBooking, setSelectedManageBooking] = useState<any>(null);
   const [manageMode, setManageMode] = useState<"options" | "reschedule" | "extend">("options");
@@ -73,12 +73,12 @@ export default function AdminPage() {
   const [availableRescheduleSlots, setAvailableRescheduleSlots] = useState<string[]>([]);
   const [extendMinutes, setExtendMinutes] = useState(30);
 
-  // 🔒 Security OTP States
+  // 🔒 Security OTP States (Sub-Admin Restricted)
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [otpInput, setOtpInput] = useState("");
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
-  const [otpPendingAction, setOtpPendingAction] = useState<"reschedule" | "extend" | null>(null);
+  const [pendingAction, setPendingAction] = useState<"reschedule" | "extend" | null>(null);
 
   const FIXED_COACHING_FEE = 2500;
   const currentMonthYear = new Date().toISOString().slice(0, 7);
@@ -131,7 +131,6 @@ export default function AdminPage() {
     return slots;
   }, []);
 
-  // ⚙️ Manage Slots Logic
   const [slotDate, setSlotDate] = useState("");
   const [slotReason, setSlotReason] = useState("OFFLINE BOOKING");
   const [slotTime, setSlotTime] = useState("");
@@ -145,7 +144,6 @@ export default function AdminPage() {
   const [offlineUpiAmount, setOfflineUpiAmount] = useState("");
 
   const [availableAdminSlots, setAvailableAdminSlots] = useState<string[]>([]);
-
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
   const [paymentType, setPaymentType] = useState("Full Cash");
@@ -154,32 +152,42 @@ export default function AdminPage() {
 
   /* -------- Security Auth & Realtime Loader -------- */
   useEffect(() => {
-    const verifyAuth = async () => {
-      const { data, error } = await supabase.auth.getSession();
-      if (error || !data.session) {
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
         router.push("/staff");
-        return;
-      }
-      loadBookings();
-      loadAcademyData();
-    };
-
-    verifyAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT' || !session) {
-        router.push("/staff");
+      } else {
+        loadBookings();
+        loadAcademyData();
       }
     });
 
-    const bookingsChannel = supabase.channel("bookings-realtime").on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, () => { loadBookings(); }).subscribe();
-    const blockedChannel = supabase.channel("blocked-slots-realtime").on("postgres_changes", { event: "*", schema: "public", table: "blocked_slots" }, () => { loadBookings(); }).subscribe();
-    const studentsChannel = supabase.channel("students-realtime-admin").on("postgres_changes", { event: "*", schema: "public", table: "students" }, () => loadAcademyData()).subscribe();
-    const paymentsChannel = supabase.channel("payments-realtime-admin").on("postgres_changes", { event: "*", schema: "public", table: "student_payments" }, () => loadAcademyData()).subscribe();
-    const attendanceChannel = supabase.channel("attendance-realtime-admin").on("postgres_changes", { event: "*", schema: "public", table: "student_attendance" }, () => loadAcademyData()).subscribe();
+    const bookingsChannel = supabase
+      .channel("bookings-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, () => { loadBookings(); })
+      .subscribe();
+
+    const blockedChannel = supabase
+      .channel("blocked-slots-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "blocked_slots" }, () => { loadBookings(); })
+      .subscribe();
+
+    const studentsChannel = supabase
+      .channel("students-realtime-admin")
+      .on("postgres_changes", { event: "*", schema: "public", table: "students" }, () => loadAcademyData())
+      .subscribe();
+
+    const paymentsChannel = supabase
+      .channel("payments-realtime-admin")
+      .on("postgres_changes", { event: "*", schema: "public", table: "student_payments" }, () => loadAcademyData())
+      .subscribe();
+
+    const attendanceChannel = supabase
+      .channel("attendance-realtime-admin")
+      .on("postgres_changes", { event: "*", schema: "public", table: "student_attendance" }, () => loadAcademyData())
+      .subscribe();
 
     return () => {
-      subscription.unsubscribe();
+      authListener.subscription.unsubscribe();
       supabase.removeChannel(bookingsChannel);
       supabase.removeChannel(blockedChannel);
       supabase.removeChannel(studentsChannel);
@@ -188,7 +196,10 @@ export default function AdminPage() {
     };
   }, [router]);
 
-  /* -------- Midnight Auto-Rollover -------- */
+  useEffect(() => {
+    loadBookings();
+  }, [filterDate]);
+
   useEffect(() => {
     const now = new Date();
     const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
@@ -196,26 +207,20 @@ export default function AdminPage() {
 
     const timer = setTimeout(() => {
       setActiveDate(getTodayStr());
-      loadBookings();
+      loadBookings(); 
     }, msUntilMidnight + 1000);
 
     return () => clearTimeout(timer);
   }, [activeDate]);
 
-  /* -------- Trigger reload when filterDate changes -------- */
-  useEffect(() => {
-    loadBookings();
-  }, [filterDate]);
-
-  /* -------- Inactivity Auto-Logout Timer -------- */
   useEffect(() => {
     let timeout: NodeJS.Timeout;
-    const INACTIVITY_LIMIT = 15 * 60 * 1000; 
+    const INACTIVITY_LIMIT = 15 * 60 * 1000;
 
     const resetTimer = () => {
       clearTimeout(timeout);
       timeout = setTimeout(async () => {
-        await supabase.auth.signOut(); 
+        await supabase.auth.signOut({ scope: "local" });
         alert("⚠️ Session expired due to inactivity. Please log in again.");
         router.push("/staff");
       }, INACTIVITY_LIMIT);
@@ -224,7 +229,7 @@ export default function AdminPage() {
     const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
     events.forEach((event) => window.addEventListener(event, resetTimer));
     
-    resetTimer(); 
+    resetTimer();
 
     return () => {
       clearTimeout(timeout);
@@ -232,7 +237,7 @@ export default function AdminPage() {
     };
   }, [router]);
 
-  /* -------- DYNAMIC TIME FILTERING FOR MANAGE SLOTS -------- */
+  /* -------- DYNAMIC FILTERING FOR MANAGE SLOTS -------- */
   useEffect(() => {
     const fetchAvailableTimes = async () => {
       if (!showManageSlots || !slotDate) {
@@ -267,9 +272,7 @@ export default function AdminPage() {
           return item.court_number === slotCourt;
         });
 
-        if (!isOverlapping) {
-          freeTimes.push(slot);
-        }
+        if (!isOverlapping) freeTimes.push(slot);
       });
 
       setAvailableAdminSlots(freeTimes);
@@ -278,12 +281,49 @@ export default function AdminPage() {
     fetchAvailableTimes();
   }, [slotDate, slotDuration, slotCourt, showManageSlots, adminTimeSlots]);
 
-  // If selected slotTime becomes unavailable due to changing court/duration, reset it
+  // Safely auto-reset selected time if it becomes invalid due to duration/court changes
   useEffect(() => {
     if (slotTime && availableAdminSlots.length > 0 && !availableAdminSlots.includes(slotTime)) {
       setSlotTime("");
     }
   }, [availableAdminSlots, slotTime]);
+
+  const sendEmailReminders = async () => {
+    const pendingStudents = academyStudents.filter(s => s.payment_status !== "settled" && s.email);
+    const noEmailStudents = academyStudents.filter(s => s.payment_status !== "settled" && !s.email);
+
+    if (pendingStudents.length === 0) {
+      alert(noEmailStudents.length > 0
+        ? `⚠️ No pending students with valid email addresses. (${noEmailStudents.length} pending students are missing emails).`
+        : "✅ All students have paid! No reminders needed.");
+      return;
+    }
+
+    const confirmed = confirm(`Are you sure you want to send official email reminders to ${pendingStudents.length} student(s) for the month of ${currentMonthLabel}?`);
+    if (!confirmed) return;
+
+    setIsSendingEmails(true);
+    try {
+      const response = await fetch("/api/send-reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          students: pendingStudents,
+          month: currentMonthLabel,
+          fee: FIXED_COACHING_FEE
+        })
+      });
+
+      if (!response.ok) throw new Error("Failed to send emails");
+      
+      alert(`✅ Successfully dispatched ${pendingStudents.length} email reminders!`);
+    } catch (error) {
+      console.error(error);
+      alert("❌ Failed to send emails. Please check your internet connection.");
+    } finally {
+      setIsSendingEmails(false);
+    }
+  };
 
   const loadAcademyData = async () => {
     const { data: stData } = await supabase
@@ -305,29 +345,27 @@ export default function AdminPage() {
     }
   };
 
-  /* -------- INSTANT OPTIMISTIC ATTENDANCE LOGIC -------- */
   const markAttendance = async (studentId: string, status: "Present" | "Absent") => {
     const today = getTodayStr();
-    
-    // 1. Instant UI update
-    setAcademyStudents((prevStudents) =>
-      prevStudents.map((student) => {
-        if (student.id !== studentId) return student;
-        const filteredAtt = (student.student_attendance || []).filter((a: any) => a.date !== today);
-        return {
-          ...student,
-          student_attendance: [...filteredAtt, { id: "temp", date: today, status }]
-        };
-      })
-    );
+    const { error: deleteError } = await supabase
+      .from("student_attendance")
+      .delete()
+      .match({ student_id: studentId, date: today });
 
-    // 2. Background Sync
-    await supabase.from("student_attendance").delete().match({ student_id: studentId, date: today });
-    const { error } = await supabase.from("student_attendance").insert([{ student_id: studentId, date: today, status }]);
+    if (deleteError) {
+      alert(`Database Error: ${deleteError.message}\nEnsure 'student_attendance' table RLS is disabled.`);
+      return;
+    }
 
-    if (error) {
-      alert("Failed to sync attendance with database.");
-      loadAcademyData(); 
+    const { error: insertError } = await supabase
+      .from("student_attendance")
+      .insert([{ student_id: studentId, date: today, status }]);
+
+    if (insertError) {
+      alert(`Database Insert Error: ${insertError.message}`);
+      console.error(insertError);
+    } else {
+      loadAcademyData();
     }
   };
 
@@ -350,7 +388,7 @@ export default function AdminPage() {
 
     if (stError || !student) { alert(stError?.message || "Enrollment failure"); return; }
 
-    const { error: pmError = null } = await supabase
+    const { error: pmError } = await supabase
       .from("student_payments")
       .insert([{
         student_id: student.id,
@@ -417,44 +455,6 @@ export default function AdminPage() {
     }
   };
 
-  const sendEmailReminders = async () => {
-    const pendingStudents = academyStudents.filter(s => s.payment_status !== "settled" && s.email);
-    const noEmailStudents = academyStudents.filter(s => s.payment_status !== "settled" && !s.email);
-
-    if (pendingStudents.length === 0) {
-      alert(noEmailStudents.length > 0
-        ? `⚠️ No pending students with valid email addresses. (${noEmailStudents.length} pending students are missing emails).`
-        : "✅ All students have paid! No reminders needed.");
-      return;
-    }
-
-    const confirmed = confirm(`Are you sure you want to send official email reminders to ${pendingStudents.length} student(s) for the month of ${currentMonthLabel}?`);
-    if (!confirmed) return;
-
-    setIsSendingEmails(true);
-    try {
-      const response = await fetch("/api/send-reminders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          students: pendingStudents,
-          month: currentMonthLabel,
-          fee: FIXED_COACHING_FEE
-        })
-      });
-
-      if (!response.ok) throw new Error("Failed to send emails");
-      
-      alert(`✅ Successfully dispatched ${pendingStudents.length} email reminders!`);
-    } catch (error) {
-      console.error(error);
-      alert("❌ Failed to send emails. Please check your internet connection.");
-    } finally {
-      setIsSendingEmails(false);
-    }
-  };
-
-  /* -------- HISTORY / ACTIVE FEED LOGIC -------- */
   const loadBookings = async () => {
     const todayStr = getTodayStr();
 
@@ -518,7 +518,7 @@ export default function AdminPage() {
 
       // 2. Exact Cash Flow Logic (Money collected ON the Target Date)
       if (cDate === targetDateStr) {
-         dAdvance += advance; // Advance was collected today
+         dAdvance += advance; 
          
          if (booking.customer_name === "Offline Booking") {
              if (pDate === targetDateStr) {
@@ -663,15 +663,16 @@ export default function AdminPage() {
         booking_type: slotCourt === "Full Court" ? "Full Court" : "Half Court",
         court_number: slotCourt,
         total_amount: totalAmount,
-        advance_amount: 200, // Strictly log 200 as advance for consistency
+        advance_amount: 0, // ⚡ OFFLINE ADVANCE STRICTLY SET TO 0
         balance_amount: 0,   // Marking fully paid internally
         payment_status: "paid",
         payment_method: offlinePaymentMethod,
         cash_received: cashReceived,
         upi_received: upiReceived,
         payment_completed: true,
-        payment_date: getTodayStr(),
+        payment_date: getTodayStr(), 
       }]);
+      
       if (error) { alert(error.message); return; }
 
       alert("✅ Offline Booking Saved");
@@ -701,60 +702,67 @@ export default function AdminPage() {
     setShowManageSlots(false);
   };
 
-  /* -------- 🔒 Security OTP Handlers -------- */
-  const triggerOtpVerification = async (actionType: "reschedule" | "extend") => {
-    setOtpPendingAction(actionType);
-    setIsSendingOtp(true);
-    setShowOtpModal(true);
+  /* ========================================================================= */
+  /* 🔒 MASTER OTP SECURITY LOGIC */
+  /* ========================================================================= */
 
+  const triggerOtpProtection = async (actionType: "reschedule" | "extend") => {
+    setIsSendingOtp(true);
     try {
-      const response = await fetch('/api/admin-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'generate' }),
+      const response = await fetch("/api/admin-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate", email: "sports@smesturf.com" })
       });
-      const data = await response.json();
-      if (!data.success) throw new Error(data.message);
+      
+      if (!response.ok) throw new Error("Failed to trigger OTP");
+      
+      setPendingAction(actionType);
+      setShowOtpModal(true);
     } catch (error) {
       alert("Failed to send OTP. Please check your internet connection.");
-      setShowOtpModal(false);
     } finally {
       setIsSendingOtp(false);
     }
   };
 
   const verifyOtpAndExecute = async () => {
-    if (otpInput.length !== 6) { alert("Please enter a valid 6-digit OTP."); return; }
+    if (!otpInput || otpInput.length !== 6) {
+      alert("Please enter a valid 6-digit OTP.");
+      return;
+    }
     
     setIsVerifyingOtp(true);
     try {
-      const response = await fetch('/api/admin-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'verify', otp: otpInput }),
+      const response = await fetch("/api/admin-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "verify", otp: otpInput })
       });
+      
       const data = await response.json();
       
       if (data.success) {
-        if (otpPendingAction === "reschedule") await executeRescheduleBooking();
-        if (otpPendingAction === "extend") await executeExtendBooking();
-        
         setShowOtpModal(false);
         setOtpInput("");
-        setOtpPendingAction(null);
+        
+        // Execute the correct function with otpVerified = true bypass flag
+        if (pendingAction === "reschedule") await handleRescheduleBooking(true);
+        else if (pendingAction === "extend") await checkAndExtendBooking(true);
+        
+        setPendingAction(null);
       } else {
-        alert("Invalid or expired OTP.");
+        alert("❌ Invalid or Expired OTP. Please try again.");
       }
     } catch (error) {
-      alert("Verification failed. Please try again.");
+      alert("Error verifying OTP.");
     } finally {
       setIsVerifyingOtp(false);
     }
   };
 
-  // ⚙️ SUB-ADMIN MANAGE OPERATIONS HANDLERS (Protected by OTP)
-
-  const handleRescheduleBooking = async () => {
+  // 1. Reschedule
+  const handleRescheduleBooking = async (otpVerified = false) => {
     if (!selectedManageBooking || !rescheduleDate || !rescheduleTime) {
       alert("Please select both Date and Time for rescheduling.");
       return;
@@ -786,10 +794,11 @@ export default function AdminPage() {
       return;
     }
 
-    triggerOtpVerification("reschedule");
-  };
+    if (!otpVerified) {
+      await triggerOtpProtection("reschedule");
+      return; // Stop execution here until OTP is verified
+    }
 
-  const executeRescheduleBooking = async () => {
     const originalDur = selectedManageBooking.duration_minutes || 60;
     const originalTotal = selectedManageBooking.total_amount || 0;
     const pricePerMin = originalTotal / originalDur;
@@ -817,7 +826,8 @@ export default function AdminPage() {
     loadBookings();
   };
 
-  const checkAndExtendBooking = async () => {
+  // 2. Extend Slot
+  const checkAndExtendBooking = async (otpVerified = false) => {
     if (!selectedManageBooking) return;
 
     const bDate = selectedManageBooking.booking_date?.split("T")[0];
@@ -855,14 +865,14 @@ export default function AdminPage() {
       alert("⚠️ Extension Failed: The target extended time slot is already booked or blocked.");
       return;
     }
+    
+    if (!otpVerified) {
+      await triggerOtpProtection("extend");
+      return; // Stop execution here until OTP is verified
+    }
 
-    triggerOtpVerification("extend");
-  };
-
-  const executeExtendBooking = async () => {
     const currentTotal = selectedManageBooking.total_amount || 0;
     const currentBalance = selectedManageBooking.balance_amount || 0;
-    const currentDur = selectedManageBooking.duration_minutes || 60;
     
     const pricePerMin = currentTotal / currentDur;
     const addedPrice = Math.round(pricePerMin * Number(extendMinutes));
@@ -887,6 +897,8 @@ export default function AdminPage() {
     setSelectedManageBooking(null);
     loadBookings();
   };
+
+  /* ========================================================================= */
 
   /* -------- DYNAMIC EXCEL EXPORT (FIXED MATH & DOUBLE COUNT) -------- */
   const exportToExcel = async () => {
@@ -1883,7 +1895,7 @@ export default function AdminPage() {
           // Showing {filteredBookings.length} booking(s) active
         </p>
 
-        {/* ---------- COMPACT BOOKINGS TABLE ---------- */}
+        {/* ---------- COMPACT BOOKINGS TABLE (NOW ONLY RENDERS ONCE) ---------- */}
         <motion.section
           variants={fadeUp}
           initial="hidden"
@@ -2295,10 +2307,10 @@ export default function AdminPage() {
                         }}
                         className="w-full p-3 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
                       >
-                        {[30, 60, 90, 120]
+                        {[30, 60, 90, 120, 150, 180]
                           .filter((d) => d >= (selectedManageBooking?.duration_minutes || 60))
                           .map((d) => (
-                            <option key={d} value={d}>{d} mins</option>
+                            <option key={d} value={d}>{formatDurationLabel(d)}</option>
                           ))}
                       </select>
                     </div>
@@ -2331,10 +2343,10 @@ export default function AdminPage() {
                     <motion.button
                       whileHover={{ y: -1 }}
                       whileTap={{ scale: 0.97 }}
-                      onClick={handleRescheduleBooking}
+                      onClick={() => handleRescheduleBooking()}
                       className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors"
                     >
-                      Confirm Reschedule
+                      🔒 OTP & Reschedule
                     </motion.button>
 
                     <button
@@ -2395,7 +2407,7 @@ export default function AdminPage() {
                     <motion.button
                       whileHover={{ y: -1 }}
                       whileTap={{ scale: 0.97 }}
-                      onClick={checkAndExtendBooking}
+                      onClick={() => checkAndExtendBooking()}
                       className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors"
                     >
                       Check & Extend
@@ -2525,194 +2537,6 @@ export default function AdminPage() {
         )}
       </AnimatePresence>
 
-      {/* ---------- Manage Slots Modal ---------- */}
-      <AnimatePresence>
-        {showManageSlots && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] overflow-y-auto"
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 12, opacity: 0 }}
-              animate={{ scale: 1, y: 0, opacity: 1 }}
-              exit={{ scale: 0.9, y: 12, opacity: 0 }}
-              transition={{ duration: 0.3, ease: easeOut }}
-              className="bg-neutral-950 border border-neutral-800 p-6 w-full max-w-lg space-y-4 relative overflow-hidden my-8"
-            >
-              <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-fuchsia-500/10 to-transparent pointer-events-none" />
-              <div className="relative">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-fuchsia-400 block mb-1">
-                  // Slot Manager
-                </span>
-                <h2 className="text-xl font-black uppercase tracking-tight text-white">
-                  ⚙️ Manage Turf Slots
-                </h2>
-                <p className="text-neutral-400 text-xs mt-1 font-mono">
-                  Log offline bookings or block field slots for tournaments & maintenance.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 relative">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Reason</label>
-                  <select
-                    value={slotReason}
-                    onChange={(e) => setSlotReason(e.target.value)}
-                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
-                  >
-                    <option value="OFFLINE BOOKING">OFFLINE BOOKING</option>
-                    <option value="TOURNAMENT">TOURNAMENT</option>
-                    <option value="MAINTENANCE">MAINTENANCE</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Date</label>
-                  <input
-                    type="date"
-                    value={slotDate}
-                    min={getTodayStr()} // Prevents selecting past dates
-                    onChange={(e) => {
-                      setSlotDate(e.target.value);
-                    }}
-                    style={{ colorScheme: "dark" }}
-                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Court Section</label>
-                  <select
-                    value={slotCourt}
-                    onChange={(e) => setSlotCourt(e.target.value)}
-                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
-                  >
-                    <option value="Full Court">Full Court</option>
-                    <option value="Court 1">Court 1</option>
-                    <option value="Court 2">Court 2</option>
-                  </select>
-                </div>
-
-                {/* --- FIX: START TIME IS NOW PLACED BEFORE END TIME/DURATION --- */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Start Time</label>
-                  <select
-                    value={slotTime}
-                    onChange={(e) => setSlotTime(e.target.value)}
-                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                  >
-                    <option value="">-- Select Time --</option>
-                    {availableAdminSlots.length === 0 ? (
-                      <option value="" disabled>No slots available</option>
-                    ) : (
-                      availableAdminSlots.map((t) => (
-                        <option key={t} value={t}>{t}</option>
-                      ))
-                    )}
-                  </select>
-                </div>
-
-                {slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE" ? (
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-mono uppercase text-neutral-400">End Time (Optional)</label>
-                    <select
-                      value={slotEndTime}
-                      onChange={(e) => setSlotEndTime(e.target.value)}
-                      className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                    >
-                      <option value="">-- Select End Time --</option>
-                      {adminTimeSlots.map((t) => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-mono uppercase text-neutral-400">Duration (Minutes)</label>
-                    <select
-                      value={slotDuration}
-                      onChange={(e) => setSlotDuration(Number(e.target.value))}
-                      className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                    >
-                      <option value={30}>30 mins</option>
-                      <option value={60}>60 Mins (1 Hour)</option>
-                      <option value={90}>90 Mins (1.5 Hours)</option>
-                      <option value={120}>120 Mins (2 Hours)</option>
-                      <option value={150}>150 Mins (2.5 Hours)</option>
-                      <option value={180}>180 Mins (3 Hours)</option>
-                    </select>
-                  </div>
-                )}
-
-                {slotReason === "OFFLINE BOOKING" && (
-                  <div className="sm:col-span-2 p-3 bg-neutral-900 border border-neutral-800 space-y-3 relative">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono uppercase text-neutral-400">Payment Route</label>
-                      <select
-                        value={offlinePaymentMethod}
-                        onChange={(e) => setOfflinePaymentMethod(e.target.value)}
-                        className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors"
-                      >
-                        <option value="Cash">Cash</option>
-                        <option value="UPI">UPI</option>
-                        <option value="Cash + UPI">Cash + UPI</option>
-                      </select>
-                    </div>
-
-                    {offlinePaymentMethod === "Cash + UPI" ? (
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          type="number"
-                          placeholder="Cash Amount (₹)"
-                          value={offlineCashAmount}
-                          onChange={(e) => setOfflineCashAmount(e.target.value)}
-                          className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                        />
-                        <input
-                          type="number"
-                          placeholder="UPI Amount (₹)"
-                          value={offlineUpiAmount}
-                          onChange={(e) => setOfflineUpiAmount(e.target.value)}
-                          className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                        />
-                      </div>
-                    ) : (
-                      <input
-                        type="number"
-                        placeholder="Total Amount Received (₹)"
-                        value={offlineAmount}
-                        onChange={(e) => setOfflineAmount(e.target.value)}
-                        className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                      />
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-2 relative">
-                <motion.button
-                  whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(217,70,239,0.3)" }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={saveBlockedSlot}
-                  className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
-                >
-                  Save Field Block
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => setShowManageSlots(false)}
-                  className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
-                >
-                  Cancel
-                </motion.button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* ---------- 🔒 SECURITY OTP MODAL ---------- */}
       <AnimatePresence>
         {showOtpModal && (
@@ -2777,7 +2601,7 @@ export default function AdminPage() {
                 <button
                   onClick={() => {
                     setShowOtpModal(false);
-                    setOtpPendingAction(null);
+                    setPendingAction(null);
                     setOtpInput("");
                   }}
                   className="w-full text-[10px] font-mono uppercase text-neutral-500 hover:text-white pt-2 transition-colors"
