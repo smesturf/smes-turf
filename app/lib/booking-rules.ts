@@ -16,15 +16,17 @@ export const timeToMinutes = (time12: string): number => {
   return hours * 60 + minutes;
 };
 
-export const getPrice = (durationStr: string, bookingType: string) => {
+export const getPrice = (durationStr: string | number, bookingType: string) => {
   const duration = Number(durationStr);
   if (!duration) return { totalAmount: 0, regularAmount: 0, advanceAmount: 0 };
 
   let totalAmount = 0;
   if (bookingType === "Half Court") {
-    totalAmount = duration === 60 ? 700 : duration === 90 ? 1050 : 1400;
+    // Dynamic math: ₹700 per hour
+    totalAmount = Math.round((duration / 60) * 700);
   } else { 
-    totalAmount = duration === 60 ? 1200 : duration === 90 ? 1800 : 2400;
+    // Dynamic math: ₹1200 per hour
+    totalAmount = Math.round((duration / 60) * 1200);
   }
 
   return {

@@ -163,18 +163,27 @@ export default function Home() {
     if (bookingDate && bookingType) loadBookedSlots(bookingDate);
   }, [bookingDate, bookingType]);
 
-  const { totalAmount, regularAmount } = useMemo(
-    () => {
-      if (!bookingType || !duration) return { totalAmount: 0, regularAmount: 0 };
-      return getPrice(duration, bookingType);
-    },
-    [duration, bookingType]
-  );
+  // ⚡ DYNAMIC PRICE CALCULATION (Accurate for all durations)
+  const { totalAmount, regularAmount } = useMemo(() => {
+    if (!bookingType || !duration) return { totalAmount: 0, regularAmount: 0 };
+    const mins = Number(duration);
+    if (bookingType === "Half Court") {
+      return {
+        totalAmount: Math.round((mins / 60) * 700),
+        regularAmount: Math.round((mins / 60) * 1200)
+      };
+    } else {
+      return {
+        totalAmount: Math.round((mins / 60) * 1200),
+        regularAmount: Math.round((mins / 60) * 2400)
+      };
+    }
+  }, [duration, bookingType]);
 
-  // Generates slots ONLY from 5:00 AM to 10:30 PM (36 Half-Hour Segments)
+  // Generates slots ONLY from 5:00 AM to 10:30 PM
   const allSlots = useMemo(() => {
     const slots = [];
-    for (let i = 10; i <= 45; i++) { // Starts at index 10 (05:00 AM), ends at index 45 (10:30 PM)
+    for (let i = 10; i <= 45; i++) {
       const h = Math.floor(i / 2);
       const m = i % 2 === 0 ? "00" : "30";
       const ampm = h >= 12 ? "PM" : "AM";
@@ -187,36 +196,34 @@ export default function Home() {
   const isSlotAvailable = (slot: string) => {
     if (!bookingDate || !duration || !bookingType) return false;
     
-    // Parse Slot To Minutes
     const [time, ampm] = slot.split(" ");
     let [hours, minutes] = time.split(":").map(Number);
     if (ampm === "PM" && hours !== 12) hours += 12;
     if (ampm === "AM" && hours === 12) hours = 0;
     const slotMinutes = hours * 60 + minutes;
 
-    // 1. BOUNDARY CHECK: Turf strictly closes at 11:00 PM (23 * 60 = 1380 mins)
+    // Boundary Check: 11:00 PM cutoff (1380 mins)
     const endMinutes = slotMinutes + Number(duration);
     if (endMinutes > 23 * 60) return false;
     
-    // 2. OVERLAP CHECK
+    // Overlap Check
     const segmentsNeeded = Number(duration) / 30;
     const slotIndex = allSlots.indexOf(slot);
-    
-    if (slotIndex === -1) return false; // Invalid Time
+    if (slotIndex === -1) return false;
     
     for (let i = 0; i < segmentsNeeded; i++) {
       const targetIndex = slotIndex + i;
-      if (targetIndex >= allSlots.length) return false; // Bleeds out of grid bounds
+      if (targetIndex >= allSlots.length) return false;
       const nextSlot = allSlots[targetIndex];
       if (bookedSlots.includes(nextSlot)) return false;
     }
     
-    // 3. Strict IST Today Check
+    // Strict IST Today Check
     const today = getLocalDateString();
     if (bookingDate && bookingDate < today) return false;
     if (bookingDate !== today) return true;
 
-    // 4. Strict IST Time Comparison (Disables passed slots today)
+    // Strict IST Time Comparison
     const istTimeStr = new Date().toLocaleTimeString("en-US", {
       timeZone: "Asia/Kolkata",
       hour12: false,
@@ -234,7 +241,6 @@ export default function Home() {
   const loadBookedSlots = async (dateStr: string) => {
     if (!bookingType) return; 
 
-    // IST strict offset parsing
     const selectedDate = new Date(`${dateStr}T00:00:00+05:30`);
     const prevDate = new Date(selectedDate.getTime() - 24 * 60 * 60 * 1000);
 
@@ -336,7 +342,6 @@ export default function Home() {
     setIsPaymentLoading(true); 
 
     try {
-      // ⚡ WEBHOOK FIX: Pack ALL the user's details into the order so the server can access them in the background
       const response = await fetch("/api/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -345,12 +350,12 @@ export default function Home() {
           startTime,
           duration,
           bookingType,
-          amount: 205, // ₹200 Advance + ₹5 Razorpay Convenience Fee
-          totalAmount, // Webhook Needs This
-          name,        // Webhook Needs This
-          phone,       // Webhook Needs This
-          email,       // Webhook Needs This
-          sport        // Webhook Needs This
+          amount: 205,
+          totalAmount,
+          name,
+          phone,
+          email,
+          sport
         })
       });
 
@@ -452,12 +457,7 @@ export default function Home() {
       });
 
       const whatsappData = await whatsappRes.json();
-      
-      if (!whatsappRes.ok) {
-         console.error("CRITICAL WHATSAPP API ERROR:", whatsappData);
-      } else if (!whatsappData.metaSent) {
-         console.warn("Customer Meta message failed:", whatsappData.metaError);
-      }
+      if (!whatsappRes.ok) console.error("CRITICAL WHATSAPP API ERROR:", whatsappData);
 
       setIsProcessingBooking(false);
 
@@ -495,16 +495,12 @@ export default function Home() {
     if (el) el.scrollIntoView({ behavior: "smooth" });
   };
 
-  /* ================================================================ */
-  /* RENDER                                                          */
-  /* ================================================================ */
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden">
       
-      {/* 🚀 Next.js Optimized External Script Loading */}
       <Script id="razorpay-js" src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
 
-      {/* ---------- Background ---------- */}
+      {/* Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
         <div className="absolute top-0 inset-x-0 h-[400px] sm:h-[640px] bg-gradient-to-b from-lime-500/10 via-transparent to-transparent" />
         <motion.div
@@ -527,14 +523,13 @@ export default function Home() {
         />
       </div>
 
-      {/* ---------- Header ---------- */}
+      {/* Header */}
       <motion.header
         variants={stagger}
         initial="hidden"
         animate="show"
         className="max-w-7xl mx-auto px-4 pt-6 sm:pt-16 pb-6 sm:pb-8 relative z-10 flex flex-col lg:items-start"
       >
-        {/* Elite Badge - Pushed left on PC */}
         <motion.div
           variants={fadeUp}
           className="inline-flex items-center gap-1.5 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-slate-900/80 backdrop-blur border border-slate-800 text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-lime-400 mb-3 sm:mb-6 mt-1 sm:mt-4 mx-auto lg:mx-0"
@@ -544,13 +539,8 @@ export default function Home() {
         </motion.div>
 
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 sm:gap-12 w-full">
-          
-          {/* LEFT SIDE: Text and Logo */}
           <div className="flex flex-col items-center lg:items-start text-center lg:text-left w-full lg:w-auto">
-            
-            {/* Logo + Heading (Left aligned on PC) */}
             <motion.div variants={fadeUp} className="flex items-center justify-center lg:justify-start gap-3 sm:gap-6 w-full">
-              {/* Logo - Increased size slightly for phone and PC */}
               <div className="relative w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 shrink-0 rounded-full overflow-hidden border-2 border-lime-400/40 shadow-[0_0_20px_rgba(163,230,53,0.15)] bg-neutral-900">
                 <Image 
                   src="/photos/logo.png" 
@@ -562,7 +552,6 @@ export default function Home() {
                 />
               </div>
 
-              {/* Heading and Location */}
               <div className="flex flex-col items-start text-left">
                 <h1 className="text-5xl sm:text-7xl md:text-8xl font-black tracking-tighter uppercase leading-none text-white whitespace-nowrap">
                   <span className="inline-block bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-neutral-400">
@@ -577,7 +566,6 @@ export default function Home() {
               </div>
             </motion.div>
 
-            {/* Description (Left aligned on PC) */}
             <motion.p
               variants={fadeUp}
               className="text-base sm:text-lg md:text-xl font-medium tracking-normal text-neutral-400 mt-5 sm:mt-6 max-w-xl mx-auto lg:mx-0 text-center lg:text-left px-2 lg:px-0"
@@ -588,12 +576,10 @@ export default function Home() {
             </motion.p>
           </div>
 
-          {/* RIGHT SIDE: Action Buttons Container */}
           <motion.div
             variants={fadeUp}
             className="w-full max-w-md mx-auto lg:max-w-sm lg:mx-0 flex flex-col gap-3 mt-4 lg:mt-0 shrink-0"
           >
-            {/* Primary Action Button */}
             <motion.button
               whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.35)" }}
               whileTap={{ scale: 0.97 }}
@@ -607,7 +593,6 @@ export default function Home() {
               <span>BOOK NOW</span>
             </motion.button>
 
-            {/* Secondary Actions Grid (2-Column Grid on Mobile & Laptop) */}
             <div className="grid grid-cols-2 gap-2 w-full">
               <motion.a
                 whileHover={{ y: -2, borderColor: "rgba(163,230,53,0.6)" }}
@@ -678,7 +663,6 @@ export default function Home() {
           </motion.div>
         </div>
 
-        {/* Launch Offer Badge (Pushed left on PC) */}
         <motion.div
           variants={fadeUp}
           className="mt-8 sm:mt-12 inline-flex items-center justify-center lg:justify-start gap-3 sm:gap-4 bg-neutral-900/70 backdrop-blur border border-neutral-800 px-4 py-3 rounded-none w-full sm:w-auto mx-auto lg:mx-0"
@@ -693,7 +677,7 @@ export default function Home() {
         </motion.div>
       </motion.header>
 
-      {/* ---------- Disciplines ---------- */}
+      {/* Disciplines */}
       <motion.section
         variants={stagger}
         initial="hidden"
@@ -701,7 +685,7 @@ export default function Home() {
         viewport={{ once: true, amount: 0.2 }}
         className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-16 border-b border-neutral-900 relative z-10"
       >
-         <motion.span variants={fadeUp} className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-2">
+        <motion.span variants={fadeUp} className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-2">
           01 — Disciplines
         </motion.span>
         <motion.h2 variants={fadeUp} className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white mb-8 sm:mb-12">
@@ -742,7 +726,7 @@ export default function Home() {
         </div>
       </motion.section>
 
-      {/* ---------- Media Gallery ---------- */}
+      {/* Media Gallery */}
       <motion.section
         variants={stagger}
         initial="hidden"
@@ -757,7 +741,6 @@ export default function Home() {
           Turf Gallery
         </motion.h2>
 
-        {/* --- PHOTOS GRID (7 Photos) --- */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {[
             "20260709_154856.jpg",
@@ -780,14 +763,14 @@ export default function Home() {
         </div>
       </motion.section>
 
-      {/* ---------- Booking Engine ---------- */}
+      {/* Booking Engine */}
       <section
          id="booking-engine-section"
         className="max-w-7xl mx-auto px-4 py-12 sm:px-6 sm:py-20 relative z-10 scroll-mt-6"
       >
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
 
-          {/* -------- Form Side -------- */}
+          {/* Form Side */}
           <motion.div
             variants={stagger}
             initial="hidden"
@@ -821,7 +804,6 @@ export default function Home() {
             </motion.div>
 
             <div className="space-y-4 sm:space-y-6">
-              {/* Name + Phone + Email */}
               <motion.div variants={fadeUp} className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
                 <div className="space-y-2">
                    <label className="text-xs font-mono uppercase text-neutral-400">Full Name</label>
@@ -862,9 +844,7 @@ export default function Home() {
                 </div>
               </motion.div>
 
-              {/* Sport + Pitch Config */}
               <motion.div variants={fadeUp} className="space-y-6">
-                
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400">Sport Discipline</label>
                   <div className="relative">
@@ -888,9 +868,7 @@ export default function Home() {
                   </label>
                   
                   <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 bg-neutral-900/40 p-3 sm:p-4 border border-neutral-800">
-                    
                     <div className="relative w-full sm:w-2/3 h-32 sm:h-40 bg-[#0d2a13] border-2 border-neutral-700 rounded-sm overflow-hidden flex shadow-inner group">
-                      
                       <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-40 group-hover:opacity-70 transition-opacity duration-300 z-10">
                         <div className="w-0.5 h-full bg-white" />
                         <div className="absolute w-14 sm:w-20 h-14 sm:h-20 border-2 border-white rounded-full" />
@@ -977,7 +955,7 @@ export default function Home() {
                 </div>
               </motion.div>
 
-              {/* Date Box with iPhone Overflow Fix */}
+              {/* Date Box */}
               <motion.div variants={fadeUp} className="space-y-2">
                 <label className="text-xs font-mono uppercase text-neutral-400">Calendar Date</label>
                 <div className="w-full box-border max-w-full overflow-hidden relative">
@@ -1008,11 +986,11 @@ export default function Home() {
                     }`}
                   >
                     <option value="" disabled hidden>-- Select Session Length --</option> 
-                    <option value="60">60 Minutes (1 Hour) {bookingType ? `(- ₹${bookingType === "Half Court" ? 700 : 1200})` : ""}</option>
-                    <option value="90">90 Minutes (1.5 Hours) {bookingType ? `(- ₹${bookingType === "Half Court" ? 1050 : 1800})` : ""}</option>
-                    <option value="120">120 Minutes (2 Hours) {bookingType ? `(- ₹${bookingType === "Half Court" ? 1400 : 2400})` : ""}</option>
-                    <option value="150">150 Minutes (2.5 Hours) {bookingType ? `(- ₹${bookingType === "Half Court" ? 1750 : 3000})` : ""}</option>
-                    <option value="180">180 Minutes (3 Hours) {bookingType ? `(- ₹${bookingType === "Half Court" ? 2100 : 3600})` : ""}</option>
+                    <option value="60">60 Minutes (1 Hour) {bookingType ? `(₹${bookingType === "Half Court" ? 700 : 1200})` : ""}</option>
+                    <option value="90">90 Minutes (1.5 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 1050 : 1800})` : ""}</option>
+                    <option value="120">120 Minutes (2 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 1400 : 2400})` : ""}</option>
+                    <option value="150">150 Minutes (2.5 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 1750 : 3000})` : ""}</option>
+                    <option value="180">180 Minutes (3 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 2100 : 3600})` : ""}</option>
                   </select>
                   <div className={`pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-xs transition-all ${
                     !bookingDate || !bookingType ? "text-neutral-700 opacity-40" : "text-neutral-500"
@@ -1022,7 +1000,7 @@ export default function Home() {
 
               {/* Slot Grid */}
               <motion.div variants={fadeUp} className="space-y-2 relative">
-                 <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Slot</label>
+                <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Slot</label>
                 <div className="relative">
                   <LayoutGroup>
                     <motion.div
@@ -1072,7 +1050,7 @@ export default function Home() {
             </div>
           </motion.div>
 
-          {/* -------- Summary Side -------- */}
+          {/* Summary Side */}
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -1149,9 +1127,7 @@ export default function Home() {
                  <div className="absolute left-[-16px] w-8 h-8 bg-neutral-950 rounded-full border border-neutral-800 z-10" />
                 <div className="absolute left-[-20px] w-10 h-10 bg-neutral-950 z-20" /> 
                 <div className="absolute left-[-16px] w-8 h-8 rounded-full border-r border-neutral-800 z-30" />
-                
                 <div className="w-full border-t-2 border-dashed border-neutral-800 relative z-0 mx-4" />
-                
                 <div className="absolute right-[-16px] w-8 h-8 bg-neutral-950 rounded-full border border-neutral-800 z-10" />
                 <div className="absolute right-[-20px] w-10 h-10 bg-neutral-950 z-20" /> 
                 <div className="absolute right-[-16px] w-8 h-8 rounded-full border-l border-neutral-800 z-30" />
@@ -1249,7 +1225,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ---------- Footer ---------- */}
+      {/* Footer */}
       <motion.footer
         initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
@@ -1284,7 +1260,7 @@ export default function Home() {
         </div>
       </motion.footer>
 
-      {/* ---------- SMART Floating CTA ---------- */}
+      {/* Floating CTA */}
       <motion.button
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1315,7 +1291,7 @@ export default function Home() {
         <span>{startTime && name && phone.length === 10 && sport && bookingType ? "Confirm Slot" : "Book Here"}</span>
       </motion.button>
 
-      {/* ---------- Arena Pass Confirmation Modal ---------- */}
+      {/* Arena Pass Confirmation Modal */}
       <AnimatePresence>
         {showConfirmModal && (
           <motion.div
@@ -1394,7 +1370,7 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* ---------- Secure Payment Loading Overlay ---------- */}
+      {/* Payment Loading Overlay */}
       <AnimatePresence>
         {isPaymentLoading && (
           <motion.div
@@ -1426,7 +1402,7 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* ---------- POST-PAYMENT PROCESSING LOADER ---------- */}
+      {/* Processing Loader */}
       <AnimatePresence>
         {isProcessingBooking && (
           <motion.div
@@ -1458,7 +1434,7 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* ---------- 🎉 FINAL SUCCESS CONFIRMATION MODAL WITH AUTO-DOWNLOAD PASS ---------- */}
+      {/* Final Pass Confirmation Modal */}
       <AnimatePresence>
         {successData && (
           <motion.div
