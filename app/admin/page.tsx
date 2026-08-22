@@ -144,7 +144,7 @@ export default function AdminPage() {
   const [offlineUpiAmount, setOfflineUpiAmount] = useState("");
 
   const [availableAdminSlots, setAvailableAdminSlots] = useState<string[]>([]);
-  
+
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
   const [paymentType, setPaymentType] = useState("Full Cash");
@@ -773,12 +773,10 @@ export default function AdminPage() {
   const handleCancelWithRefund = async (otpVerified = false) => {
     if (!selectedManageBooking) return;
     
-    // ⚡ FIX: Calculate the ACTUAL amount paid by the customer (Offline or Online)
-    const amountPaid = (selectedManageBooking.total_amount || 0) - (selectedManageBooking.balance_amount || 0);
-    
     if (!otpVerified) {
+      const advanceAmount = selectedManageBooking.advance_amount || 0;
       const confirmCancel = confirm(
-        `Are you sure you want to cancel booking for "${selectedManageBooking.customer_name}"?\n\n💰 Amount to Refund: ₹${amountPaid}`
+        `Are you sure you want to cancel booking for "${selectedManageBooking.customer_name}"?\n\n💰 Advance Refund to return: ₹${advanceAmount}`
       );
       if (!confirmCancel) return;
       
@@ -789,7 +787,7 @@ export default function AdminPage() {
     const { error } = await supabase.from("bookings").delete().eq("id", selectedManageBooking.id);
     if (error) { alert(error.message); return; }
 
-    alert(`✅ Booking Cancelled. Refund of ₹${amountPaid} marked to be returned.`);
+    alert(`✅ Booking Cancelled. Refund of ₹${selectedManageBooking.advance_amount || 0} marked to be returned.`);
     setShowManageModal(false);
     setSelectedManageBooking(null);
     loadBookings();
@@ -2280,8 +2278,8 @@ export default function AdminPage() {
                       <span className="text-white font-bold">₹{selectedManageBooking.total_amount}</span>
                     </div>
                     <div className="flex justify-between text-emerald-400 font-bold">
-                      <span>Amount Paid:</span>
-                      <span>₹{(selectedManageBooking.total_amount || 0) - (selectedManageBooking.balance_amount || 0)}</span>
+                      <span>Advance Paid:</span>
+                      <span>₹{selectedManageBooking.advance_amount || 0}</span>
                     </div>
                   </div>
 
@@ -2293,14 +2291,14 @@ export default function AdminPage() {
                   >
                     <div className="flex justify-between items-center">
                       <span className="text-xs font-black uppercase text-red-400 group-hover:text-red-300">
-                        ❌ Cancel & Refund Payment
+                        ❌ Cancel & Refund Advance
                       </span>
                       <span className="text-xs font-mono text-emerald-400 font-black flex items-center gap-2">
                         🔒 OTP Required
                       </span>
                     </div>
                     <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">
-                      Cancels order completely & returns collected payment.
+                      Cancels order completely & returns advance payment.
                     </p>
                   </motion.button>
 
@@ -2615,6 +2613,194 @@ export default function AdminPage() {
                 <motion.button
                   whileTap={{ scale: 0.97 }}
                   onClick={() => { setShowPaymentModal(false); setSelectedBooking(null); }}
+                  className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
+                >
+                  Cancel
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------- Manage Slots Modal ---------- */}
+      <AnimatePresence>
+        {showManageSlots && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] overflow-y-auto"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 12, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.9, y: 12, opacity: 0 }}
+              transition={{ duration: 0.3, ease: easeOut }}
+              className="bg-neutral-950 border border-neutral-800 p-6 w-full max-w-lg space-y-4 relative overflow-hidden my-8"
+            >
+              <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-fuchsia-500/10 to-transparent pointer-events-none" />
+              <div className="relative">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-fuchsia-400 block mb-1">
+                  // Slot Manager
+                </span>
+                <h2 className="text-xl font-black uppercase tracking-tight text-white">
+                  ⚙️ Manage Turf Slots
+                </h2>
+                <p className="text-neutral-400 text-xs mt-1 font-mono">
+                  Log offline bookings or block field slots for tournaments & maintenance.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 relative">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400">Reason</label>
+                  <select
+                    value={slotReason}
+                    onChange={(e) => setSlotReason(e.target.value)}
+                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
+                  >
+                    <option value="OFFLINE BOOKING">OFFLINE BOOKING</option>
+                    <option value="TOURNAMENT">TOURNAMENT</option>
+                    <option value="MAINTENANCE">MAINTENANCE</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400">Date</label>
+                  <input
+                    type="date"
+                    value={slotDate}
+                    min={getTodayStr()} // Prevents selecting past dates
+                    onChange={(e) => {
+                      setSlotDate(e.target.value);
+                    }}
+                    style={{ colorScheme: "dark" }}
+                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400">Court Section</label>
+                  <select
+                    value={slotCourt}
+                    onChange={(e) => setSlotCourt(e.target.value)}
+                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
+                  >
+                    <option value="Full Court">Full Court</option>
+                    <option value="Court 1">Court 1</option>
+                    <option value="Court 2">Court 2</option>
+                  </select>
+                </div>
+
+                {/* --- FIX: START TIME IS NOW PLACED BEFORE END TIME/DURATION --- */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400">Start Time</label>
+                  <select
+                    value={slotTime}
+                    onChange={(e) => setSlotTime(e.target.value)}
+                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                  >
+                    <option value="">-- Select Time --</option>
+                    {availableAdminSlots.length === 0 ? (
+                      <option value="" disabled>No slots available</option>
+                    ) : (
+                      availableAdminSlots.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))
+                    )}
+                  </select>
+                </div>
+
+                {slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE" ? (
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono uppercase text-neutral-400">End Time (Optional)</label>
+                    <select
+                      value={slotEndTime}
+                      onChange={(e) => setSlotEndTime(e.target.value)}
+                      className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                    >
+                      <option value="">-- Select End Time --</option>
+                      {adminTimeSlots.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono uppercase text-neutral-400">Duration (Minutes)</label>
+                    <select
+                      value={slotDuration}
+                      onChange={(e) => setSlotDuration(Number(e.target.value))}
+                      className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                    >
+                      <option value={30}>30 mins</option>
+                      <option value={60}>60 Mins (1 Hour)</option>
+                      <option value={90}>90 Mins (1.5 Hours)</option>
+                      <option value={120}>120 Mins (2 Hours)</option>
+                      <option value={150}>150 Mins (2.5 Hours)</option>
+                      <option value={180}>180 Mins (3 Hours)</option>
+                    </select>
+                  </div>
+                )}
+
+                {slotReason === "OFFLINE BOOKING" && (
+                  <div className="sm:col-span-2 p-3 bg-neutral-900 border border-neutral-800 space-y-3 relative">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Payment Route</label>
+                      <select
+                        value={offlinePaymentMethod}
+                        onChange={(e) => setOfflinePaymentMethod(e.target.value)}
+                        className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors"
+                      >
+                        <option value="Cash">Cash</option>
+                        <option value="UPI">UPI</option>
+                        <option value="Cash + UPI">Cash + UPI</option>
+                      </select>
+                    </div>
+
+                    {offlinePaymentMethod === "Cash + UPI" ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="number"
+                          placeholder="Cash Amount (₹)"
+                          value={offlineCashAmount}
+                          onChange={(e) => setOfflineCashAmount(e.target.value)}
+                          className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                        />
+                        <input
+                          type="number"
+                          placeholder="UPI Amount (₹)"
+                          value={offlineUpiAmount}
+                          onChange={(e) => setOfflineUpiAmount(e.target.value)}
+                          className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                        />
+                      </div>
+                    ) : (
+                      <input
+                        type="number"
+                        placeholder="Total Amount Received (₹)"
+                        value={offlineAmount}
+                        onChange={(e) => setOfflineAmount(e.target.value)}
+                        className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2 relative">
+                <motion.button
+                  whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(217,70,239,0.3)" }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={saveBlockedSlot}
+                  className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
+                >
+                  Save Field Block
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setShowManageSlots(false)}
                   className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
                 >
                   Cancel
