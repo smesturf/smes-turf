@@ -31,6 +31,12 @@ export async function POST(req: Request) {
 
     const metaUrl = `https://graph.facebook.com/v20.0/${metaPhoneId}/messages`;
 
+    // ⚡ DYNAMIC CRICKET WARNING INJECTION
+    // If sport is cricket, inject the warning into the variable. Asterisks make it bold on WhatsApp!
+    const customerSportText = sport === "Cricket"
+      ? `${sport} (${court}) - *NOTE: All equipment provided EXCEPT tennis balls. Please bring your own!*`
+      : `${sport} (${court})`;
+
     // --- 1. CUSTOMER MESSAGE PROMISE (smes_turf template) ---
     const sendCustomerMessage = fetch(metaUrl, {
       method: "POST",
@@ -48,7 +54,7 @@ export async function POST(req: Request) {
               { type: "text", text: customerName || "Guest" },
               { type: "text", text: date || "N/A" },
               { type: "text", text: time || "N/A" },
-              { type: "text", text: `${sport} (${court})` },
+              { type: "text", text: customerSportText }, // ⚡ INJECTED HERE
               { type: "text", text: String(bookingId || "") },
               { type: "text", text: String(referenceId || "") },
               { type: "text", text: String(totalAmount || 0) },
@@ -85,7 +91,6 @@ export async function POST(req: Request) {
               { type: "text", text: String(totalAmount || 0) },// {{9}}
               { type: "text", text: String(advanceAmount || 0)},// {{10}}
               { type: "text", text: String(balanceAmount || 0)},// {{11}}
-              // ⚡ COMBINED BOOKING ID & REFERENCE ID INTO VARIABLE 12 
               { type: "text", text: `${bookingId || ""} | ${referenceId || ""}` },// {{12}}
             ],
           }],

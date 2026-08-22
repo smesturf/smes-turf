@@ -295,8 +295,10 @@ export default function Home() {
             const slotLabel = `${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${ampm}`;
 
             let type = slot.booking_type; 
+            
+            // ⚡ FIX: Recognize "Full Court" blocks accurately so they block Half Court customers too
             if (isBlock) {
-               if (slot.court_number === "Both Courts" || !slot.court_number) {
+               if (slot.court_number === "Full Court" || slot.court_number === "Both Courts" || !slot.court_number) {
                   type = "Full Court";
                } else {
                   type = "Half Court";

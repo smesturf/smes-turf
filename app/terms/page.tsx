@@ -77,16 +77,19 @@ export default function TermsAndConditions() {
             </p>
           </section>
 
-          {/* Rule 4: Single Tennis Ball Policy */}
+          {/* Rule 4: Tennis Ball Policy (UPDATED) */}
           <section className="space-y-2 bg-neutral-900/30 p-6 border border-neutral-800">
             <h2 className="text-lime-400 font-bold uppercase text-sm sm:text-base tracking-wider">
-              04. Tennis Ball Policy
+              04. Equipment & Tennis Ball Policy
             </h2>
             <p className="text-neutral-400">
-              * Management will issue exactly <strong className="text-white">one (1) tennis ball</strong> per booking session.
+              * Management will provide all necessary sports equipment for your match <strong className="text-white">except tennis balls</strong>. 
             </p>
             <p className="text-neutral-400">
-              * If the provided ball is lost, misplaced, or damaged during play, the booking holder must pay for its replacement cost at the desk before exiting.
+              * Players are required to bring their own tennis balls for cricket matches.
+            </p>
+            <p className="text-neutral-400">
+              * Alternatively, you can <strong className="text-lime-400">purchase a brand new tennis ball at the desk for ₹100</strong>. This is a direct purchase (not a rental), and the ball is yours to keep.
             </p>
           </section>
 
@@ -135,16 +138,16 @@ export default function TermsAndConditions() {
             </p>
           </section>
 
-          {/* Rule 8: Personal Belongings & Liability */}
+          {/* Rule 8: Personal Belongings & Liability (UPDATED) */}
           <section className="space-y-2 bg-neutral-900/30 p-6 border border-neutral-800">
             <h2 className="text-lime-400 font-bold uppercase text-sm sm:text-base tracking-wider">
-              08. Personal Belongings & Liability
+              08. Injury Liability & Personal Belongings
             </h2>
             <p className="text-neutral-400">
-              * Management is not responsible for any lost, stolen, or damaged personal belongings (phones, wallets, bags, gear).
+              * <strong className="text-red-400">STRICT NO-LIABILITY FOR INJURIES:</strong> Players participate in all sports and athletic activities entirely at their own risk. SMES Sports Academy, its management, and its staff are <strong className="text-white">strictly not responsible or liable for any physical injuries, accidents, or health issues</strong> that occur on the premises or during gameplay.
             </p>
             <p className="text-neutral-400">
-              * Players participate at their own risk. SMES Sports Academy holds no liability for injuries incurred during athletic activities.
+              * Management is not responsible for any lost, stolen, or damaged personal belongings (phones, wallets, bags, gear).
             </p>
           </section>
 
