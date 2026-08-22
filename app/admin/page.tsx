@@ -478,7 +478,13 @@ export default function AdminPage() {
 
     if (error) { console.log(error); return; }
 
-    setBookings(data || []);
+    // Sanitize: Force advance to 0 for offline bookings to prevent DB default glitches
+    const sanitizedBookings = (data || []).map((b: any) => ({
+      ...b,
+      advance_amount: b.customer_name === "Offline Booking" ? 0 : b.advance_amount
+    }));
+
+    setBookings(sanitizedBookings);
 
     let blocksQuery = supabase.from("blocked_slots").select("*");
     if (filterDate) blocksQuery = blocksQuery.eq("booking_date", filterDate);
@@ -500,8 +506,16 @@ export default function AdminPage() {
     let dCash = 0;
     let dUpi = 0;
     let tomSlots = 0;
+    let activeBookingsCount = 0; // ⚡ NEW: Counter for future/ongoing active bookings
 
     const tomorrowStr = getTomorrowStr();
+    const todayStr = getTodayStr();
+
+    // Get current time in minutes to check if today's slots have passed
+    const now = new Date();
+    const istTimeStr = now.toLocaleTimeString("en-US", { timeZone: "Asia/Kolkata", hour12: false });
+    const [currentHours, currentMins] = istTimeStr.split(":").map(Number);
+    const currentMinutes = currentHours * 60 + currentMins;
 
     bookings.forEach((booking) => {
       const bDate = booking.booking_date?.split("T")[0];
@@ -512,6 +526,37 @@ export default function AdminPage() {
       const totalPaid = Number(booking.total_amount || 0) - Number(booking.balance_amount || 0);
       const cashTotal = Number(booking.cash_received || 0);
       const upiTotal = Math.max(0, totalPaid - cashTotal);
+
+      // --- Determine if Booking is still "Active" ---
+      let isCompleted = false;
+      if (Number(booking.balance_amount || 0) <= 0) { // If fully paid
+        if (!bDate || bDate < todayStr) {
+          isCompleted = true; // Fully paid & in the past
+        } else if (bDate === todayStr) {
+          // If it's today, check if the end time has already passed
+          const timeParts = (booking.start_time || "").trim().split(" ");
+          if (timeParts[0]) {
+            const [hStr, mStr] = timeParts[0].split(":");
+            let h = Number(hStr);
+            const m = parseInt(mStr || "0", 10);
+            if (timeParts[1]) {
+              const ampm = timeParts[1].toUpperCase();
+              if (ampm === "PM" && h !== 12) h += 12;
+              if (ampm === "AM" && h === 12) h = 0;
+            }
+            const durationMins = Number(booking.duration_minutes || 60);
+            const endMinutes = (h * 60 + m) + durationMins;
+            
+            // If the match end time is in the past, it's no longer active
+            if (endMinutes <= currentMinutes) isCompleted = true;
+          }
+        }
+      }
+      
+      // If it has pending dues OR is in the future, count it as Active
+      if (!isCompleted) {
+        activeBookingsCount++;
+      }
 
       // 1. Match Schedule Logic (How many matches playing today?)
       if (bDate === targetDateStr) {
@@ -550,7 +595,7 @@ export default function AdminPage() {
     });
 
     return [
-      { label: "Total Active", value: bookings.length, accent: "text-white", tag: "01" },
+      { label: "Total Active", value: activeBookingsCount, accent: "text-white", tag: "01" },
       { label: filterDate ? "Selected Matches" : "Today's Matches", value: dSlots, accent: "text-lime-400", tag: "02" },
       { label: "Pending Due", value: `₹${dBalance}`, accent: "text-red-400", tag: "03" },
       { label: filterDate ? "Selected Adv" : "Today's Advance", value: `₹${dAdvance}`, accent: "text-emerald-400", tag: "04" },
@@ -772,11 +817,13 @@ export default function AdminPage() {
   // 1. Cancel With Refund
   const handleCancelWithRefund = async (otpVerified = false) => {
     if (!selectedManageBooking) return;
+
+    // Calculate the actual total money collected (Works perfectly for 1500 offline bookings)
+    const totalPaid = (selectedManageBooking.total_amount || 0) - (selectedManageBooking.balance_amount || 0);
     
     if (!otpVerified) {
-      const advanceAmount = selectedManageBooking.advance_amount || 0;
       const confirmCancel = confirm(
-        `Are you sure you want to cancel booking for "${selectedManageBooking.customer_name}"?\n\n💰 Advance Refund to return: ₹${advanceAmount}`
+        `Are you sure you want to cancel booking for "${selectedManageBooking.customer_name}"?\n\n💰 Refund to return: ₹${totalPaid}`
       );
       if (!confirmCancel) return;
       
@@ -784,10 +831,11 @@ export default function AdminPage() {
       return; // Stop execution here until OTP is verified
     }
 
+    // Deleting it automatically deducts the 1500 from today's Cash/UPI Vault calculation
     const { error } = await supabase.from("bookings").delete().eq("id", selectedManageBooking.id);
     if (error) { alert(error.message); return; }
 
-    alert(`✅ Booking Cancelled. Refund of ₹${selectedManageBooking.advance_amount || 0} marked to be returned.`);
+    alert(`✅ Booking Cancelled. Refund of ₹${totalPaid} marked to be returned.`);
     setShowManageModal(false);
     setSelectedManageBooking(null);
     loadBookings();
@@ -971,7 +1019,11 @@ export default function AdminPage() {
       return;
     }
     
-    const fullBookings = dbBookings || [];
+    // Sanitize ghost advance values for Excel Export
+    const fullBookings = (dbBookings || []).map((b: any) => ({
+      ...b,
+      advance_amount: b.customer_name === "Offline Booking" ? 0 : b.advance_amount
+    }));
     
     // --- 1. Master Bookings Data ---
     const exportData = fullBookings.map((booking, index) => ({
@@ -2091,8 +2143,8 @@ export default function AdminPage() {
                               <span className="text-neutral-200">₹{booking.total_amount}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-neutral-500">Adv:</span> 
-                              <span className="text-emerald-400">₹{booking.advance_amount || 0}</span>
+                              <span className="text-neutral-500">Paid:</span> 
+                              <span className="text-emerald-400">₹{(booking.total_amount || 0) - (booking.balance_amount || 0)}</span>
                             </div>
                             <div className="flex justify-between border-t border-neutral-800 pt-1 mt-0.5">
                               <span className="text-neutral-500">Due:</span> 
@@ -2278,8 +2330,8 @@ export default function AdminPage() {
                       <span className="text-white font-bold">₹{selectedManageBooking.total_amount}</span>
                     </div>
                     <div className="flex justify-between text-emerald-400 font-bold">
-                      <span>Advance Paid:</span>
-                      <span>₹{selectedManageBooking.advance_amount || 0}</span>
+                      <span>Amount Paid:</span>
+                      <span>₹{(selectedManageBooking.total_amount || 0) - (selectedManageBooking.balance_amount || 0)}</span>
                     </div>
                   </div>
 
@@ -2291,14 +2343,14 @@ export default function AdminPage() {
                   >
                     <div className="flex justify-between items-center">
                       <span className="text-xs font-black uppercase text-red-400 group-hover:text-red-300">
-                        ❌ Cancel & Refund Advance
+                        ❌ Cancel & Refund
                       </span>
                       <span className="text-xs font-mono text-emerald-400 font-black flex items-center gap-2">
                         🔒 OTP Required
                       </span>
                     </div>
                     <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">
-                      Cancels order completely & returns advance payment.
+                      Cancels order completely & returns paid amount.
                     </p>
                   </motion.button>
 
