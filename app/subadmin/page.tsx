@@ -2660,55 +2660,59 @@ export default function SubAdminPage() {
                   </div>
                 )}
 
+                {/* --- FIX: UPDATED TO MATCH ADMIN LAYOUT EXACTLY --- */}
                 {slotReason === "OFFLINE BOOKING" && (
                   <div className="sm:col-span-2 p-3 bg-neutral-900 border border-neutral-800 space-y-2 relative mt-1">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-mono uppercase text-neutral-400">Payment Route</label>
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Total Turf Cost</label>
+                      <input
+                        type="number"
+                        placeholder="Total Amount (e.g. 1200)"
+                        value={offlineAmount}
+                        onChange={(e) => setOfflineAmount(e.target.value)}
+                        className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                      />
+                    </div>
+
+                    <div className="space-y-1 pt-2 border-t border-neutral-800 mt-2">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Advance Collected & Payment Route</label>
                       <select
                         value={offlinePaymentMethod}
                         onChange={(e) => setOfflinePaymentMethod(e.target.value)}
-                        className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors"
+                        className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors mb-2"
                       >
                         <option value="Cash">Cash</option>
                         <option value="UPI">UPI</option>
                         <option value="Cash + UPI">Cash + UPI</option>
                       </select>
+
+                      {offlinePaymentMethod === "Cash + UPI" ? (
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="number"
+                            placeholder="Cash Advance (₹)"
+                            value={offlineCashAmount}
+                            onChange={(e) => setOfflineCashAmount(e.target.value)}
+                            className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                          />
+                          <input
+                            type="number"
+                            placeholder="UPI Advance (₹)"
+                            value={offlineUpiAmount}
+                            onChange={(e) => setOfflineUpiAmount(e.target.value)}
+                            className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                          />
+                        </div>
+                      ) : (
+                        <input
+                          type="number"
+                          placeholder="Advance Received (Enter 0 if none)"
+                          value={offlineAdvanceAmount}
+                          onChange={(e) => setOfflineAdvanceAmount(e.target.value)}
+                          className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                        />
+                      )}
                     </div>
-
-                    <input
-                      type="number"
-                      placeholder="Total Cost for the Turf (₹)"
-                      value={offlineAmount}
-                      onChange={(e) => setOfflineAmount(e.target.value)}
-                      className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                    />
-
-                    {offlinePaymentMethod === "Cash + UPI" ? (
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          type="number"
-                          placeholder="Cash Received (₹)"
-                          value={offlineCashAmount}
-                          onChange={(e) => setOfflineCashAmount(e.target.value)}
-                          className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                        />
-                        <input
-                          type="number"
-                          placeholder="UPI Received (₹)"
-                          value={offlineUpiAmount}
-                          onChange={(e) => setOfflineUpiAmount(e.target.value)}
-                          className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                        />
-                      </div>
-                    ) : (
-                      <input
-                        type="number"
-                        placeholder="Advance Amount Paid (₹)"
-                        value={offlineAdvanceAmount}
-                        onChange={(e) => setOfflineAdvanceAmount(e.target.value)}
-                        className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                      />
-                    )}
                   </div>
                 )}
               </div>
