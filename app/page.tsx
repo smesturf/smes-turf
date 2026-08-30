@@ -639,7 +639,7 @@ export default function Home() {
               <motion.a
                 whileHover={{ y: -2, borderColor: "rgba(163,230,53,0.6)" }}
                 whileTap={{ scale: 0.97 }}
-                href="https://maps.google.com/?q=12.329329,76.612008"
+                href="https://maps.app.goo.gl/WdjhtGKsXMq5jcoz6"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white text-[10px] sm:text-xs font-mono uppercase tracking-wider p-3 transition-colors text-center flex items-center justify-center gap-2"

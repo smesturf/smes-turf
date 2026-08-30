@@ -139,6 +139,7 @@ export default function AdminPage() {
   const [slotCourt, setSlotCourt] = useState("Full Court");
 
   const [offlineAmount, setOfflineAmount] = useState("");
+  const [offlineAdvanceAmount, setOfflineAdvanceAmount] = useState("");
   const [offlinePaymentMethod, setOfflinePaymentMethod] = useState("Cash");
   const [offlineCashAmount, setOfflineCashAmount] = useState("");
   const [offlineUpiAmount, setOfflineUpiAmount] = useState("");
@@ -690,19 +691,24 @@ export default function AdminPage() {
     if (isOverlapping) { alert("⚠️ This court is already booked or blocked during the selected time period."); return; }
 
     if (slotReason === "OFFLINE BOOKING") {
-      let totalAmount = 0;
+      const totalCost = Number(offlineAmount || 0);
+      let advancePaid = 0;
       let cashReceived = 0;
       let upiReceived = 0;
 
-      if (offlinePaymentMethod === "Cash") { totalAmount = Number(offlineAmount); cashReceived = totalAmount; }
-      if (offlinePaymentMethod === "UPI") { totalAmount = Number(offlineAmount); upiReceived = totalAmount; }
+      if (offlinePaymentMethod === "Cash") { advancePaid = Number(offlineAdvanceAmount || 0); cashReceived = advancePaid; }
+      if (offlinePaymentMethod === "UPI") { advancePaid = Number(offlineAdvanceAmount || 0); upiReceived = advancePaid; }
       if (offlinePaymentMethod === "Cash + UPI") {
         cashReceived = Number(offlineCashAmount || 0);
         upiReceived = Number(offlineUpiAmount || 0);
-        totalAmount = cashReceived + upiReceived;
+        advancePaid = cashReceived + upiReceived;
       }
 
-      if (totalAmount <= 0) { alert("Enter amount received"); return; }
+      if (totalCost <= 0) { alert("Enter Total Amount for the Turf"); return; }
+      if (advancePaid < 0) { alert("Advance cannot be negative"); return; }
+      if (advancePaid > totalCost) { alert("Advance cannot be greater than Total Amount"); return; }
+
+      const balanceDue = totalCost - advancePaid;
 
       const { error } = await supabase.from("bookings").insert([{
         customer_name: "Offline Booking",
@@ -713,14 +719,14 @@ export default function AdminPage() {
         duration_minutes: actualCalculatedDuration,
         booking_type: slotCourt === "Full Court" ? "Full Court" : "Half Court",
         court_number: slotCourt,
-        total_amount: totalAmount,
-        advance_amount: 0, // ⚡ OFFLINE ADVANCE STRICTLY SET TO 0
-        balance_amount: 0,   // Marking fully paid internally
-        payment_status: "paid",
+        total_amount: totalCost,
+        advance_amount: advancePaid,
+        balance_amount: balanceDue,
+        payment_status: balanceDue <= 0 ? "paid" : "pending",
         payment_method: offlinePaymentMethod,
         cash_received: cashReceived,
         upi_received: upiReceived,
-        payment_completed: true,
+        payment_completed: balanceDue <= 0,
         payment_date: getTodayStr(), 
       }]);
       
@@ -730,7 +736,7 @@ export default function AdminPage() {
       await loadBookings();
       setSlotDate(""); setSlotTime(""); setSlotDuration(60); setSlotEndTime("");
       setSlotReason("OFFLINE BOOKING"); setSlotCourt("Full Court");
-      setOfflineAmount(""); setOfflineCashAmount(""); setOfflineUpiAmount("");
+      setOfflineAmount(""); setOfflineAdvanceAmount(""); setOfflineCashAmount(""); setOfflineUpiAmount("");
       setShowManageSlots(false);
       return;
     }
@@ -2799,44 +2805,55 @@ export default function AdminPage() {
                 {slotReason === "OFFLINE BOOKING" && (
                   <div className="sm:col-span-2 p-3 bg-neutral-900 border border-neutral-800 space-y-3 relative">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono uppercase text-neutral-400">Payment Route</label>
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Total Turf Cost</label>
+                      <input
+                        type="number"
+                        placeholder="Total Amount (e.g. 1200)"
+                        value={offlineAmount}
+                        onChange={(e) => setOfflineAmount(e.target.value)}
+                        className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 pt-2 border-t border-neutral-800">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Advance Collected & Payment Route</label>
                       <select
                         value={offlinePaymentMethod}
                         onChange={(e) => setOfflinePaymentMethod(e.target.value)}
-                        className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors"
+                        className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors mb-2"
                       >
                         <option value="Cash">Cash</option>
                         <option value="UPI">UPI</option>
                         <option value="Cash + UPI">Cash + UPI</option>
                       </select>
-                    </div>
 
-                    {offlinePaymentMethod === "Cash + UPI" ? (
-                      <div className="grid grid-cols-2 gap-2">
+                      {offlinePaymentMethod === "Cash + UPI" ? (
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="number"
+                            placeholder="Cash Advance (₹)"
+                            value={offlineCashAmount}
+                            onChange={(e) => setOfflineCashAmount(e.target.value)}
+                            className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                          />
+                          <input
+                            type="number"
+                            placeholder="UPI Advance (₹)"
+                            value={offlineUpiAmount}
+                            onChange={(e) => setOfflineUpiAmount(e.target.value)}
+                            className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                          />
+                        </div>
+                      ) : (
                         <input
                           type="number"
-                          placeholder="Cash Amount (₹)"
-                          value={offlineCashAmount}
-                          onChange={(e) => setOfflineCashAmount(e.target.value)}
+                          placeholder="Advance Received (Enter 0 if none)"
+                          value={offlineAdvanceAmount}
+                          onChange={(e) => setOfflineAdvanceAmount(e.target.value)}
                           className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
                         />
-                        <input
-                          type="number"
-                          placeholder="UPI Amount (₹)"
-                          value={offlineUpiAmount}
-                          onChange={(e) => setOfflineUpiAmount(e.target.value)}
-                          className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                        />
-                      </div>
-                    ) : (
-                      <input
-                        type="number"
-                        placeholder="Total Amount Received (₹)"
-                        value={offlineAmount}
-                        onChange={(e) => setOfflineAmount(e.target.value)}
-                        className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                      />
-                    )}
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
