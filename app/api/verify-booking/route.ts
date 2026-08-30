@@ -26,15 +26,17 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Payment verification failed. Invalid Signature." }, { status: 400 });
       }
 
-      // --- ⚡ CRITICAL FIX: PREVENT DUPLICATE BOOKINGS ---
-      // If the background webhook already saved this order, do not crash! Just return success.
+      // --- ⚡ CRITICAL FIX: BULLETPROOF DUPLICATE CHECK ---
+      // Checks if the webhook OR a previous client call already saved this exact payment
       const { data: existingOrder } = await supabase
         .from("bookings")
         .select("*")
-        .eq("razorpay_order_id", paymentData.razorpay_order_id)
-        .single();
+        .or(`razorpay_order_id.eq.${paymentData.razorpay_order_id},razorpay_payment_id.eq.${paymentData.razorpay_payment_id},booking_reference.eq.${paymentData.razorpay_payment_id}`)
+        .limit(1)
+        .maybeSingle();
 
       if (existingOrder) {
+        console.log("Duplicate prevented: Order already processed by webhook or client.");
         return NextResponse.json({ success: true, booking: existingOrder });
       }
       // ---------------------------------------------------

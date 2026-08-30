@@ -10,13 +10,17 @@ const supabase = createClient(
 );
 
 const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID!,
+  key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!, // Make sure this matches your .env
   key_secret: process.env.RAZORPAY_KEY_SECRET!,
 });
 
 export async function POST(req: Request) {
   try {
-    const { bookingDate, startTime, duration, bookingType, amount } = await req.json();
+    // ⚡ FIX: Destructure all the customer and sport details sent from the frontend
+    const { 
+      bookingDate, startTime, duration, bookingType, amount, 
+      totalAmount, name, phone, email, sport 
+    } = await req.json();
 
     // 1. CALCULATE ADJACENT DATES (Yesterday, Today, Tomorrow)
     const selectedDate = new Date(bookingDate);
@@ -29,7 +33,7 @@ export async function POST(req: Request) {
     nextDate.setDate(nextDate.getDate() + 1);
     const nextDateStr = nextDate.toISOString().split("T")[0];
 
-    // 2. FETCH ALL RELEVANT DATA IN ONE SINGLE QUERY (Massive Performance Boost)
+    // 2. FETCH ALL RELEVANT DATA IN ONE SINGLE QUERY
     const { data: allBookings, error: checkError } = await supabase
       .from("bookings")
       .select("start_time, duration_minutes, booking_type, court_number, booking_date")
@@ -52,7 +56,6 @@ export async function POST(req: Request) {
     const nextDayBlockedSlots = allBlockedSlots?.filter(b => b.booking_date === nextDateStr) || [];
 
     // 3. ENFORCE OVERLAP RULES
-    // Passing the exact 9 arguments your current lib/booking-rules.ts expects
     const availability = findCourtAvailability(
       startTime,
       Number(duration),
@@ -74,6 +77,18 @@ export async function POST(req: Request) {
       amount: amount * 100, // Amount in paise
       currency: "INR",
       receipt: `rcpt_${Date.now()}`,
+      // ⚡ FIX: Add notes so the webhook can recover dropped payments
+      notes: {
+        name,
+        phone,
+        email,
+        sport,
+        bookingType,
+        bookingDate,
+        startTime,
+        duration: String(duration),
+        totalAmount: String(totalAmount),
+      },
     };
 
     const order = await razorpay.orders.create(options);
