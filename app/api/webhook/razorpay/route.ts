@@ -14,7 +14,6 @@ export async function POST(req: Request) {
     const bodyText = await req.text();
     const signature = req.headers.get("x-razorpay-signature");
 
-    // ⚡ CRITICAL FIX 1: Use the dedicated Webhook Secret!
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET!; 
     
     if (!secret) {
@@ -42,7 +41,7 @@ export async function POST(req: Request) {
          return NextResponse.json({ message: "Not a turf booking payment, ignoring." });
       }
 
-      // ⚡ CRITICAL FIX 2: Safe duplicate check to prevent .single() crashes
+      // 1. Prevent Double-Booking
       const { data: existingBooking } = await supabase
         .from("bookings")
         .select("id")
@@ -172,12 +171,15 @@ export async function POST(req: Request) {
             </div>
           `
         };
-        transporter.sendMail(mailOptions).catch(console.error);
+        // ⚡ CRITICAL FIX: AWAIT so Vercel doesn't kill it early
+        await transporter.sendMail(mailOptions).catch(console.error);
       }
 
       // 6. Trigger WhatsApp
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || `https://${req.headers.get('host')}`;
-      fetch(`${baseUrl}/api/whatsapp`, {
+      
+      // ⚡ CRITICAL FIX: AWAIT so Vercel doesn't kill it early
+      await fetch(`${baseUrl}/api/whatsapp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
-import { convert12to24, findCourtAvailability, timeToMinutes } from "../../lib/booking-rules";
+import { convert12to24, findCourtAvailability } from "../../lib/booking-rules";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,7 +27,6 @@ export async function POST(req: Request) {
       }
 
       // --- ⚡ CRITICAL FIX: BULLETPROOF DUPLICATE CHECK ---
-      // Checks if the webhook OR a previous client call already saved this exact payment
       const { data: existingOrder } = await supabase
         .from("bookings")
         .select("*")
@@ -39,10 +38,9 @@ export async function POST(req: Request) {
         console.log("Duplicate prevented: Order already processed by webhook or client.");
         return NextResponse.json({ success: true, booking: existingOrder });
       }
-      // ---------------------------------------------------
     }
 
-    // 2. CALCULATE ADJACENT DATES (Yesterday, Today, Tomorrow)
+    // 2. CALCULATE ADJACENT DATES
     const bookingDate = bookingDetails.bookingDate;
     const selectedDate = new Date(bookingDate);
 
@@ -114,8 +112,6 @@ export async function POST(req: Request) {
         booking_date: bookingDetails.bookingDate,
         start_time: convert12to24(bookingDetails.startTime),
         duration_minutes: Number(bookingDetails.duration),
-        
-        // --- ⚡ ADMIN MATRIX SETTLEMENT FIELDS ---
         total_amount: fullTotal, 
         advance_amount: advancePaid,              
         balance_amount: balanceDue,                       
@@ -125,7 +121,6 @@ export async function POST(req: Request) {
         payment_completed: balanceDue <= 0,
         payment_date: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }),
         payment_status: "paid",
-
         razorpay_order_id: paymentData.razorpay_order_id || null,
         razorpay_payment_id: paymentData.razorpay_payment_id || null,
       },
@@ -136,7 +131,33 @@ export async function POST(req: Request) {
       throw error;
     }
 
-    // 6. SEND CONFIRMATION EMAIL VIA NODEMAILER
+    // 6. SEND CONFIRMATION WHATSAPP & EMAIL
+    try {
+      const origin = process.env.NEXT_PUBLIC_SITE_URL || "https://www.smesturf.com";
+      // ⚡ CRITICAL FIX: Added AWAIT
+      await fetch(`${origin}/api/whatsapp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerPhone: bookingDetails.phone,
+          customerName: bookingDetails.name,
+          email: bookingDetails.email,
+          date: bookingDetails.bookingDate,
+          time: bookingDetails.formattedTime || `${bookingDetails.startTime} (${bookingDetails.duration} Mins)`,
+          duration: bookingDetails.duration,
+          sport: bookingDetails.sport,
+          court: availability.court,
+          bookingId: `#${insertedData[0].id}`,
+          referenceId: bookingReference,
+          totalAmount: fullTotal,
+          advanceAmount: advancePaid,
+          balanceAmount: balanceDue
+        }),
+      });
+    } catch(waErr) {
+      console.error("Server WA Dispatch Failed", waErr);
+    }
+
     if (bookingDetails.email) {
       const transporter = nodemailer.createTransport({
         service: "gmail",
@@ -184,22 +205,12 @@ export async function POST(req: Request) {
                 <td style="padding: 15px; font-weight: bold; color: #ef4444; font-size: 18px; text-align: right;">₹${balanceDue}</td>
               </tr>
             </table>
-
-            <p style="color: #a3a3a3; font-size: 13px; margin-top: 30px; line-height: 1.5;">
-              ⚠️ <strong>Rules:</strong> Please arrive 10 minutes prior to kickoff. Non-marking turf shoes only.
-            </p>
-            
-            <hr style="border: 0; height: 1px; background-color: #262626; margin: 30px 0;" />
-            <p style="color: #525252; font-size: 11px; text-align: center; text-transform: uppercase; letter-spacing: 1px;">
-              Ref ID: ${bookingReference}<br/><br/>
-              📍 SMES Sports Academy, Mysuru
-            </p>
           </div>
         `,
       };
 
-      // Send asynchronously so it doesn't block the user's booking success screen
-      transporter.sendMail(mailOptions).catch(err => console.error("Email dispatch failed:", err));
+      // ⚡ CRITICAL FIX: Added AWAIT
+      await transporter.sendMail(mailOptions).catch(err => console.error("Email dispatch failed:", err));
     }
 
     return NextResponse.json({ success: true, booking: insertedData[0] });
