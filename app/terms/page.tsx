@@ -51,17 +51,27 @@ export default function TermsAndConditions() {
             </p>
           </section>
 
-          {/* Rule 2: Cancellation & Rescheduling */}
-          <section className="space-y-2 bg-neutral-900/30 p-6 border border-neutral-800">
+          {/* Rule 2: Cancellation & Rescheduling (UPDATED 6-HOUR RULE) */}
+          <section className="space-y-2 bg-neutral-900/30 p-6 border border-neutral-800 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-1 h-full bg-lime-400" />
             <h2 className="text-lime-400 font-bold uppercase text-sm sm:text-base tracking-wider">
               02. Cancellation & Slot Rescheduling Policy
             </h2>
             <p className="text-neutral-400">
-              * Customers are permitted to cancel their booking at any time, but <strong className="text-red-400">advance money will strictly not be refunded</strong>.
+              * Customers are permitted to cancel their booking at any time, but <strong className="text-red-400">advance money will strictly not be refunded under any circumstances</strong>.
             </p>
             <p className="text-neutral-400">
               * Instead of a monetary refund, customers who cancel are eligible to <strong className="text-lime-400">reschedule their match slot</strong> to any available open date or time on the schedule.
             </p>
+            <div className="mt-4 p-3 bg-black/50 border border-neutral-800">
+              <p className="text-neutral-300">
+                * <strong className="text-white uppercase tracking-widest text-[10px] block mb-1">Strict 6-Hour Rescheduling Rule:</strong> 
+                You are eligible to reschedule your slot <strong className="text-lime-400 underline decoration-lime-400/50 underline-offset-4">only if you notify us at least 6 hours prior</strong> to your originally scheduled kickoff time. 
+              </p>
+              <p className="text-neutral-500 mt-2 text-[11px]">
+                If a cancellation or reschedule request is made less than 6 hours before the booked slot, the advance payment is entirely forfeited, and the slot cannot be rescheduled.
+              </p>
+            </div>
           </section>
 
           {/* Rule 3: Equipment & Inventory */}
@@ -77,7 +87,7 @@ export default function TermsAndConditions() {
             </p>
           </section>
 
-          {/* Rule 4: Tennis Ball Policy (UPDATED) */}
+          {/* Rule 4: Tennis Ball Policy */}
           <section className="space-y-2 bg-neutral-900/30 p-6 border border-neutral-800">
             <h2 className="text-lime-400 font-bold uppercase text-sm sm:text-base tracking-wider">
               04. Equipment & Tennis Ball Policy
@@ -138,7 +148,7 @@ export default function TermsAndConditions() {
             </p>
           </section>
 
-          {/* Rule 8: Personal Belongings & Liability (UPDATED) */}
+          {/* Rule 8: Personal Belongings & Liability */}
           <section className="space-y-2 bg-neutral-900/30 p-6 border border-neutral-800">
             <h2 className="text-lime-400 font-bold uppercase text-sm sm:text-base tracking-wider">
               08. Injury Liability & Personal Belongings
