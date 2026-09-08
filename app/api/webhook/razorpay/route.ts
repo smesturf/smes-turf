@@ -14,11 +14,18 @@ export async function POST(req: Request) {
     const bodyText = await req.text();
     const signature = req.headers.get("x-razorpay-signature");
 
-    // We use the normal Key Secret to validate the Webhook for simplicity
-    const secret = process.env.RAZORPAY_KEY_SECRET!; 
+    // ⚡ CRITICAL FIX 1: Use the dedicated Webhook Secret!
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET!; 
+    
+    if (!secret) {
+      console.error("CRITICAL ERROR: RAZORPAY_WEBHOOK_SECRET is missing in Vercel.");
+      return NextResponse.json({ error: "Server misconfiguration" }, { status: 500 });
+    }
+
     const expectedSignature = crypto.createHmac("sha256", secret).update(bodyText).digest("hex");
 
     if (expectedSignature !== signature) {
+      console.error("Webhook signature mismatch! Request blocked.");
       return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
     }
 
@@ -35,14 +42,16 @@ export async function POST(req: Request) {
          return NextResponse.json({ message: "Not a turf booking payment, ignoring." });
       }
 
-      // 1. Prevent Double-Booking (Check if frontend already handled it)
+      // ⚡ CRITICAL FIX 2: Safe duplicate check to prevent .single() crashes
       const { data: existingBooking } = await supabase
         .from("bookings")
         .select("id")
         .eq("razorpay_order_id", order_id)
-        .single();
+        .limit(1)
+        .maybeSingle();
 
       if (existingBooking) {
+        console.log("Duplicate prevented in Webhook: Order already exists.");
         return NextResponse.json({ success: true, message: "Booking already handled by frontend" });
       }
 
