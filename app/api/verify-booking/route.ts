@@ -134,6 +134,22 @@ export async function POST(req: Request) {
     // 6. SEND CONFIRMATION WHATSAPP & EMAIL
     try {
       const origin = process.env.NEXT_PUBLIC_SITE_URL || "https://www.smesturf.com";
+      
+      // --- CALCULATE EXACT END TIME ---
+      const [timeStr, ampm] = bookingDetails.startTime.split(" ");
+      let [h, m] = timeStr.split(":").map(Number);
+      if (ampm === "PM" && h !== 12) h += 12;
+      if (ampm === "AM" && h === 12) h = 0;
+      
+      const totalMins = h * 60 + m + Number(bookingDetails.duration);
+      const endH24 = Math.floor(totalMins / 60) % 24;
+      const endM = totalMins % 60;
+      const endH12 = endH24 % 12 === 0 ? 12 : endH24 % 12;
+      const endAMPM = endH24 >= 12 ? "PM" : "AM";
+      
+      const endTime = `${String(endH12).padStart(2, "0")}:${String(endM).padStart(2, "0")} ${endAMPM}`;
+      const finalTimeFormat = `${bookingDetails.startTime} - ${endTime}\n(${bookingDetails.duration} Mins)`;
+
       // ⚡ CRITICAL FIX: Added AWAIT
       await fetch(`${origin}/api/whatsapp`, {
         method: "POST",
@@ -143,7 +159,7 @@ export async function POST(req: Request) {
           customerName: bookingDetails.name,
           email: bookingDetails.email,
           date: bookingDetails.bookingDate,
-          time: bookingDetails.formattedTime || `${bookingDetails.startTime} (${bookingDetails.duration} Mins)`,
+          time: finalTimeFormat, // ⚡ UPDATED FORMAT APPLIED HERE
           duration: bookingDetails.duration,
           sport: bookingDetails.sport,
           court: availability.court,

@@ -178,6 +178,21 @@ export async function POST(req: Request) {
       // 6. Trigger WhatsApp
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || `https://${req.headers.get('host')}`;
       
+      // --- CALCULATE EXACT END TIME ---
+      const [timeStr, ampm] = notes.startTime.split(" ");
+      let [h, m] = timeStr.split(":").map(Number);
+      if (ampm === "PM" && h !== 12) h += 12;
+      if (ampm === "AM" && h === 12) h = 0;
+      
+      const totalMins = h * 60 + m + Number(notes.duration);
+      const endH24 = Math.floor(totalMins / 60) % 24;
+      const endM = totalMins % 60;
+      const endH12 = endH24 % 12 === 0 ? 12 : endH24 % 12;
+      const endAMPM = endH24 >= 12 ? "PM" : "AM";
+      
+      const endTime = `${String(endH12).padStart(2, "0")}:${String(endM).padStart(2, "0")} ${endAMPM}`;
+      const finalTimeFormat = `${notes.startTime} - ${endTime}\n(${notes.duration} Mins)`;
+
       // ⚡ CRITICAL FIX: AWAIT so Vercel doesn't kill it early
       await fetch(`${baseUrl}/api/whatsapp`, {
         method: "POST",
@@ -187,7 +202,7 @@ export async function POST(req: Request) {
           customerName: notes.name, 
           email: notes.email,                            
           date: notes.bookingDate,
-          time: `${notes.startTime} (${notes.duration} Mins)`, 
+          time: finalTimeFormat, // ⚡ EXACT FORMAT APPLIED HERE
           duration: notes.duration,                      
           sport: notes.sport,                            
           court: availability.court, 

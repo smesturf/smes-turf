@@ -438,28 +438,7 @@ export default function Home() {
       
       const formattedTimeSlot = getTimeRangeLabel(startTime, duration);
 
-      const whatsappRes = await fetch("/api/whatsapp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customerPhone: phone,    
-          customerName: name, 
-          email: email,                            
-          date: bookingDate,
-          time: formattedTimeSlot, 
-          duration: duration,                      
-          sport: sport,                            
-          court: verifyData.booking?.court_number || bookingType, 
-          bookingId: bookingId,
-          referenceId: referenceId,
-          totalAmount: totalAmount,
-          advanceAmount: advancePaid,
-          balanceAmount: balanceAmount
-        }),
-      });
-
-      const whatsappData = await whatsappRes.json();
-      if (!whatsappRes.ok) console.error("CRITICAL WHATSAPP API ERROR:", whatsappData);
+      
 
       setIsProcessingBooking(false);
 
