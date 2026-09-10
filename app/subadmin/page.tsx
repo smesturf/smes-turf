@@ -72,6 +72,7 @@ export default function SubAdminPage() {
   const [rescheduleCourt, setRescheduleCourt] = useState("Full Court");
   const [availableRescheduleSlots, setAvailableRescheduleSlots] = useState<string[]>([]);
   const [extendMinutes, setExtendMinutes] = useState(30);
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
 
   // 🔒 Security OTP States (Sub-Admin Restricted)
   const [showOtpModal, setShowOtpModal] = useState(false);
@@ -138,7 +139,10 @@ export default function SubAdminPage() {
   const [slotEndTime, setSlotEndTime] = useState("");
   const [slotCourt, setSlotCourt] = useState("Full Court");
 
-  // ⚡ Updated Offline Booking State Variables
+  // ⚡ Updated Offline/Maintenance Booking State Variables
+  const [offlineName, setOfflineName] = useState("");
+  const [offlinePhone, setOfflinePhone] = useState("");
+  const [offlineEmail, setOfflineEmail] = useState("");
   const [offlineAmount, setOfflineAmount] = useState("");
   const [offlineAdvanceAmount, setOfflineAdvanceAmount] = useState("");
   const [offlinePaymentMethod, setOfflinePaymentMethod] = useState("Cash");
@@ -661,8 +665,9 @@ export default function SubAdminPage() {
       const balanceDue = totalCost - advancePaid;
 
       const { error } = await supabase.from("bookings").insert([{
-        customer_name: "Offline Booking",
-        phone: "-",
+        customer_name: offlineName.trim() || "Offline Booking",
+        phone: offlinePhone.trim() || "-",
+        email: offlineEmail.trim() || null,
         sport: "Football",
         booking_date: slotDate,
         start_time: slotTime,
@@ -686,16 +691,26 @@ export default function SubAdminPage() {
       await loadBookings();
       setSlotDate(""); setSlotTime(""); setSlotDuration(60); setSlotEndTime("");
       setSlotReason("OFFLINE BOOKING"); setSlotCourt("Full Court");
+      setOfflineName(""); setOfflinePhone(""); setOfflineEmail("");
       setOfflineAmount(""); setOfflineAdvanceAmount(""); setOfflineCashAmount(""); setOfflineUpiAmount("");
       setShowManageSlots(false);
       return;
+    }
+
+    // Append Name & Phone into the Block Reason for Tournaments & Maintenance so it shows on the UI
+    let finalReason = slotReason;
+    if (slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE") {
+      const extras = [];
+      if (offlineName.trim()) extras.push(offlineName.trim());
+      if (offlinePhone.trim()) extras.push(offlinePhone.trim());
+      if (extras.length > 0) finalReason += ` (${extras.join(" - ")})`;
     }
 
     const { error } = await supabase.from("blocked_slots").insert([{
       booking_date: slotDate,
       start_time: slotTime,
       duration_minutes: actualCalculatedDuration,
-      reason: slotReason,
+      reason: finalReason,
       court_number: slotCourt,
     }]);
 
@@ -706,7 +721,100 @@ export default function SubAdminPage() {
 
     setSlotDate(""); setSlotTime(""); setSlotEndTime(""); setSlotDuration(60);
     setSlotReason("OFFLINE BOOKING"); setSlotCourt("Full Court");
+    setOfflineName(""); setOfflinePhone(""); setOfflineEmail("");
     setShowManageSlots(false);
+  };
+
+  /* ========================================================================= */
+  /* 💬 MANUAL WHATSAPP CONFIRMATION TRIGGER */
+  /* ========================================================================= */
+  
+  const handleSendWhatsApp = async () => {
+    if (!selectedManageBooking) return;
+    
+    // Automatically prompt for a phone number if the booking has no phone ("-")
+    let targetPhone = selectedManageBooking.phone;
+    if (!targetPhone || targetPhone === "-") {
+      const enteredPhone = window.prompt("No phone number found for this booking.\n\nEnter 10-digit phone number to send WhatsApp:");
+      if (!enteredPhone) return;
+      targetPhone = enteredPhone.trim();
+    }
+
+    const confirmSend = window.confirm(`Send official WhatsApp confirmation to ${targetPhone}?`);
+    if (!confirmSend) return;
+
+    setIsSendingWhatsApp(true);
+    
+    try {
+      // 1. Calculate perfect start and end time (handling raw DB formats like '05:00:00' securely)
+      let startH = 0, startM = 0, ampm = "AM";
+      const rawTime = selectedManageBooking.start_time || "";
+      
+      if (rawTime.includes("AM") || rawTime.includes("PM")) {
+        const [tStr, p] = rawTime.split(" ");
+        const [h, m] = tStr.split(":").map(Number);
+        startH = h; startM = m; ampm = p;
+      } else {
+        const [h, m] = rawTime.split(":").map(Number);
+        ampm = h >= 12 ? "PM" : "AM";
+        startH = h % 12 || 12;
+        startM = m;
+      }
+      
+      const displayStart = `${String(startH).padStart(2, "0")}:${String(startM).padStart(2, "0")} ${ampm}`;
+      
+      let h24 = startH;
+      if (ampm === "PM" && startH !== 12) h24 += 12;
+      if (ampm === "AM" && startH === 12) h24 = 0;
+
+      const totalMins = h24 * 60 + startM + Number(selectedManageBooking.duration_minutes || 60);
+      const endH24 = Math.floor(totalMins / 60) % 24;
+      const endM = totalMins % 60;
+      const endH12 = endH24 % 12 === 0 ? 12 : endH24 % 12;
+      const endAMPM = endH24 >= 12 ? "PM" : "AM";
+
+      const displayEnd = `${String(endH12).padStart(2, "0")}:${String(endM).padStart(2, "0")} ${endAMPM}`;
+      
+      // 2. Safe Meta Formatter
+      const sanitize = (str: string) => (str || "").replace(/[\n\t]/g, ' ').replace(/\s{2,}/g, ' ').trim();
+
+      const safeTimeFormat = sanitize(`${displayStart} - ${displayEnd}`);
+      const safeName = sanitize(selectedManageBooking.customer_name);
+      const safeSport = sanitize(selectedManageBooking.sport || "Football");
+
+      const response = await fetch("/api/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerPhone: targetPhone,
+          customerName: safeName,
+          email: selectedManageBooking.email || null,
+          date: selectedManageBooking.booking_date?.split('T')[0],
+          time: safeTimeFormat,
+          duration: selectedManageBooking.duration_minutes || 60,
+          sport: safeSport,
+          court: selectedManageBooking.court_number || selectedManageBooking.booking_type || "Full Court",
+          bookingId: `#${selectedManageBooking.id}`,
+          referenceId: selectedManageBooking.booking_reference || "N/A",
+          totalAmount: Number(selectedManageBooking.total_amount || 0),
+          advanceAmount: Number(selectedManageBooking.advance_amount || 0),
+          balanceAmount: Number(selectedManageBooking.balance_amount || 0)
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        alert(`❌ WhatsApp API Error:\n${errorText}`);
+      } else {
+        alert("✅ WhatsApp Confirmation Sent Successfully!");
+      }
+
+    } catch (error) {
+      console.error("WhatsApp Dispatch Failed:", error);
+      alert("❌ Failed to reach WhatsApp server. Check console.");
+    } finally {
+      setIsSendingWhatsApp(false);
+    }
   };
 
   /* ========================================================================= */
@@ -2204,7 +2312,7 @@ export default function SubAdminPage() {
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.9, y: 12, opacity: 0 }}
               transition={{ duration: 0.3, ease: easeOut }}
-              className="bg-neutral-950 border border-neutral-800 p-6 w-full max-w-md space-y-5 relative overflow-y-auto max-h-[90vh]"
+              className="bg-neutral-950 border border-neutral-800 p-4 sm:p-6 w-full max-w-md space-y-4 relative overflow-y-auto max-h-[90vh] rounded-lg shadow-2xl"
             >
               <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-fuchsia-500/10 to-transparent pointer-events-none" />
 
@@ -2235,7 +2343,28 @@ export default function SubAdminPage() {
                     </div>
                   </div>
 
-                  {/* Option 1: Reschedule Time Slot (Sub-Admin Allowed) */}
+                  {/* Option 1: Send WhatsApp Confirmation */}
+                  <motion.button
+                    whileHover={{ scale: 1.01, borderColor: "rgba(34, 197, 94, 0.6)" }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleSendWhatsApp}
+                    disabled={isSendingWhatsApp}
+                    className="w-full text-left p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-green-950/30 transition-colors group"
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-black uppercase text-green-400 group-hover:text-green-300">
+                        {isSendingWhatsApp ? "⏳ Sending..." : "💬 Send WhatsApp Confirmation"}
+                      </span>
+                      <span className="text-xs font-mono text-green-400 font-black flex items-center gap-2">
+                        Send →
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">
+                      Manually trigger confirmation receipt to customer's phone.
+                    </p>
+                  </motion.button>
+
+                  {/* Option 2: Reschedule Time Slot (Sub-Admin Allowed) */}
                   <motion.button
                     whileHover={{ scale: 1.01, borderColor: "rgba(163, 230, 53, 0.6)" }}
                     whileTap={{ scale: 0.98 }}
@@ -2253,7 +2382,7 @@ export default function SubAdminPage() {
                     </p>
                   </motion.button>
 
-                  {/* Option 2: Extend Slot (Sub-Admin Allowed) */}
+                  {/* Option 3: Extend Slot (Sub-Admin Allowed) */}
                   <motion.button
                     whileHover={{ scale: 1.01, borderColor: "rgba(6, 182, 212, 0.6)" }}
                     whileTap={{ scale: 0.98 }}
@@ -2439,300 +2568,6 @@ export default function SubAdminPage() {
                 >
                   Close Modal
                 </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ---------- Payment Modal ---------- */}
-      <AnimatePresence>
-        {showPaymentModal && selectedBooking && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]"
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 12, opacity: 0 }}
-              animate={{ scale: 1, y: 0, opacity: 1 }}
-              exit={{ scale: 0.9, y: 12, opacity: 0 }}
-              transition={{ duration: 0.3, ease: easeOut }}
-              className="bg-neutral-950 border border-neutral-800 p-6 w-full max-w-sm space-y-4 relative overflow-hidden"
-            >
-              <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-lime-500/10 to-transparent pointer-events-none" />
-              <div className="relative">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-lime-400 block mb-1">
-                  // Payment Node
-                </span>
-                <h2 className="text-xl font-black uppercase tracking-tight text-white">
-                  💰 Balance Clearing
-                </h2>
-                <p className="text-neutral-400 text-xs mt-1 font-mono">
-                  Collect the remaining match dues directly below.
-                </p>
-              </div>
-
-              <div className="p-4 bg-neutral-900 border border-neutral-800 flex justify-between items-center relative">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">Outstanding Balance</span>
-                <span className="text-lg font-black text-red-400 font-mono">
-                  ₹{selectedBooking?.balance_amount || 0}
-                </span>
-              </div>
-
-              <div className="space-y-3 relative">
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-mono uppercase tracking-widest text-neutral-400">
-                    Payment Route
-                  </label>
-                  <select
-                    value={paymentType}
-                    onChange={(e) => setPaymentType(e.target.value)}
-                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
-                  >
-                    <option value="Full Cash">Full Cash</option>
-                    <option value="Full UPI">Full UPI</option>
-                    <option value="Cash + UPI">Cash + UPI</option>
-                  </select>
-                </div>
-
-                {paymentType === "Cash + UPI" && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="grid grid-cols-2 gap-2 p-3 bg-neutral-900 border border-neutral-800"
-                  >
-                    <input
-                      type="number"
-                      placeholder="Cash Amount"
-                      value={cashAmount}
-                      onChange={(e) => setCashAmount(e.target.value)}
-                      className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                    />
-                    <input
-                      type="number"
-                      placeholder="UPI Amount"
-                      value={upiAmount}
-                      onChange={(e) => setUpiAmount(e.target.value)}
-                      className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                    />
-                  </motion.div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-2 relative">
-                <motion.button
-                  whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.3)" }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={savePayment}
-                  className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
-                >
-                  Save Payment
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => { setShowPaymentModal(false); setSelectedBooking(null); }}
-                  className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
-                >
-                  Cancel
-                </motion.button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-{/* ---------- Manage Slots Modal ---------- */}
-      <AnimatePresence>
-        {showManageSlots && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]"
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 12, opacity: 0 }}
-              animate={{ scale: 1, y: 0, opacity: 1 }}
-              exit={{ scale: 0.9, y: 12, opacity: 0 }}
-              transition={{ duration: 0.3, ease: easeOut }}
-              className="bg-neutral-950 border border-neutral-800 p-5 w-full max-w-lg space-y-3 relative max-h-[90vh] overflow-y-auto"
-            >
-              <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-fuchsia-500/10 to-transparent pointer-events-none" />
-              
-              <div className="relative">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-fuchsia-400 block mb-0.5">
-                  // Slot Manager
-                </span>
-                <h2 className="text-lg font-black uppercase tracking-tight text-white">
-                  ⚙️ Manage Turf Slots
-                </h2>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 relative mt-2">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Reason</label>
-                  <select
-                    value={slotReason}
-                    onChange={(e) => setSlotReason(e.target.value)}
-                    className="w-full p-2.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
-                  >
-                    <option value="OFFLINE BOOKING">OFFLINE BOOKING</option>
-                    <option value="TOURNAMENT">TOURNAMENT</option>
-                    <option value="MAINTENANCE">MAINTENANCE</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Date</label>
-                  <input
-                    type="date"
-                    value={slotDate}
-                    min={getTodayStr()}
-                    onChange={(e) => setSlotDate(e.target.value)}
-                    style={{ colorScheme: "dark" }}
-                    className="w-full p-2.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Court Section</label>
-                  <select
-                    value={slotCourt}
-                    onChange={(e) => setSlotCourt(e.target.value)}
-                    className="w-full p-2.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
-                  >
-                    <option value="Full Court">Full Court</option>
-                    <option value="Court 1">Court 1</option>
-                    <option value="Court 2">Court 2</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-mono uppercase text-neutral-400">Start Time</label>
-                  <select
-                    value={slotTime}
-                    onChange={(e) => setSlotTime(e.target.value)}
-                    className="w-full p-2.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                  >
-                    <option value="">-- Select Time --</option>
-                    {availableAdminSlots.length === 0 ? (
-                      <option value="" disabled>No slots available</option>
-                    ) : (
-                      availableAdminSlots.map((t) => (
-                        <option key={t} value={t}>{t}</option>
-                      ))
-                    )}
-                  </select>
-                </div>
-
-                {slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE" ? (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-mono uppercase text-neutral-400">End Time (Optional)</label>
-                    <select
-                      value={slotEndTime}
-                      onChange={(e) => setSlotEndTime(e.target.value)}
-                      className="w-full p-2.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                    >
-                      <option value="">-- Select End Time --</option>
-                      {adminTimeSlots.map((t) => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-mono uppercase text-neutral-400">Duration (Minutes)</label>
-                    <select
-                      value={slotDuration}
-                      onChange={(e) => setSlotDuration(Number(e.target.value))}
-                      className="w-full p-2.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                    >
-                      <option value={30}>30 mins</option>
-                      <option value={60}>60 Mins (1 Hour)</option>
-                      <option value={90}>90 Mins (1.5 Hours)</option>
-                      <option value={120}>120 Mins (2 Hours)</option>
-                      <option value={150}>150 Mins (2.5 Hours)</option>
-                      <option value={180}>180 Mins (3 Hours)</option>
-                    </select>
-                  </div>
-                )}
-
-                {/* --- FIX: UPDATED TO MATCH ADMIN LAYOUT EXACTLY --- */}
-                {slotReason === "OFFLINE BOOKING" && (
-                  <div className="sm:col-span-2 p-3 bg-neutral-900 border border-neutral-800 space-y-2 relative mt-1">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-mono uppercase text-neutral-400">Total Turf Cost</label>
-                      <input
-                        type="number"
-                        placeholder="Total Amount (e.g. 1200)"
-                        value={offlineAmount}
-                        onChange={(e) => setOfflineAmount(e.target.value)}
-                        className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                      />
-                    </div>
-
-                    <div className="space-y-1 pt-2 border-t border-neutral-800 mt-2">
-                      <label className="text-[10px] font-mono uppercase text-neutral-400">Advance Collected & Payment Route</label>
-                      <select
-                        value={offlinePaymentMethod}
-                        onChange={(e) => setOfflinePaymentMethod(e.target.value)}
-                        className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors mb-2"
-                      >
-                        <option value="Cash">Cash</option>
-                        <option value="UPI">UPI</option>
-                        <option value="Cash + UPI">Cash + UPI</option>
-                      </select>
-
-                      {offlinePaymentMethod === "Cash + UPI" ? (
-                        <div className="grid grid-cols-2 gap-2">
-                          <input
-                            type="number"
-                            placeholder="Cash Advance (₹)"
-                            value={offlineCashAmount}
-                            onChange={(e) => setOfflineCashAmount(e.target.value)}
-                            className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                          />
-                          <input
-                            type="number"
-                            placeholder="UPI Advance (₹)"
-                            value={offlineUpiAmount}
-                            onChange={(e) => setOfflineUpiAmount(e.target.value)}
-                            className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                          />
-                        </div>
-                      ) : (
-                        <input
-                          type="number"
-                          placeholder="Advance Received (Enter 0 if none)"
-                          value={offlineAdvanceAmount}
-                          onChange={(e) => setOfflineAdvanceAmount(e.target.value)}
-                          className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
-                        />
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-3 mt-2 relative border-t border-neutral-900">
-                <motion.button
-                  whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(217,70,239,0.3)" }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={saveBlockedSlot}
-                  className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors"
-                >
-                  Save Field Block
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => setShowManageSlots(false)}
-                  className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors"
-                >
-                  Cancel
-                </motion.button>
               </div>
             </motion.div>
           </motion.div>
