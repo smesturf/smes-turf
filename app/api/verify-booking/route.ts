@@ -15,7 +15,7 @@ export async function POST(req: Request) {
 
     // 1. CRYPTOGRAPHIC VERIFICATION (Server-Side)
     const secret = process.env.RAZORPAY_KEY_SECRET!; 
-    
+
     if (paymentData !== "CHECK_ONLY") {
       const generatedSignature = crypto
         .createHmac("sha256", secret)
@@ -133,25 +133,30 @@ export async function POST(req: Request) {
 
     // 6. SEND CONFIRMATION WHATSAPP & EMAIL
     try {
-      const origin = process.env.NEXT_PUBLIC_SITE_URL || "https://www.smesturf.com";
-      
+      // ⚡ FIX 1: Dynamically get the exact URL so it works on Localhost AND Live Vercel
+      const host = req.headers.get("host");
+      const protocol = process.env.NODE_ENV === "development" ? "http" : "https";
+      const baseUrl = `${protocol}://${host}`;
+
       // --- CALCULATE EXACT END TIME ---
       const [timeStr, ampm] = bookingDetails.startTime.split(" ");
       let [h, m] = timeStr.split(":").map(Number);
       if (ampm === "PM" && h !== 12) h += 12;
       if (ampm === "AM" && h === 12) h = 0;
-      
+
       const totalMins = h * 60 + m + Number(bookingDetails.duration);
       const endH24 = Math.floor(totalMins / 60) % 24;
       const endM = totalMins % 60;
       const endH12 = endH24 % 12 === 0 ? 12 : endH24 % 12;
       const endAMPM = endH24 >= 12 ? "PM" : "AM";
-      
-      const endTime = `${String(endH12).padStart(2, "0")}:${String(endM).padStart(2, "0")} ${endAMPM}`;
-      const finalTimeFormat = `${bookingDetails.startTime} - ${endTime}\n(${bookingDetails.duration} Mins)`;
 
-      // ⚡ CRITICAL FIX: Added AWAIT
-      await fetch(`${origin}/api/whatsapp`, {
+      const endTime = `${String(endH12).padStart(2, "0")}:${String(endM).padStart(2, "0")} ${endAMPM}`;
+      
+      // ⚡ Note: We removed the `\n` because some WhatsApp API providers block messages if variables contain line breaks.
+      const finalTimeFormat = `${bookingDetails.startTime} - ${endTime} (${bookingDetails.duration} Mins)`;
+
+      // ⚡ FIX 2: Added error logging so we can see WHY it fails in Vercel logs
+      const waResponse = await fetch(`${baseUrl}/api/whatsapp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -159,7 +164,7 @@ export async function POST(req: Request) {
           customerName: bookingDetails.name,
           email: bookingDetails.email,
           date: bookingDetails.bookingDate,
-          time: finalTimeFormat, // ⚡ UPDATED FORMAT APPLIED HERE
+          time: finalTimeFormat, 
           duration: bookingDetails.duration,
           sport: bookingDetails.sport,
           court: availability.court,
@@ -170,8 +175,16 @@ export async function POST(req: Request) {
           balanceAmount: balanceDue
         }),
       });
+
+      if (!waResponse.ok) {
+        const errorText = await waResponse.text();
+        console.error("❌ WhatsApp API Rejected the Message:", errorText);
+      } else {
+        console.log("✅ WhatsApp Message Sent Successfully!");
+      }
+
     } catch(waErr) {
-      console.error("Server WA Dispatch Failed", waErr);
+      console.error("❌ Server WA Dispatch Failed", waErr);
     }
 
     if (bookingDetails.email) {
@@ -191,7 +204,7 @@ export async function POST(req: Request) {
           <div style="font-family: Arial, sans-serif; max-width: 500px; margin: auto; background-color: #0a0a0a; color: #ffffff; padding: 30px; border-top: 5px solid #a3e635;">
             <h2 style="color: #ffffff; text-transform: uppercase; letter-spacing: 2px;">SMES Sports Academy</h2>
             <p style="color: #a3a3a3; font-size: 14px;">Booking Confirmed</p>
-            
+
             <div style="background-color: #171717; padding: 20px; border-left: 4px solid #a3e635; margin-top: 25px;">
               <h3 style="margin-top: 0; color: #ffffff;">Hello ${bookingDetails.name},</h3>
               <p style="color: #d4d4d4; line-height: 1.6;">
