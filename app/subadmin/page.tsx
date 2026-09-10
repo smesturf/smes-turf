@@ -2812,6 +2812,104 @@ export default function SubAdminPage() {
           </motion.div>
         )}
       </AnimatePresence>
+      {/* ---------- Payment Modal ---------- */}
+      <AnimatePresence>
+        {showPaymentModal && selectedBooking && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 12, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.9, y: 12, opacity: 0 }}
+              transition={{ duration: 0.3, ease: easeOut }}
+              className="bg-neutral-950 border border-neutral-800 p-4 sm:p-6 w-full max-w-sm space-y-4 relative overflow-y-auto max-h-[90vh] rounded-lg shadow-2xl"
+            >
+              <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-lime-500/10 to-transparent pointer-events-none" />
+              <div className="relative">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-lime-400 block mb-1">
+                  // Payment Node
+                </span>
+                <h2 className="text-xl font-black uppercase tracking-tight text-white">
+                  💰 Balance Clearing
+                </h2>
+                <p className="text-neutral-400 text-xs mt-1 font-mono">
+                  Collect the remaining match dues directly below.
+                </p>
+              </div>
+
+              <div className="p-4 bg-neutral-900 border border-neutral-800 flex justify-between items-center relative">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">Outstanding Balance</span>
+                <span className="text-lg font-black text-red-400 font-mono">
+                  ₹{selectedBooking?.balance_amount || 0}
+                </span>
+              </div>
+
+              <div className="space-y-3 relative">
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-mono uppercase tracking-widest text-neutral-400">
+                    Payment Route
+                  </label>
+                  <select
+                    value={paymentType}
+                    onChange={(e) => setPaymentType(e.target.value)}
+                    className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
+                  >
+                    <option value="Full Cash">Full Cash</option>
+                    <option value="Full UPI">Full UPI</option>
+                    <option value="Cash + UPI">Cash + UPI</option>
+                  </select>
+                </div>
+
+                {paymentType === "Cash + UPI" && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="grid grid-cols-2 gap-2 p-3 bg-neutral-900 border border-neutral-800"
+                  >
+                    <input
+                      type="number"
+                      placeholder="Cash Amount"
+                      value={cashAmount}
+                      onChange={(e) => setCashAmount(e.target.value)}
+                      className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                    />
+                    <input
+                      type="number"
+                      placeholder="UPI Amount"
+                      value={upiAmount}
+                      onChange={(e) => setUpiAmount(e.target.value)}
+                      className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                    />
+                  </motion.div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2 relative">
+                <motion.button
+                  whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(163,230,53,0.3)" }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={savePayment}
+                  className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
+                >
+                  Save Payment
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => { setShowPaymentModal(false); setSelectedBooking(null); }}
+                  className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
+                >
+                  Cancel
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ---------- 🔒 SECURITY OTP MODAL ---------- */}
       <AnimatePresence>
@@ -2873,6 +2971,7 @@ export default function SubAdminPage() {
                     {isVerifyingOtp ? "Verifying..." : "Authorize Action"}
                   </motion.button>
                 )}
+                
 
                 <button
                   onClick={() => {
