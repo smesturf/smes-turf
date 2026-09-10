@@ -139,7 +139,7 @@ export default function AdminPage() {
   const [slotEndTime, setSlotEndTime] = useState("");
   const [slotCourt, setSlotCourt] = useState("Full Court");
 
-  // Optional Fields for Offline/Tournament
+  // Optional Fields for Offline/Tournament/Maintenance
   const [offlineName, setOfflineName] = useState("");
   const [offlinePhone, setOfflinePhone] = useState("");
   const [offlineEmail, setOfflineEmail] = useState("");
@@ -473,10 +473,9 @@ export default function AdminPage() {
 
     let query = supabase.from("bookings").select("*");
 
+    // ⚡ FIX 1: We removed the "else" block so it downloads your ENTIRE history
     if (filterDate) {
       query = query.eq("booking_date", filterDate);
-    } else {
-      query = query.or(`booking_date.gte.${todayStr},balance_amount.gt.0,payment_date.eq.${todayStr}`);
     }
 
     const { data, error } = await query
@@ -749,9 +748,9 @@ export default function AdminPage() {
       return;
     }
 
-    // Append Name & Phone into the Block Reason for Tournaments so it shows on the UI
+    // Append Name & Phone into the Block Reason for Tournaments & Maintenance so it shows on the UI
     let finalReason = slotReason;
-    if (slotReason === "TOURNAMENT") {
+    if (slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE") {
       const extras = [];
       if (offlineName.trim()) extras.push(offlineName.trim());
       if (offlinePhone.trim()) extras.push(offlinePhone.trim());
@@ -798,24 +797,39 @@ export default function AdminPage() {
     setIsSendingWhatsApp(true);
     
     try {
-      // 1. Calculate perfect end time
-      const [timeStr, ampm] = selectedManageBooking.start_time.split(" ");
-      let [h, m] = timeStr.split(":").map(Number);
-      if (ampm === "PM" && h !== 12) h += 12;
-      if (ampm === "AM" && h === 12) h = 0;
+      // 1. Calculate perfect start and end time (handling raw DB formats like '05:00:00' securely)
+      let startH = 0, startM = 0, ampm = "AM";
+      const rawTime = selectedManageBooking.start_time || "";
+      
+      if (rawTime.includes("AM") || rawTime.includes("PM")) {
+        const [tStr, p] = rawTime.split(" ");
+        const [h, m] = tStr.split(":").map(Number);
+        startH = h; startM = m; ampm = p;
+      } else {
+        const [h, m] = rawTime.split(":").map(Number);
+        ampm = h >= 12 ? "PM" : "AM";
+        startH = h % 12 || 12;
+        startM = m;
+      }
+      
+      const displayStart = `${String(startH).padStart(2, "0")}:${String(startM).padStart(2, "0")} ${ampm}`;
+      
+      let h24 = startH;
+      if (ampm === "PM" && startH !== 12) h24 += 12;
+      if (ampm === "AM" && startH === 12) h24 = 0;
 
-      const totalMins = h * 60 + m + Number(selectedManageBooking.duration_minutes || 60);
+      const totalMins = h24 * 60 + startM + Number(selectedManageBooking.duration_minutes || 60);
       const endH24 = Math.floor(totalMins / 60) % 24;
       const endM = totalMins % 60;
       const endH12 = endH24 % 12 === 0 ? 12 : endH24 % 12;
       const endAMPM = endH24 >= 12 ? "PM" : "AM";
 
-      const endTime = `${String(endH12).padStart(2, "0")}:${String(endM).padStart(2, "0")} ${endAMPM}`;
+      const displayEnd = `${String(endH12).padStart(2, "0")}:${String(endM).padStart(2, "0")} ${endAMPM}`;
       
       // 2. Safe Meta Formatter
       const sanitize = (str: string) => (str || "").replace(/[\n\t]/g, ' ').replace(/\s{2,}/g, ' ').trim();
 
-      const safeTimeFormat = sanitize(`${selectedManageBooking.start_time} - ${endTime}`);
+      const safeTimeFormat = sanitize(`${displayStart} - ${displayEnd}`);
       const safeName = sanitize(selectedManageBooking.customer_name);
       const safeSport = sanitize(selectedManageBooking.sport || "Football");
 
@@ -1504,38 +1518,39 @@ export default function AdminPage() {
 
   const filteredBookings = bookings
     .filter((booking) => {
-      // 1. Check Date Filter Logic
+      // ⚡ FIX 2: If the admin is typing in the search bar, instantly un-hide all past history!
+      if (searchTerm.trim() !== "") return true;
+
+      // 1. Check Date Filter Logic (Only runs if search bar is completely empty)
       if (filterDate) {
-        // If a specific date is selected, respect it strictly
         if (booking.booking_date?.split("T")[0] !== filterDate) return false;
       } else {
-        // DEFAULT VIEW: Auto-hide fully paid bookings if their time has passed
         if (isBookingCompletedAndPassed(booking)) return false;
       }
-      
-      // 2. Apply Search Terms
-      const search = searchTerm.toLowerCase().trim();
+      return true;
+    })
+    .filter((booking, _, currentFiltered) => {
+      let search = searchTerm.toLowerCase().trim();
       if (!search) return true;
+
+      // ⚡ FIX: Allow searching by "#124" or "124" by stripping the hashtag
+      const cleanIdSearch = search.replace("#", "");
+
+      // ⚡ FIX: If the exact ID exists in the database, ONLY show that exact booking
+      const exactMatchExists = currentFiltered.some(b => b.id?.toString() === cleanIdSearch);
+      if (exactMatchExists) {
+        return booking.id?.toString() === cleanIdSearch;
+      }
+
+      // Otherwise, do a normal search across all text fields
       return (
         booking.customer_name?.toLowerCase().includes(search) ||
         booking.phone?.toLowerCase().includes(search) ||
         booking.email?.toLowerCase().includes(search) || 
         booking.booking_date?.toLowerCase().includes(search) ||
         booking.booking_reference?.toLowerCase().includes(search) ||
-        booking.id?.toString().includes(search) 
+        booking.id?.toString().includes(cleanIdSearch) 
       );
-    })
-    .sort((a, b) => {
-      const search = searchTerm.trim();
-      if (!search) return 0;
-      
-      const aIsExactId = a.id?.toString() === search;
-      const bIsExactId = b.id?.toString() === search;
-      
-      if (aIsExactId && !bIsExactId) return -1;
-      if (!aIsExactId && bIsExactId) return 1;
-      
-      return 0; 
     });
 
   const filteredAcademyStudents = useMemo(() => {
@@ -2407,7 +2422,7 @@ export default function AdminPage() {
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.9, y: 12, opacity: 0 }}
               transition={{ duration: 0.3, ease: easeOut }}
-              className="bg-neutral-950 border border-neutral-800 p-6 w-full max-w-md space-y-5 relative overflow-hidden max-h-[90vh] overflow-y-auto"
+              className="bg-neutral-950 border border-neutral-800 p-4 sm:p-6 w-full max-w-md space-y-4 relative overflow-y-auto max-h-[90vh] rounded-lg shadow-2xl"
             >
               <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-fuchsia-500/10 to-transparent pointer-events-none" />
 
@@ -2711,7 +2726,7 @@ export default function AdminPage() {
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.9, y: 12, opacity: 0 }}
               transition={{ duration: 0.3, ease: easeOut }}
-              className="bg-neutral-950 border border-neutral-800 p-6 w-full max-w-sm space-y-4 relative overflow-hidden"
+              className="bg-neutral-950 border border-neutral-800 p-4 sm:p-6 w-full max-w-sm space-y-4 relative overflow-y-auto max-h-[90vh] rounded-lg shadow-2xl"
             >
               <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-lime-500/10 to-transparent pointer-events-none" />
               <div className="relative">
@@ -2803,14 +2818,14 @@ export default function AdminPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] overflow-y-auto"
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]"
           >
             <motion.div
               initial={{ scale: 0.9, y: 12, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.9, y: 12, opacity: 0 }}
               transition={{ duration: 0.3, ease: easeOut }}
-              className="bg-neutral-950 border border-neutral-800 p-6 w-full max-w-lg space-y-4 relative overflow-hidden my-8"
+              className="bg-neutral-950 border border-neutral-800 p-4 sm:p-6 w-full max-w-lg space-y-4 relative overflow-y-auto max-h-[90vh] rounded-lg shadow-2xl"
             >
               <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-fuchsia-500/10 to-transparent pointer-events-none" />
               <div className="relative">
@@ -2866,7 +2881,6 @@ export default function AdminPage() {
                   </select>
                 </div>
 
-                {/* --- FIX: START TIME IS NOW PLACED BEFORE END TIME/DURATION --- */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-mono uppercase text-neutral-400">Start Time</label>
                   <select
@@ -2917,8 +2931,8 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                {/* --- ⚡ NEW: OPTIONAL FIELDS FOR OFFLINE & TOURNAMENTS --- */}
-                {(slotReason === "OFFLINE BOOKING" || slotReason === "TOURNAMENT") && (
+                {/* --- ⚡ NEW: OPTIONAL FIELDS FOR OFFLINE, TOURNAMENTS & MAINTENANCE --- */}
+                {(slotReason === "OFFLINE BOOKING" || slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE") && (
                   <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-neutral-800 mt-2">
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-mono uppercase text-neutral-400">Name (Optional)</label>
@@ -3055,7 +3069,7 @@ export default function AdminPage() {
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.9, y: 12, opacity: 0 }}
               transition={{ duration: 0.3, ease: easeOut }}
-              className="bg-neutral-950 border border-red-500/50 p-6 w-full max-w-sm space-y-5 relative overflow-hidden shadow-[0_0_50px_rgba(239,68,68,0.15)]"
+              className="bg-neutral-950 border border-red-500/50 p-6 w-full max-w-sm space-y-5 relative overflow-y-auto max-h-[90vh] shadow-[0_0_50px_rgba(239,68,68,0.15)] rounded-lg"
             >
               <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-red-500/10 to-transparent pointer-events-none" />
 
