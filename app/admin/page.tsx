@@ -72,6 +72,7 @@ export default function AdminPage() {
   const [rescheduleCourt, setRescheduleCourt] = useState("Full Court");
   const [availableRescheduleSlots, setAvailableRescheduleSlots] = useState<string[]>([]);
   const [extendMinutes, setExtendMinutes] = useState(30);
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
 
   // 🔒 Master Admin OTP Security States
   const [showOtpModal, setShowOtpModal] = useState(false);
@@ -137,6 +138,11 @@ export default function AdminPage() {
   const [slotDuration, setSlotDuration] = useState(60);
   const [slotEndTime, setSlotEndTime] = useState("");
   const [slotCourt, setSlotCourt] = useState("Full Court");
+
+  // Optional Fields for Offline/Tournament
+  const [offlineName, setOfflineName] = useState("");
+  const [offlinePhone, setOfflinePhone] = useState("");
+  const [offlineEmail, setOfflineEmail] = useState("");
 
   const [offlineAmount, setOfflineAmount] = useState("");
   const [offlineAdvanceAmount, setOfflineAdvanceAmount] = useState("");
@@ -711,8 +717,9 @@ export default function AdminPage() {
       const balanceDue = totalCost - advancePaid;
 
       const { error } = await supabase.from("bookings").insert([{
-        customer_name: "Offline Booking",
-        phone: "-",
+        customer_name: offlineName.trim() || "Offline Booking",
+        phone: offlinePhone.trim() || "-",
+        email: offlineEmail.trim() || null,
         sport: "Football",
         booking_date: slotDate,
         start_time: slotTime,
@@ -736,16 +743,26 @@ export default function AdminPage() {
       await loadBookings();
       setSlotDate(""); setSlotTime(""); setSlotDuration(60); setSlotEndTime("");
       setSlotReason("OFFLINE BOOKING"); setSlotCourt("Full Court");
+      setOfflineName(""); setOfflinePhone(""); setOfflineEmail("");
       setOfflineAmount(""); setOfflineAdvanceAmount(""); setOfflineCashAmount(""); setOfflineUpiAmount("");
       setShowManageSlots(false);
       return;
+    }
+
+    // Append Name & Phone into the Block Reason for Tournaments so it shows on the UI
+    let finalReason = slotReason;
+    if (slotReason === "TOURNAMENT") {
+      const extras = [];
+      if (offlineName.trim()) extras.push(offlineName.trim());
+      if (offlinePhone.trim()) extras.push(offlinePhone.trim());
+      if (extras.length > 0) finalReason += ` (${extras.join(" - ")})`;
     }
 
     const { error } = await supabase.from("blocked_slots").insert([{
       booking_date: slotDate,
       start_time: slotTime,
       duration_minutes: actualCalculatedDuration,
-      reason: slotReason,
+      reason: finalReason,
       court_number: slotCourt,
     }]);
 
@@ -756,7 +773,85 @@ export default function AdminPage() {
 
     setSlotDate(""); setSlotTime(""); setSlotEndTime(""); setSlotDuration(60);
     setSlotReason("OFFLINE BOOKING"); setSlotCourt("Full Court");
+    setOfflineName(""); setOfflinePhone(""); setOfflineEmail("");
     setShowManageSlots(false);
+  };
+
+  /* ========================================================================= */
+  /* 💬 MANUAL WHATSAPP CONFIRMATION TRIGGER */
+  /* ========================================================================= */
+  
+  const handleSendWhatsApp = async () => {
+    if (!selectedManageBooking) return;
+    
+    // Automatically prompt for a phone number if the booking has no phone ("-")
+    let targetPhone = selectedManageBooking.phone;
+    if (!targetPhone || targetPhone === "-") {
+      const enteredPhone = window.prompt("No phone number found for this booking.\n\nEnter 10-digit phone number to send WhatsApp:");
+      if (!enteredPhone) return;
+      targetPhone = enteredPhone.trim();
+    }
+
+    const confirmSend = window.confirm(`Send official WhatsApp confirmation to ${targetPhone}?`);
+    if (!confirmSend) return;
+
+    setIsSendingWhatsApp(true);
+    
+    try {
+      // 1. Calculate perfect end time
+      const [timeStr, ampm] = selectedManageBooking.start_time.split(" ");
+      let [h, m] = timeStr.split(":").map(Number);
+      if (ampm === "PM" && h !== 12) h += 12;
+      if (ampm === "AM" && h === 12) h = 0;
+
+      const totalMins = h * 60 + m + Number(selectedManageBooking.duration_minutes || 60);
+      const endH24 = Math.floor(totalMins / 60) % 24;
+      const endM = totalMins % 60;
+      const endH12 = endH24 % 12 === 0 ? 12 : endH24 % 12;
+      const endAMPM = endH24 >= 12 ? "PM" : "AM";
+
+      const endTime = `${String(endH12).padStart(2, "0")}:${String(endM).padStart(2, "0")} ${endAMPM}`;
+      
+      // 2. Safe Meta Formatter
+      const sanitize = (str: string) => (str || "").replace(/[\n\t]/g, ' ').replace(/\s{2,}/g, ' ').trim();
+
+      const safeTimeFormat = sanitize(`${selectedManageBooking.start_time} - ${endTime}`);
+      const safeName = sanitize(selectedManageBooking.customer_name);
+      const safeSport = sanitize(selectedManageBooking.sport || "Football");
+
+      const response = await fetch("/api/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerPhone: targetPhone,
+          customerName: safeName,
+          email: selectedManageBooking.email || null,
+          date: selectedManageBooking.booking_date?.split('T')[0],
+          time: safeTimeFormat,
+          duration: selectedManageBooking.duration_minutes || 60,
+          sport: safeSport,
+          court: selectedManageBooking.court_number || selectedManageBooking.booking_type || "Full Court",
+          bookingId: `#${selectedManageBooking.id}`,
+          referenceId: selectedManageBooking.booking_reference || "N/A",
+          totalAmount: Number(selectedManageBooking.total_amount || 0),
+          advanceAmount: Number(selectedManageBooking.advance_amount || 0),
+          balanceAmount: Number(selectedManageBooking.balance_amount || 0)
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        alert(`❌ WhatsApp API Error:\n${errorText}`);
+      } else {
+        alert("✅ WhatsApp Confirmation Sent Successfully!");
+      }
+
+    } catch (error) {
+      console.error("WhatsApp Dispatch Failed:", error);
+      alert("❌ Failed to reach WhatsApp server. Check console.");
+    } finally {
+      setIsSendingWhatsApp(false);
+    }
   };
 
   /* ========================================================================= */
@@ -2312,7 +2407,7 @@ export default function AdminPage() {
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.9, y: 12, opacity: 0 }}
               transition={{ duration: 0.3, ease: easeOut }}
-              className="bg-neutral-950 border border-neutral-800 p-6 w-full max-w-md space-y-5 relative overflow-hidden"
+              className="bg-neutral-950 border border-neutral-800 p-6 w-full max-w-md space-y-5 relative overflow-hidden max-h-[90vh] overflow-y-auto"
             >
               <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-fuchsia-500/10 to-transparent pointer-events-none" />
 
@@ -2340,6 +2435,26 @@ export default function AdminPage() {
                       <span>₹{(selectedManageBooking.total_amount || 0) - (selectedManageBooking.balance_amount || 0)}</span>
                     </div>
                   </div>
+
+                  <motion.button
+                    whileHover={{ scale: 1.01, borderColor: "rgba(34, 197, 94, 0.6)" }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleSendWhatsApp}
+                    disabled={isSendingWhatsApp}
+                    className="w-full text-left p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-green-950/30 transition-colors group"
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-black uppercase text-green-400 group-hover:text-green-300">
+                        {isSendingWhatsApp ? "⏳ Sending..." : "💬 Send WhatsApp Confirmation"}
+                      </span>
+                      <span className="text-xs font-mono text-green-400 font-black flex items-center gap-2">
+                        Send →
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">
+                      Manually trigger confirmation receipt to customer's phone.
+                    </p>
+                  </motion.button>
 
                   <motion.button
                     whileHover={{ scale: 1.01, borderColor: "rgba(239, 68, 68, 0.6)" }}
@@ -2802,8 +2917,49 @@ export default function AdminPage() {
                   </div>
                 )}
 
+                {/* --- ⚡ NEW: OPTIONAL FIELDS FOR OFFLINE & TOURNAMENTS --- */}
+                {(slotReason === "OFFLINE BOOKING" || slotReason === "TOURNAMENT") && (
+                  <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-neutral-800 mt-2">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Name (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="Customer/Team Name"
+                        value={offlineName}
+                        onChange={(e) => setOfflineName(e.target.value)}
+                        className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-cyan-400 outline-none text-xs font-mono transition-colors"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Phone Number (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 9876543210"
+                        value={offlinePhone}
+                        onChange={(e) => {
+                           const numeric = e.target.value.replace(/\D/g, "");
+                           if (numeric.length <= 10) setOfflinePhone(numeric);
+                        }}
+                        className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-cyan-400 outline-none text-xs font-mono transition-colors"
+                      />
+                    </div>
+                    {slotReason === "OFFLINE BOOKING" && (
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <label className="text-[10px] font-mono uppercase text-neutral-400">Email (Optional)</label>
+                        <input
+                          type="email"
+                          placeholder="example@email.com"
+                          value={offlineEmail}
+                          onChange={(e) => setOfflineEmail(e.target.value)}
+                          className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-cyan-400 outline-none text-xs font-mono transition-colors"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {slotReason === "OFFLINE BOOKING" && (
-                  <div className="sm:col-span-2 p-3 bg-neutral-900 border border-neutral-800 space-y-3 relative">
+                  <div className="sm:col-span-2 p-3 bg-neutral-900 border border-neutral-800 space-y-3 relative mt-2">
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-mono uppercase text-neutral-400">Total Turf Cost</label>
                       <input
@@ -2869,7 +3025,12 @@ export default function AdminPage() {
                 </motion.button>
                 <motion.button
                   whileTap={{ scale: 0.97 }}
-                  onClick={() => setShowManageSlots(false)}
+                  onClick={() => {
+                    setShowManageSlots(false);
+                    setOfflineName("");
+                    setOfflinePhone("");
+                    setOfflineEmail("");
+                  }}
                   className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 font-mono text-xs uppercase tracking-widest py-3.5 font-black transition-colors"
                 >
                   Cancel
