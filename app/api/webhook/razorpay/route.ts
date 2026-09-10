@@ -38,7 +38,7 @@ export async function POST(req: Request) {
       const notes = payment.notes;
 
       if (!notes || !notes.bookingDate) {
-         return NextResponse.json({ message: "Not a turf booking payment, ignoring." });
+        return NextResponse.json({ message: "Not a turf booking payment, ignoring." });
       }
 
       // 1. Prevent Double-Booking
@@ -95,7 +95,7 @@ export async function POST(req: Request) {
       );
 
       if (!availability || !availability.isAvailable) {
-         return NextResponse.json({ error: "Court unavailable" }, { status: 409 });
+        return NextResponse.json({ error: "Court unavailable" }, { status: 409 });
       }
 
       // 4. Save to Database
@@ -171,14 +171,13 @@ export async function POST(req: Request) {
             </div>
           `
         };
-        // ⚡ CRITICAL FIX: AWAIT so Vercel doesn't kill it early
         await transporter.sendMail(mailOptions).catch(console.error);
       }
 
       // 6. Trigger WhatsApp
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || `https://${req.headers.get('host')}`;
       
-      // --- CALCULATE EXACT END TIME ---
+      // Calculate Exact End Time
       const [timeStr, ampm] = notes.startTime.split(" ");
       let [h, m] = timeStr.split(":").map(Number);
       if (ampm === "PM" && h !== 12) h += 12;
@@ -191,20 +190,25 @@ export async function POST(req: Request) {
       const endAMPM = endH24 >= 12 ? "PM" : "AM";
       
       const endTime = `${String(endH12).padStart(2, "0")}:${String(endM).padStart(2, "0")} ${endAMPM}`;
-      const finalTimeFormat = `${notes.startTime} - ${endTime}\n(${notes.duration} Mins)`;
+      
+      // Sanitizer to prevent Meta 132018 parameter errors
+      const sanitize = (str: string) => str.replace(/[\n\t]/g, ' ').replace(/\s{2,}/g, ' ').trim();
 
-      // ⚡ CRITICAL FIX: AWAIT so Vercel doesn't kill it early
+      const safeTimeFormat = sanitize(`${notes.startTime} - ${endTime}`);
+      const safeName = sanitize(notes.name);
+      const safeSport = sanitize(notes.sport);
+
       await fetch(`${baseUrl}/api/whatsapp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customerPhone: notes.phone,    
-          customerName: notes.name, 
+          customerName: safeName, 
           email: notes.email,                            
           date: notes.bookingDate,
-          time: finalTimeFormat, // ⚡ EXACT FORMAT APPLIED HERE
+          time: safeTimeFormat, 
           duration: notes.duration,                      
-          sport: notes.sport,                            
+          sport: safeSport,                            
           court: availability.court, 
           bookingId: `#${insertedData[0].id}`,
           referenceId: bookingReference,

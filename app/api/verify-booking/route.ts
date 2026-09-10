@@ -154,7 +154,7 @@ export async function POST(req: Request) {
       // ⚡ META API FIX: A function to instantly strip all forbidden formatting
       const sanitize = (str: string) => str.replace(/[\n\t]/g, ' ').replace(/\s{2,}/g, ' ').trim();
 
-      const safeTimeFormat = sanitize(`${bookingDetails.startTime} - ${endTime} (${bookingDetails.duration} Mins)`);
+      const safeTimeFormat = sanitize(`${bookingDetails.startTime} - ${endTime}`);
       const safeName = sanitize(bookingDetails.name);
       const safeSport = sanitize(bookingDetails.sport);
 
