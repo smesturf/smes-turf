@@ -2010,7 +2010,7 @@ export default function SubAdminPage() {
           // Showing {filteredBookings.length} booking(s) active
         </p>
 
-        {/* ---------- COMPACT BOOKINGS TABLE (NOW ONLY RENDERS ONCE) ---------- */}
+        {/* ---------- COMPACT BOOKINGS TABLE ---------- */}
         <motion.section
           variants={fadeUp}
           initial="hidden"
@@ -2298,6 +2298,245 @@ export default function SubAdminPage() {
         </div>
       </div>
 
+      {/* ---------- MANAGE SLOTS MODAL (RESTORED & FIXED) ---------- */}
+      <AnimatePresence>
+        {showManageSlots && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 12, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.9, y: 12, opacity: 0 }}
+              transition={{ duration: 0.3, ease: easeOut }}
+              className="bg-neutral-950 border border-neutral-800 p-5 w-full max-w-lg space-y-3 relative max-h-[75vh] overflow-y-auto rounded-lg shadow-2xl"
+            >
+              <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-fuchsia-500/10 to-transparent pointer-events-none" />
+              
+              <div className="relative">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-fuchsia-400 block mb-0.5">
+                  // Slot Manager
+                </span>
+                <h2 className="text-lg font-black uppercase tracking-tight text-white">
+                  ⚙️ Manage Turf Slots
+                </h2>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 relative mt-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400">Reason</label>
+                  <select
+                    value={slotReason}
+                    onChange={(e) => setSlotReason(e.target.value)}
+                    className="w-full p-2.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
+                  >
+                    <option value="OFFLINE BOOKING">OFFLINE BOOKING</option>
+                    <option value="TOURNAMENT">TOURNAMENT</option>
+                    <option value="MAINTENANCE">MAINTENANCE</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400">Date</label>
+                  <input
+                    type="date"
+                    value={slotDate}
+                    min={getTodayStr()}
+                    onChange={(e) => setSlotDate(e.target.value)}
+                    style={{ colorScheme: "dark" }}
+                    className="w-full p-2.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400">Court Section</label>
+                  <select
+                    value={slotCourt}
+                    onChange={(e) => setSlotCourt(e.target.value)}
+                    className="w-full p-2.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
+                  >
+                    <option value="Full Court">Full Court</option>
+                    <option value="Court 1">Court 1</option>
+                    <option value="Court 2">Court 2</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono uppercase text-neutral-400">Start Time</label>
+                  <select
+                    value={slotTime}
+                    onChange={(e) => setSlotTime(e.target.value)}
+                    className="w-full p-2.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                  >
+                    <option value="">-- Select Time --</option>
+                    {availableAdminSlots.length === 0 ? (
+                      <option value="" disabled>No slots available</option>
+                    ) : (
+                      availableAdminSlots.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))
+                    )}
+                  </select>
+                </div>
+
+                {slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE" ? (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-mono uppercase text-neutral-400">End Time (Optional)</label>
+                    <select
+                      value={slotEndTime}
+                      onChange={(e) => setSlotEndTime(e.target.value)}
+                      className="w-full p-2.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                    >
+                      <option value="">-- Select End Time --</option>
+                      {adminTimeSlots.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-mono uppercase text-neutral-400">Duration (Minutes)</label>
+                    <select
+                      value={slotDuration}
+                      onChange={(e) => setSlotDuration(Number(e.target.value))}
+                      className="w-full p-2.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                    >
+                      <option value={30}>30 mins</option>
+                      <option value={60}>60 Mins (1 Hour)</option>
+                      <option value={90}>90 Mins (1.5 Hours)</option>
+                      <option value={120}>120 Mins (2 Hours)</option>
+                      <option value={150}>150 Mins (2.5 Hours)</option>
+                      <option value={180}>180 Mins (3 Hours)</option>
+                    </select>
+                  </div>
+                )}
+
+                {(slotReason === "OFFLINE BOOKING" || slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE") && (
+                  <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-neutral-800 mt-2">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Name (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="Customer/Team Name"
+                        value={offlineName}
+                        onChange={(e) => setOfflineName(e.target.value)}
+                        className="w-full p-2.5 bg-neutral-900 text-white border border-neutral-800 focus:border-cyan-400 outline-none text-xs font-mono transition-colors"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Phone Number (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 9876543210"
+                        value={offlinePhone}
+                        onChange={(e) => {
+                           const numeric = e.target.value.replace(/\D/g, "");
+                           if (numeric.length <= 10) setOfflinePhone(numeric);
+                        }}
+                        className="w-full p-2.5 bg-neutral-900 text-white border border-neutral-800 focus:border-cyan-400 outline-none text-xs font-mono transition-colors"
+                      />
+                    </div>
+                    {slotReason === "OFFLINE BOOKING" && (
+                      <div className="space-y-1 sm:col-span-2">
+                        <label className="text-[10px] font-mono uppercase text-neutral-400">Email (Optional)</label>
+                        <input
+                          type="email"
+                          placeholder="example@email.com"
+                          value={offlineEmail}
+                          onChange={(e) => setOfflineEmail(e.target.value)}
+                          className="w-full p-2.5 bg-neutral-900 text-white border border-neutral-800 focus:border-cyan-400 outline-none text-xs font-mono transition-colors"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {slotReason === "OFFLINE BOOKING" && (
+                  <div className="sm:col-span-2 p-3 bg-neutral-900 border border-neutral-800 space-y-2 relative mt-1">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Total Turf Cost</label>
+                      <input
+                        type="number"
+                        placeholder="Total Amount (e.g. 1200)"
+                        value={offlineAmount}
+                        onChange={(e) => setOfflineAmount(e.target.value)}
+                        className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                      />
+                    </div>
+
+                    <div className="space-y-1 pt-2 border-t border-neutral-800 mt-2">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Advance Collected & Payment Route</label>
+                      <select
+                        value={offlinePaymentMethod}
+                        onChange={(e) => setOfflinePaymentMethod(e.target.value)}
+                        className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors mb-2"
+                      >
+                        <option value="Cash">Cash</option>
+                        <option value="UPI">UPI</option>
+                        <option value="Cash + UPI">Cash + UPI</option>
+                      </select>
+
+                      {offlinePaymentMethod === "Cash + UPI" ? (
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="number"
+                            placeholder="Cash Advance (₹)"
+                            value={offlineCashAmount}
+                            onChange={(e) => setOfflineCashAmount(e.target.value)}
+                            className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                          />
+                          <input
+                            type="number"
+                            placeholder="UPI Advance (₹)"
+                            value={offlineUpiAmount}
+                            onChange={(e) => setOfflineUpiAmount(e.target.value)}
+                            className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                          />
+                        </div>
+                      ) : (
+                        <input
+                          type="number"
+                          placeholder="Advance Received (Enter 0 if none)"
+                          value={offlineAdvanceAmount}
+                          onChange={(e) => setOfflineAdvanceAmount(e.target.value)}
+                          className="w-full p-2 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                        />
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-3 mt-2 relative border-t border-neutral-900">
+                <motion.button
+                  whileHover={{ y: -2, boxShadow: "0 12px 30px rgba(217,70,239,0.3)" }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={saveBlockedSlot}
+                  className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors"
+                >
+                  Save Field Block
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => {
+                    setShowManageSlots(false);
+                    setOfflineName("");
+                    setOfflinePhone("");
+                    setOfflineEmail("");
+                  }}
+                  className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors"
+                >
+                  Cancel
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ---------- MANAGE BOOKING MODAL (INTEGRATED POP-UP) ---------- */}
       <AnimatePresence>
         {showManageModal && selectedManageBooking && (
@@ -2573,6 +2812,7 @@ export default function SubAdminPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
       {/* ---------- 🔒 SECURITY OTP MODAL ---------- */}
       <AnimatePresence>
         {showOtpModal && (
