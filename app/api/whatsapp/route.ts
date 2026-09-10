@@ -29,10 +29,12 @@ export async function POST(req: Request) {
       return cleaned.length === 10 ? `91${cleaned}` : cleaned;
     };
 
+    // ⚡ META'S ULTIMATE CLEANER: Forces all variables into a safe, flat string
+    const clean = (val: any) => String(val || "").replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
+
     const metaUrl = `https://graph.facebook.com/v20.0/${metaPhoneId}/messages`;
 
     // ⚡ DYNAMIC CRICKET WARNING INJECTION
-    // If sport is cricket, inject the warning into the variable. Asterisks make it bold on WhatsApp!
     const customerSportText = sport === "Cricket"
       ? `${sport} (${court}) - *NOTE: All equipment provided EXCEPT tennis balls. Please bring your own!*`
       : `${sport} (${court})`;
@@ -51,15 +53,15 @@ export async function POST(req: Request) {
           components: [{
             type: "body",
             parameters: [
-              { type: "text", text: customerName || "Guest" },
-              { type: "text", text: date || "N/A" },
-              { type: "text", text: time || "N/A" },
-              { type: "text", text: customerSportText }, // ⚡ INJECTED HERE
-              { type: "text", text: String(bookingId || "") },
-              { type: "text", text: String(referenceId || "") },
-              { type: "text", text: String(totalAmount || 0) },
-              { type: "text", text: String(advanceAmount || 0) },
-              { type: "text", text: String(balanceAmount || 0) },
+              { type: "text", text: clean(customerName || "Guest") },
+              { type: "text", text: clean(date || "N/A") },
+              { type: "text", text: clean(time || "N/A") },
+              { type: "text", text: clean(customerSportText) }, // ⚡ INJECTED HERE
+              { type: "text", text: clean(bookingId) },
+              { type: "text", text: clean(referenceId) },
+              { type: "text", text: clean(totalAmount) },
+              { type: "text", text: clean(advanceAmount) },
+              { type: "text", text: clean(balanceAmount) },
             ],
           }],
         },
@@ -80,18 +82,18 @@ export async function POST(req: Request) {
           components: [{
             type: "body",
             parameters: [
-              { type: "text", text: customerName || "Guest" }, // {{1}}
-              { type: "text", text: String(customerPhone || "N/A") },  // {{2}}
-              { type: "text", text: email || "N/A" },          // {{3}}
-              { type: "text", text: date || "N/A" },           // {{4}}
-              { type: "text", text: time || "N/A" },           // {{5}}
-              { type: "text", text: String(duration || 60) },  // {{6}}
-              { type: "text", text: sport || "N/A" },          // {{7}}
-              { type: "text", text: court || "N/A" },          // {{8}}
-              { type: "text", text: String(totalAmount || 0) },// {{9}}
-              { type: "text", text: String(advanceAmount || 0)},// {{10}}
-              { type: "text", text: String(balanceAmount || 0)},// {{11}}
-              { type: "text", text: `${bookingId || ""} | ${referenceId || ""}` },// {{12}}
+              { type: "text", text: clean(customerName || "Guest") }, // {{1}}
+              { type: "text", text: clean(customerPhone || "N/A") },  // {{2}}
+              { type: "text", text: clean(email || "N/A") },          // {{3}}
+              { type: "text", text: clean(date || "N/A") },           // {{4}}
+              { type: "text", text: clean(time || "N/A") },           // {{5}}
+              { type: "text", text: clean(duration || "60") },        // {{6}}
+              { type: "text", text: clean(sport || "N/A") },          // {{7}}
+              { type: "text", text: clean(court || "N/A") },          // {{8}}
+              { type: "text", text: clean(totalAmount || "0") },      // {{9}}
+              { type: "text", text: clean(advanceAmount || "0") },    // {{10}}
+              { type: "text", text: clean(balanceAmount || "0") },    // {{11}}
+              { type: "text", text: clean(`${bookingId || ""} | ${referenceId || ""}`) }, // {{12}}
             ],
           }],
         },
