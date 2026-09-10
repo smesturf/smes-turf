@@ -2825,7 +2825,7 @@ export default function AdminPage() {
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.9, y: 12, opacity: 0 }}
               transition={{ duration: 0.3, ease: easeOut }}
-              className="bg-neutral-950 border border-neutral-800 p-4 sm:p-6 w-full max-w-lg space-y-4 relative overflow-y-auto max-h-[75vh] rounded-lg shadow-2xl"
+              className="bg-neutral-950 border border-neutral-800 p-4 sm:p-6 w-full max-w-lg space-y-4 relative overflow-y-auto max-h-[85vh] rounded-lg shadow-2xl"
             >
               <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-fuchsia-500/10 to-transparent pointer-events-none" />
               <div className="relative">
