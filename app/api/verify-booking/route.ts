@@ -133,7 +133,6 @@ export async function POST(req: Request) {
 
     // 6. SEND CONFIRMATION WHATSAPP & EMAIL
     try {
-      // ⚡ FIX 1: Dynamically get the exact URL so it works on Localhost AND Live Vercel
       const host = req.headers.get("host");
       const protocol = process.env.NODE_ENV === "development" ? "http" : "https";
       const baseUrl = `${protocol}://${host}`;
@@ -152,21 +151,24 @@ export async function POST(req: Request) {
 
       const endTime = `${String(endH12).padStart(2, "0")}:${String(endM).padStart(2, "0")} ${endAMPM}`;
       
-      // ⚡ Note: We removed the `\n` because some WhatsApp API providers block messages if variables contain line breaks.
-      const finalTimeFormat = `${bookingDetails.startTime} - ${endTime} (${bookingDetails.duration} Mins)`;
+      // ⚡ META API FIX: A function to instantly strip all forbidden formatting
+      const sanitize = (str: string) => str.replace(/[\n\t]/g, ' ').replace(/\s{2,}/g, ' ').trim();
 
-      // ⚡ FIX 2: Added error logging so we can see WHY it fails in Vercel logs
+      const safeTimeFormat = sanitize(`${bookingDetails.startTime} - ${endTime} (${bookingDetails.duration} Mins)`);
+      const safeName = sanitize(bookingDetails.name);
+      const safeSport = sanitize(bookingDetails.sport);
+
       const waResponse = await fetch(`${baseUrl}/api/whatsapp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customerPhone: bookingDetails.phone,
-          customerName: bookingDetails.name,
+          customerName: safeName,
           email: bookingDetails.email,
           date: bookingDetails.bookingDate,
-          time: finalTimeFormat, 
+          time: safeTimeFormat, 
           duration: bookingDetails.duration,
-          sport: bookingDetails.sport,
+          sport: safeSport,
           court: availability.court,
           bookingId: `#${insertedData[0].id}`,
           referenceId: bookingReference,
