@@ -2312,7 +2312,7 @@ export default function SubAdminPage() {
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.9, y: 12, opacity: 0 }}
               transition={{ duration: 0.3, ease: easeOut }}
-              className="bg-neutral-950 border border-neutral-800 p-5 w-full max-w-lg space-y-3 relative max-h-[75vh] overflow-y-auto rounded-lg shadow-2xl"
+              className="bg-neutral-950 border border-neutral-800 p-5 w-full max-w-lg space-y-3 relative max-h-[85vh] overflow-y-auto rounded-lg shadow-2xl"
             >
               <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-fuchsia-500/10 to-transparent pointer-events-none" />
               
