@@ -7,7 +7,6 @@ import Script from "next/script";
 import Image from "next/image";
 import { supabase } from "./lib/supabase";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
-import { getPrice } from "./lib/booking-rules";
 
 /* ------------------------------------------------------------------ */
 /* Motion Presets                                                    */
@@ -972,6 +971,7 @@ export default function Home() {
                   <input
                     type="date"
                     min={minDate}
+                    max="2026-09-20" // ⚡ FIX: Hard-stops calendar at 20th Sept!
                     value={bookingDate}
                     onChange={(e) => {
                       setBookingDate(e.target.value);
@@ -996,7 +996,7 @@ export default function Home() {
                     }`}
                   >
                     <option value="" disabled hidden>-- Select Session Length --</option> 
-                    <option value="30">30 Minutes (0.5 Hour) {bookingType ? `(₹${bookingType === "Half Court" ? 350 : 600})` : ""}</option>
+                    {/* ⚡ FIX: 30-minute option completely deleted */}
                     <option value="60">60 Minutes (1 Hour) {bookingType ? `(₹${bookingType === "Half Court" ? 700 : 1200})` : ""}</option>
                     <option value="90">90 Minutes (1.5 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 1050 : 1800})` : ""}</option>
                     <option value="120">120 Minutes (2 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 1400 : 2400})` : ""}</option>
@@ -1019,13 +1019,16 @@ export default function Home() {
                       initial="hidden"
                       animate="show"
                       className={`grid gap-2 p-3 sm:p-4 bg-neutral-900/30 border border-neutral-800 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-700 transition-all ${
-                        !bookingDate || !duration || !bookingType ? "opacity-40 pointer-events-none select-none grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8" : 
-                        (bookingDate && duration && bookingType && !allSlots.some(s => isSlotAvailable(s)) ? "grid-cols-1" : "grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8")
+                        !bookingDate || !duration || !bookingType 
+                          ? "opacity-40 pointer-events-none select-none grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8" 
+                          : (bookingDate && duration && bookingType && !allSlots.some(s => isSlotAvailable(s)) 
+                              ? "grid-cols-1" 
+                              : "grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8")
                       }`}
                     >
                       {/* ⚡ NEW: "Full Day Blocked" Empty State */}
                       {bookingDate && duration && bookingType && !allSlots.some(slot => isSlotAvailable(slot)) ? (
-                        <div className="py-12 flex flex-col items-center justify-center text-center space-y-3">
+                        <div className="py-12 flex flex-col items-center justify-center text-center space-y-3 col-span-full">
                           <span className="text-4xl drop-shadow-[0_0_15px_rgba(239,68,68,0.5)]">🚫</span>
                           <div>
                             <p className="text-sm font-mono text-red-400 font-black uppercase tracking-widest">No Slots Available</p>
@@ -1063,8 +1066,8 @@ export default function Home() {
                               type="button"
                               disabled={!available || !bookingDate || !duration || !bookingType} 
                               onClick={() => setStartTime(slot)}
-                              // ⚡ NEW: Added layout changes for the BOOKED tags
-                              className={`relative py-2.5 px-1 flex flex-col items-center justify-center gap-1 text-[11px] sm:text-xs font-mono font-bold uppercase transition-colors border ${
+                              // ⚡ FIX: Added fixed height (h-[60px] sm:h-[68px]) and width (w-full) so all boxes stay perfectly identical!
+                              className={`relative h-[60px] sm:h-[68px] w-full p-1 flex flex-col items-center justify-center gap-1 text-[11px] sm:text-xs font-mono font-bold uppercase transition-colors border ${
                                 selected
                                   ? "bg-red-600 border-red-500 text-white"
                                   : available && bookingDate && duration && bookingType
