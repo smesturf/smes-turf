@@ -151,17 +151,39 @@ export default function Home() {
     fetchWeather();
   }, []);
 
-  /* -------- IST Strict Min Date -------- */
+  /* -------- IST Strict Min Date & Lively Refresh -------- */
   const getLocalDateString = () =>
     new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
-  useEffect(() => {
-    setMinDate(getLocalDateString());
-  }, []);
+  const [liveTick, setLiveTick] = useState(0);
 
   useEffect(() => {
+    setMinDate(getLocalDateString());
+    
+    // 1. Tick every minute to hide past slots lively as time passes
+    const interval = setInterval(() => setLiveTick(t => t + 1), 60000);
+
+    // 2. Real-time listener: Auto-update slots if someone else books them right now!
+    const channel = supabase
+      .channel("public:customer_sync")
+      .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, () => {
+        setLiveTick(t => t + 1); // Trigger a refresh instantly
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "blocked_slots" }, () => {
+        setLiveTick(t => t + 1); // Trigger a refresh instantly
+      })
+      .subscribe();
+
+    return () => {
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Reload the grid instantly if date/type changes OR if the live-tick triggers
+  useEffect(() => {
     if (bookingDate && bookingType) loadBookedSlots(bookingDate);
-  }, [bookingDate, bookingType]);
+  }, [bookingDate, bookingType, liveTick]);
 
   // ⚡ DYNAMIC PRICE CALCULATION (Accurate for all durations)
   const { totalAmount, regularAmount } = useMemo(() => {
@@ -236,7 +258,7 @@ export default function Home() {
 
   useEffect(() => {
     if (startTime && !isSlotAvailable(startTime)) setStartTime("");
-  }, [bookingDate, bookedSlots, duration, bookingType]);
+  }, [bookingDate, bookedSlots, duration, bookingType, liveTick]);
 
   const loadBookedSlots = async (dateStr: string) => {
     if (!bookingType) return; 
@@ -326,6 +348,17 @@ export default function Home() {
         if (count >= 2 || count === 999) blocked.push(slot); 
       }
     });
+
+    // ⚡ FIX: Hardcode Academy Coaching Blocks (From Sept 15th onwards, Mon-Fri ONLY)
+    const dayOfWeek = new Date(`${dateStr}T00:00:00+05:30`).getDay(); // 0 = Sunday, 6 = Saturday
+    const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
+
+    if (dateStr >= "2026-09-15" && isWeekday) {
+      const academyBlocks = ["06:00 AM", "06:30 AM", "05:30 PM", "06:00 PM"];
+      academyBlocks.forEach(slot => {
+        if (!blocked.includes(slot)) blocked.push(slot);
+      });
+    }
 
     setBookedSlots(blocked);
   };
@@ -435,10 +468,6 @@ export default function Home() {
       const bookingId = verifyData.booking?.id ? `#${verifyData.booking.id}` : "#----";
       const referenceId = verifyData.booking?.booking_reference || paymentData.razorpay_payment_id || "N/A";
       const advancePaid = 200;
-      
-      const formattedTimeSlot = getTimeRangeLabel(startTime, duration);
-
-      
 
       setIsProcessingBooking(false);
 
@@ -967,6 +996,7 @@ export default function Home() {
                     }`}
                   >
                     <option value="" disabled hidden>-- Select Session Length --</option> 
+                    <option value="30">30 Minutes (0.5 Hour) {bookingType ? `(₹${bookingType === "Half Court" ? 350 : 600})` : ""}</option>
                     <option value="60">60 Minutes (1 Hour) {bookingType ? `(₹${bookingType === "Half Court" ? 700 : 1200})` : ""}</option>
                     <option value="90">90 Minutes (1.5 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 1050 : 1800})` : ""}</option>
                     <option value="120">120 Minutes (2 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 1400 : 2400})` : ""}</option>
@@ -988,42 +1018,78 @@ export default function Home() {
                       variants={stagger}
                       initial="hidden"
                       animate="show"
-                      className={`grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 p-3 sm:p-4 bg-neutral-900/30 border border-neutral-800 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-700 transition-all ${
-                        !bookingDate || !duration || !bookingType ? "opacity-40 pointer-events-none select-none" : ""
+                      className={`grid gap-2 p-3 sm:p-4 bg-neutral-900/30 border border-neutral-800 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-700 transition-all ${
+                        !bookingDate || !duration || !bookingType ? "opacity-40 pointer-events-none select-none grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8" : 
+                        (bookingDate && duration && bookingType && !allSlots.some(s => isSlotAvailable(s)) ? "grid-cols-1" : "grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8")
                       }`}
                     >
-                      {allSlots.map((slot) => {
-                        const available = isSlotAvailable(slot);
-                        const selected = startTime === slot;
+                      {/* ⚡ NEW: "Full Day Blocked" Empty State */}
+                      {bookingDate && duration && bookingType && !allSlots.some(slot => isSlotAvailable(slot)) ? (
+                        <div className="py-12 flex flex-col items-center justify-center text-center space-y-3">
+                          <span className="text-4xl drop-shadow-[0_0_15px_rgba(239,68,68,0.5)]">🚫</span>
+                          <div>
+                            <p className="text-sm font-mono text-red-400 font-black uppercase tracking-widest">No Slots Available</p>
+                            <p className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest mt-1 max-w-xs mx-auto">The arena is fully booked or under maintenance for this date.</p>
+                          </div>
+                        </div>
+                      ) : (
+                        allSlots.map((slot) => {
+                          // ⚡ LIVE TIME CHECK: Calculate exactly what minute it is right now
+                          const [time, ampm] = slot.split(" ");
+                          let [h, m] = time.split(":").map(Number);
+                          if (ampm === "PM" && h !== 12) h += 12;
+                          if (ampm === "AM" && h === 12) h = 0;
+                          const slotMins = h * 60 + m;
 
-                        return (
-                          <motion.button
-                            key={slot}
-                            variants={slotItem}
-                            whileHover={available && !selected && bookingDate && duration && bookingType ? { scale: 1.06 } : {}}
-                            whileTap={available && bookingDate && duration && bookingType ? { scale: 0.94 } : {}}
-                            type="button"
-                            disabled={!available || !bookingDate || !duration || !bookingType} 
-                            onClick={() => setStartTime(slot)}
-                            className={`relative py-3 px-1 text-[11px] sm:text-xs font-mono font-bold uppercase transition-colors border ${
-                              selected
-                                ? "bg-red-600 border-red-500 text-white"
-                                : available && bookingDate && duration && bookingType
-                                ? "bg-lime-500/10 border-lime-500/30 text-lime-400 hover:bg-lime-500 hover:text-black cursor-pointer"
-                                : "bg-neutral-950 border-neutral-900 text-neutral-600 opacity-50 cursor-not-allowed"
-                            }`}
-                          >
-                            {selected && (
-                              <motion.span
-                                layoutId="slot-selected-glow"
-                                className="absolute inset-0 bg-red-600 -z-0 shadow-[0_0_18px_rgba(220,38,38,0.55)]"
-                                transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                              />
-                             )}
-                            <span className="relative z-10">{slot}</span>
-                          </motion.button>
-                        );
-                      })}
+                          const istTime = new Date().toLocaleTimeString("en-US", { timeZone: "Asia/Kolkata", hour12: false });
+                          const [currH, currM] = istTime.split(":").map(Number);
+                          const currentMinsNow = currH * 60 + currM;
+                          const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+
+                          // ⚡ If the date is today AND the slot time has already passed, completely hide it!
+                          const isPast = bookingDate === todayStr && slotMins <= currentMinsNow;
+                          if (isPast) return null;
+
+                          const available = isSlotAvailable(slot);
+                          const selected = startTime === slot;
+                          const showBooked = !available && bookingDate && duration && bookingType;
+
+                          return (
+                            <motion.button
+                              key={slot}
+                              variants={slotItem}
+                              whileHover={available && !selected ? { scale: 1.06 } : {}}
+                              whileTap={available ? { scale: 0.94 } : {}}
+                              type="button"
+                              disabled={!available || !bookingDate || !duration || !bookingType} 
+                              onClick={() => setStartTime(slot)}
+                              // ⚡ NEW: Added layout changes for the BOOKED tags
+                              className={`relative py-2.5 px-1 flex flex-col items-center justify-center gap-1 text-[11px] sm:text-xs font-mono font-bold uppercase transition-colors border ${
+                                selected
+                                  ? "bg-red-600 border-red-500 text-white"
+                                  : available && bookingDate && duration && bookingType
+                                  ? "bg-lime-500/10 border-lime-500/30 text-lime-400 hover:bg-lime-500 hover:text-black cursor-pointer"
+                                  : "bg-neutral-950 border-neutral-900 text-neutral-600 opacity-60 cursor-not-allowed"
+                              }`}
+                            >
+                              {selected && (
+                                <motion.span
+                                  layoutId="slot-selected-glow"
+                                  className="absolute inset-0 bg-red-600 -z-0 shadow-[0_0_18px_rgba(220,38,38,0.55)]"
+                                  transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                                />
+                               )}
+                              {/* ⚡ NEW: The time text gets crossed out when booked */}
+                              <span className={`relative z-10 ${showBooked ? 'line-through opacity-40' : ''}`}>{slot}</span>
+                              
+                              {/* ⚡ NEW: The BOOKED badge shows up right inside the box */}
+                              {showBooked && (
+                                <span className="relative z-10 text-[8px] text-red-500 font-black tracking-widest bg-red-500/10 border border-red-500/20 px-1.5 py-0.5 rounded-sm leading-none">BOOKED</span>
+                              )}
+                            </motion.button>
+                          );
+                        })
+                      )}
                     </motion.div>
                   </LayoutGroup>
                 </div>
