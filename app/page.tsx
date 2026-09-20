@@ -190,13 +190,13 @@ export default function Home() {
     const mins = Number(duration);
     if (bookingType === "Half Court") {
       return {
-        totalAmount: Math.round((mins / 60) * 700),
-        regularAmount: Math.round((mins / 60) * 1200)
+        totalAmount: Math.round((mins / 60) * 1100), // ⚡ NEW: 1100/hr Half Court
+        regularAmount: Math.round((mins / 60) * 1500) 
       };
     } else {
       return {
-        totalAmount: Math.round((mins / 60) * 1200),
-        regularAmount: Math.round((mins / 60) * 2400)
+        totalAmount: Math.round((mins / 60) * 2200), // ⚡ NEW: 2200/hr Full Court
+        regularAmount: Math.round((mins / 60) * 3000) 
       };
     }
   }, [duration, bookingType]);
@@ -681,7 +681,7 @@ export default function Home() {
             <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500" />
           </span>
           <p className="text-[11px] sm:text-xs font-mono uppercase tracking-wide text-neutral-300">
-            ⚡ Launch Offer: <span className="text-neutral-500 line-through mr-1 font-medium">₹2400</span> <span className="text-lime-400 font-bold">₹1200 / Hr</span>
+            ⚡ Turf Rate: <span className="text-neutral-500 line-through mr-1 font-medium">₹3000</span> <span className="text-lime-400 font-bold">₹2200 / Hr</span>
            </p>
         </motion.div>
       </motion.header>
@@ -1006,12 +1006,11 @@ export default function Home() {
                     }`}
                   >
                     <option value="" disabled hidden>-- Select Session Length --</option> 
-                    {/* ⚡ FIX: 30-minute option completely deleted */}
-                    <option value="60">60 Minutes (1 Hour) {bookingType ? `(₹${bookingType === "Half Court" ? 700 : 1200})` : ""}</option>
-                    <option value="90">90 Minutes (1.5 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 1050 : 1800})` : ""}</option>
-                    <option value="120">120 Minutes (2 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 1400 : 2400})` : ""}</option>
-                    <option value="150">150 Minutes (2.5 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 1750 : 3000})` : ""}</option>
-                    <option value="180">180 Minutes (3 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 2100 : 3600})` : ""}</option>
+                    <option value="60">60 Minutes (1 Hour) {bookingType ? `(₹${bookingType === "Half Court" ? 1100 : 2200})` : ""}</option>
+                    <option value="90">90 Minutes (1.5 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 1650 : 3300})` : ""}</option>
+                    <option value="120">120 Minutes (2 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 2200 : 4400})` : ""}</option>
+                    <option value="150">150 Minutes (2.5 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 2750 : 5500})` : ""}</option>
+                    <option value="180">180 Minutes (3 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 3300 : 6600})` : ""}</option>
                   </select>
                   <div className={`pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-xs transition-all ${
                     !bookingDate || !bookingType ? "text-neutral-700 opacity-40" : "text-neutral-500"
