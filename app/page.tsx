@@ -966,25 +966,14 @@ export default function Home() {
 
               {/* Date Box */}
               <motion.div variants={fadeUp} className="space-y-2">
-                <label className="text-xs font-mono uppercase text-neutral-400 flex items-center justify-between">
-                  <span>Calendar Date</span>
-                  <span className="text-[9px] text-lime-400 tracking-widest bg-lime-400/10 px-2 py-0.5 border border-lime-400/20">TILL SEPT 20</span>
-                </label>
+                <label className="text-xs font-mono uppercase text-neutral-400">Calendar Date</label>
                 <div className="w-full box-border max-w-full overflow-hidden relative">
                   <input
                     type="date"
                     min={minDate}
-                    max="2026-09-20" 
                     value={bookingDate}
                     onChange={(e) => {
-                      const selectedDate = e.target.value;
-                      // ⚡ STRICT MOBILE FIX: Intercept the date before it saves!
-                      if (selectedDate > "2026-09-20") {
-                        alert("⚠️ Bookings are temporarily paused from Sept 21st onwards due to an upcoming price update. Please select a date on or before Sept 20th.");
-                        setBookingDate(""); // Reset the box
-                      } else {
-                        setBookingDate(selectedDate);
-                      }
+                      setBookingDate(e.target.value);
                     }}
                     className="w-full max-w-full box-border appearance-none p-4 bg-neutral-900 text-lime-400 font-bold font-mono border border-neutral-800 focus:border-lime-400 outline-none rounded-none text-base md:text-sm"
                     style={{ colorScheme: "dark" }}
