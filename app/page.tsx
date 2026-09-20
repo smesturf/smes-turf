@@ -196,7 +196,7 @@ export default function Home() {
     } else {
       return {
         totalAmount: Math.round((mins / 60) * 2200), // ⚡ NEW: 2200/hr Full Court
-        regularAmount: Math.round((mins / 60) * 3000) 
+        regularAmount: Math.round((mins / 60) * 2400) 
       };
     }
   }, [duration, bookingType]);
