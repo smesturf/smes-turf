@@ -681,7 +681,7 @@ export default function Home() {
             <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500" />
           </span>
           <p className="text-[11px] sm:text-xs font-mono uppercase tracking-wide text-neutral-300">
-            ⚡ Turf Rate: <span className="text-neutral-500 line-through mr-1 font-medium">₹3000</span> <span className="text-lime-400 font-bold">₹2200 / Hr</span>
+            ⚡ Turf Rate: <span className="text-neutral-500 line-through mr-1 font-medium">₹2400</span> <span className="text-lime-400 font-bold">₹2200 / Hr</span>
            </p>
         </motion.div>
       </motion.header>
