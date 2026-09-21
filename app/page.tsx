@@ -161,19 +161,23 @@ export default function Home() {
       if (email.includes("@") && email.includes(".") && phone.length === 10) {
         setIsCheckingLoyalty(true);
 
+        // ⚡ FIX: Strictly require BOTH email AND phone to match
         const { data: vipData } = await supabase
           .from("regular_customers")
           .select("id")
-          .or(`email.eq.${email},phone.eq.${phone}`)
+          .eq("email", email)
+          .eq("phone", phone)
           .limit(1);
 
         if (vipData && vipData.length > 0) {
           setIsRegularVIP(true);
           
+          // ⚡ FIX: Strictly check bookings with BOTH email AND phone
           const { data: bookingData } = await supabase
             .from("bookings")
             .select("id")
-            .or(`email.eq.${email},phone.eq.${phone}`)
+            .eq("email", email)
+            .eq("phone", phone)
             .gte("booking_date", "2026-09-21"); 
             
           setPastBookingCount(bookingData ? bookingData.length : 0);
@@ -863,9 +867,9 @@ export default function Home() {
                 <div className="space-y-2 relative">
                   <label className="text-xs font-mono uppercase text-neutral-400 flex justify-between items-end">
                     <span>Phone Number</span>
-                    {phone.length === 10 && isRegularVIP && (
+                    {phone.length === 10 && (isCheckingLoyalty || isRegularVIP) && (
                       <span className="text-[9px] text-fuchsia-400 tracking-widest font-black">
-                        {isCheckingLoyalty ? "Checking..." : `VIP Bookings: ${pastBookingCount}`}
+                        {isCheckingLoyalty ? "Checking VIP..." : isRegularVIP ? `VIP Bookings: ${pastBookingCount}` : ""}
                       </span>
                     )}
                   </label>
