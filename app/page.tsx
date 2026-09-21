@@ -47,6 +47,11 @@ export default function Home() {
 
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
   
+  // 🏆 VIP LOYALTY TRACKER STATE
+  const [pastBookingCount, setPastBookingCount] = useState(0);
+  const [isRegularVIP, setIsRegularVIP] = useState(false);
+  const [isCheckingLoyalty, setIsCheckingLoyalty] = useState(false);
+
   // 🔒 CLIENT DATE STATE (Strictly IST)
   const [minDate, setMinDate] = useState("");
 
@@ -150,6 +155,43 @@ export default function Home() {
     fetchWeather();
   }, []);
 
+  /* -------- VIP Database Scanner -------- */
+  useEffect(() => {
+    const checkLoyalty = async () => {
+      if (email.includes("@") && email.includes(".") && phone.length === 10) {
+        setIsCheckingLoyalty(true);
+
+        const { data: vipData } = await supabase
+          .from("regular_customers")
+          .select("id")
+          .or(`email.eq.${email},phone.eq.${phone}`)
+          .limit(1);
+
+        if (vipData && vipData.length > 0) {
+          setIsRegularVIP(true);
+          
+          const { data: bookingData } = await supabase
+            .from("bookings")
+            .select("id")
+            .or(`email.eq.${email},phone.eq.${phone}`)
+            .gte("booking_date", "2026-09-21"); 
+            
+          setPastBookingCount(bookingData ? bookingData.length : 0);
+        } else {
+          setIsRegularVIP(false);
+          setPastBookingCount(0);
+        }
+        setIsCheckingLoyalty(false);
+      } else {
+        setIsRegularVIP(false);
+        setPastBookingCount(0);
+      }
+    };
+    
+    const timeout = setTimeout(checkLoyalty, 600);
+    return () => clearTimeout(timeout);
+  }, [email, phone]);
+
   /* -------- IST Strict Min Date & Lively Refresh -------- */
   const getLocalDateString = () =>
     new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
@@ -159,17 +201,15 @@ export default function Home() {
   useEffect(() => {
     setMinDate(getLocalDateString());
     
-    // 1. Tick every minute to hide past slots lively as time passes
     const interval = setInterval(() => setLiveTick(t => t + 1), 60000);
 
-    // 2. Real-time listener: Auto-update slots if someone else books them right now!
     const channel = supabase
       .channel("public:customer_sync")
       .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, () => {
-        setLiveTick(t => t + 1); // Trigger a refresh instantly
+        setLiveTick(t => t + 1); 
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "blocked_slots" }, () => {
-        setLiveTick(t => t + 1); // Trigger a refresh instantly
+        setLiveTick(t => t + 1); 
       })
       .subscribe();
 
@@ -179,27 +219,28 @@ export default function Home() {
     };
   }, []);
 
-  // Reload the grid instantly if date/type changes OR if the live-tick triggers
   useEffect(() => {
     if (bookingDate && bookingType) loadBookedSlots(bookingDate);
   }, [bookingDate, bookingType, liveTick]);
 
-  // ⚡ DYNAMIC PRICE CALCULATION (Accurate for all durations)
-  const { totalAmount, regularAmount } = useMemo(() => {
-    if (!bookingType || !duration) return { totalAmount: 0, regularAmount: 0 };
+  // ⚡ DYNAMIC PRICE CALCULATION & VIP MATH
+  const { baseAmount, regularAmount } = useMemo(() => {
+    if (!bookingType || !duration) return { baseAmount: 0, regularAmount: 0 };
     const mins = Number(duration);
     if (bookingType === "Half Court") {
-      return {
-        totalAmount: Math.round((mins / 60) * 1100), // ⚡ NEW: 1100/hr Half Court
-        regularAmount: Math.round((mins / 60) * 1500) 
-      };
+      return { baseAmount: Math.round((mins / 60) * 1100), regularAmount: Math.round((mins / 60) * 1500) };
     } else {
-      return {
-        totalAmount: Math.round((mins / 60) * 2200), // ⚡ NEW: 2200/hr Full Court
-        regularAmount: Math.round((mins / 60) * 2400) 
-      };
+      return { baseAmount: Math.round((mins / 60) * 2200), regularAmount: Math.round((mins / 60) * 3000) };
     }
   }, [duration, bookingType]);
+
+  const isLoyaltyDiscount = isRegularVIP && pastBookingCount > 0 && (pastBookingCount % 6 === 5);
+  const discountAmount = isLoyaltyDiscount ? 1000 : 0;
+  
+  const totalAmount = Math.max(0, baseAmount - discountAmount);
+  
+  const advanceAmount = Math.min(200, totalAmount);
+  const advanceWithFee = advanceAmount > 0 ? advanceAmount + 5 : 0;
 
   // Generates slots ONLY from 5:00 AM to 10:30 PM
   const allSlots = useMemo(() => {
@@ -223,11 +264,9 @@ export default function Home() {
     if (ampm === "AM" && hours === 12) hours = 0;
     const slotMinutes = hours * 60 + minutes;
 
-    // Boundary Check: 11:00 PM cutoff (1380 mins)
     const endMinutes = slotMinutes + Number(duration);
     if (endMinutes > 23 * 60) return false;
     
-    // Overlap Check
     const segmentsNeeded = Number(duration) / 30;
     const slotIndex = allSlots.indexOf(slot);
     if (slotIndex === -1) return false;
@@ -239,12 +278,10 @@ export default function Home() {
       if (bookedSlots.includes(nextSlot)) return false;
     }
     
-    // Strict IST Today Check
     const today = getLocalDateString();
     if (bookingDate && bookingDate < today) return false;
     if (bookingDate !== today) return true;
 
-    // Strict IST Time Comparison
     const istTimeStr = new Date().toLocaleTimeString("en-US", {
       timeZone: "Asia/Kolkata",
       hour12: false,
@@ -317,7 +354,6 @@ export default function Home() {
 
             let type = slot.booking_type; 
             
-            // ⚡ FIX: Recognize "Full Court" blocks accurately so they block Half Court customers too
             if (isBlock) {
                if (slot.court_number === "Full Court" || slot.court_number === "Both Courts" || !slot.court_number) {
                   type = "Full Court";
@@ -348,8 +384,7 @@ export default function Home() {
       }
     });
 
-    // ⚡ FIX: Hardcode Academy Coaching Blocks (From Sept 15th onwards, Mon-Fri ONLY)
-    const dayOfWeek = new Date(`${dateStr}T00:00:00+05:30`).getDay(); // 0 = Sunday, 6 = Saturday
+    const dayOfWeek = new Date(`${dateStr}T00:00:00+05:30`).getDay();
     const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
 
     if (dateStr >= "2026-09-15" && isWeekday) {
@@ -384,7 +419,7 @@ export default function Home() {
           startTime,
           duration,
           bookingType,
-          amount: 205,
+          amount: advanceWithFee,
           totalAmount,
           name,
           phone,
@@ -463,10 +498,10 @@ export default function Home() {
         return;
       }
 
-      const balanceAmount = totalAmount - 200;
+      const balanceAmount = totalAmount - advanceAmount;
       const bookingId = verifyData.booking?.id ? `#${verifyData.booking.id}` : "#----";
       const referenceId = verifyData.booking?.booking_reference || paymentData.razorpay_payment_id || "N/A";
-      const advancePaid = 200;
+      const advancePaid = advanceAmount;
 
       setIsProcessingBooking(false);
 
@@ -681,7 +716,7 @@ export default function Home() {
             <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500" />
           </span>
           <p className="text-[11px] sm:text-xs font-mono uppercase tracking-wide text-neutral-300">
-            ⚡ Turf Rate: <span className="text-neutral-500 line-through mr-1 font-medium">₹2400</span> <span className="text-lime-400 font-bold">₹2200 / Hr</span>
+            ⚡ Turf Rate: <span className="text-neutral-500 line-through mr-1 font-medium">₹3000</span> <span className="text-lime-400 font-bold">₹2200 / Hr</span>
            </p>
         </motion.div>
       </motion.header>
@@ -825,8 +860,15 @@ export default function Home() {
                   />
                 </div>
     
-                <div className="space-y-2">
-                  <label className="text-xs font-mono uppercase text-neutral-400">Phone Number</label>
+                <div className="space-y-2 relative">
+                  <label className="text-xs font-mono uppercase text-neutral-400 flex justify-between items-end">
+                    <span>Phone Number</span>
+                    {phone.length === 10 && isRegularVIP && (
+                      <span className="text-[9px] text-fuchsia-400 tracking-widest font-black">
+                        {isCheckingLoyalty ? "Checking..." : `VIP Bookings: ${pastBookingCount}`}
+                      </span>
+                    )}
+                  </label>
                   <input
                     type="tel"
                     placeholder="Active contact"
@@ -1024,7 +1066,7 @@ export default function Home() {
                               : "grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8")
                       }`}
                     >
-                      {/* ⚡ NEW: "Full Day Blocked" Empty State */}
+                      {/* "Full Day Blocked" Empty State */}
                       {bookingDate && duration && bookingType && !allSlots.some(slot => isSlotAvailable(slot)) ? (
                         <div className="py-12 flex flex-col items-center justify-center text-center space-y-3 col-span-full">
                           <span className="text-4xl drop-shadow-[0_0_15px_rgba(239,68,68,0.5)]">🚫</span>
@@ -1035,7 +1077,6 @@ export default function Home() {
                         </div>
                       ) : (
                         allSlots.map((slot) => {
-                          // ⚡ LIVE TIME CHECK: Calculate exactly what minute it is right now
                           const [time, ampm] = slot.split(" ");
                           let [h, m] = time.split(":").map(Number);
                           if (ampm === "PM" && h !== 12) h += 12;
@@ -1047,7 +1088,6 @@ export default function Home() {
                           const currentMinsNow = currH * 60 + currM;
                           const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
-                          // ⚡ If the date is today AND the slot time has already passed, completely hide it!
                           const isPast = bookingDate === todayStr && slotMins <= currentMinsNow;
                           if (isPast) return null;
 
@@ -1064,7 +1104,6 @@ export default function Home() {
                               type="button"
                               disabled={!available || !bookingDate || !duration || !bookingType} 
                               onClick={() => setStartTime(slot)}
-                              // ⚡ FIX: Added fixed height (h-[60px] sm:h-[68px]) and width (w-full) so all boxes stay perfectly identical!
                               className={`relative h-[60px] sm:h-[68px] w-full p-1 flex flex-col items-center justify-center gap-1 text-[11px] sm:text-xs font-mono font-bold uppercase transition-colors border ${
                                 selected
                                   ? "bg-red-600 border-red-500 text-white"
@@ -1080,10 +1119,8 @@ export default function Home() {
                                   transition={{ type: "spring", stiffness: 350, damping: 30 }}
                                 />
                                )}
-                              {/* ⚡ NEW: The time text gets crossed out when booked */}
                               <span className={`relative z-10 ${showBooked ? 'line-through opacity-40' : ''}`}>{slot}</span>
                               
-                              {/* ⚡ NEW: The BOOKED badge shows up right inside the box */}
                               {showBooked && (
                                 <span className="relative z-10 text-[8px] text-red-500 font-black tracking-widest bg-red-500/10 border border-red-500/20 px-1.5 py-0.5 rounded-sm leading-none">BOOKED</span>
                               )}
@@ -1183,27 +1220,61 @@ export default function Home() {
 
               {/* Pricing Breakdown */}
               <div className="px-5 sm:px-6 py-2 space-y-4">
+                
+                {/* 🏆 VIP Status Badge */}
+                {isRegularVIP && (
+                  <div className="flex items-center gap-2 p-2 bg-fuchsia-500/10 border border-fuchsia-500/30 rounded-sm">
+                    <span className="text-sm">👑</span>
+                    <div>
+                      <span className="text-[9px] font-mono font-black text-fuchsia-400 uppercase tracking-widest block">Verified VIP Member</span>
+                      <span className="text-[8px] font-mono text-fuchsia-500 block">Past Bookings: {pastBookingCount}</span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex justify-between items-end">
                   <div>
                     <span className="text-[10px] text-neutral-500 font-mono uppercase block">Gross Value</span>
-                    {totalAmount > 0 && (
+                    {baseAmount > 0 && (
                       <span className="text-[11px] text-neutral-600 line-through font-mono tracking-widest block mt-0.5">
                         ₹{regularAmount}
                       </span>
                     )}
                   </div>
+                  <span className="text-2xl font-black text-white leading-none opacity-60">
+                    ₹{baseAmount}
+                  </span>
+                </div>
+
+                {/* 🏆 Loyalty Discount Milestone Badge */}
+                {isLoyaltyDiscount && (
+                  <motion.div 
+                    initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
+                    className="flex justify-between items-center p-3 bg-fuchsia-500/10 border border-fuchsia-500/30"
+                  >
+                    <div>
+                      <span className="text-[10px] font-mono font-black text-fuchsia-400 uppercase tracking-widest block">🎉 Loyalty Reward Applied</span>
+                      <span className="text-[9px] font-mono text-fuchsia-500 mt-0.5 block">Milestone Booking Unlocked!</span>
+                    </div>
+                    <span className="text-xl font-black text-fuchsia-400 leading-none">-₹1000</span>
+                  </motion.div>
+                )}
+
+                {/* Final Target Total */}
+                <div className="flex justify-between items-end border-t border-neutral-800 pt-3">
+                  <span className="text-[10px] text-neutral-500 font-mono uppercase block font-black">Final Total</span>
                   <AnimatePresence mode="wait">
                     <motion.span
                       key={totalAmount}
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ duration: 0.2 }}
-                      className="text-2xl font-black text-lime-400 leading-none"
+                      className="text-3xl font-black text-lime-400 leading-none drop-shadow-[0_0_12px_rgba(163,230,53,0.3)]"
                     >
                       ₹{totalAmount}
                     </motion.span>
                   </AnimatePresence>
-                 </div>
+                </div>
 
                 <div className="p-3 bg-lime-400/5 border border-lime-400/20 flex justify-between items-center">
                   <div>
@@ -1211,8 +1282,10 @@ export default function Home() {
                     <span className="text-[9px] font-mono text-neutral-500 mt-0.5 block hidden sm:block">Reserves slot instantly</span>
                   </div>
                   <div className="text-right">
-                    <span className="text-lg font-black text-white block leading-none">₹200</span>
-                    <span className="text-[8px] font-mono text-neutral-500 uppercase tracking-widest mt-1 block">+ Convenience Fee</span>
+                    <span className="text-lg font-black text-white block leading-none">₹{advanceAmount}</span>
+                    <span className="text-[8px] font-mono text-neutral-500 uppercase tracking-widest mt-1 block">
+                      {advanceAmount > 0 ? "+ Convenience Fee" : "Fully Covered"}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1390,9 +1463,9 @@ export default function Home() {
                      <div className="absolute top-0 left-0 w-1 h-full bg-lime-400"></div>
                      <div>
                        <span className="text-[11px] font-mono font-bold text-lime-400 uppercase tracking-widest block">Advance Payable Now</span>
-                       <span className="text-[9px] font-mono text-neutral-400 mt-1 block">Includes ₹5 Convenience Fee</span>
+                       <span className="text-[9px] font-mono text-neutral-400 mt-1 block">{advanceAmount > 0 ? "Includes ₹5 Convenience Fee" : "Fully Covered"}</span>
                      </div>
-                     <span className="text-2xl font-black text-white">₹205</span>
+                     <span className="text-2xl font-black text-white">₹{advanceWithFee}</span>
                   </div>
                </div>
 
