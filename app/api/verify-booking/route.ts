@@ -13,7 +13,7 @@ export async function POST(req: Request) {
   try {
     const { paymentData, bookingDetails } = await req.json();
 
-    // 1. CRYPTOGRAPHIC VERIFICATION (Server-Side)
+    // 1. CRYPTOGRAPHIC VERIFICATION
     const secret = process.env.RAZORPAY_KEY_SECRET!; 
 
     if (paymentData !== "CHECK_ONLY") {
@@ -26,7 +26,6 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Payment verification failed. Invalid Signature." }, { status: 400 });
       }
 
-      // --- ⚡ CRITICAL FIX: BULLETPROOF DUPLICATE CHECK ---
       const { data: existingOrder } = await supabase
         .from("bookings")
         .select("*")
@@ -52,7 +51,7 @@ export async function POST(req: Request) {
     nextDate.setDate(nextDate.getDate() + 1);
     const nextDateStr = nextDate.toISOString().split("T")[0];
 
-    // 3. FETCH ALL RELEVANT DATA IN ONE SINGLE QUERY
+    // 3. FETCH ALL RELEVANT DATA
     const { data: allBookings, error: checkError } = await supabase
       .from("bookings")
       .select("start_time, duration_minutes, booking_type, court_number, booking_date")
@@ -90,15 +89,45 @@ export async function POST(req: Request) {
        return NextResponse.json({ error: availability?.error || "Court not available" }, { status: 409 });
     }
 
-    // 5. SECURE SERVER-SIDE DATABASE INSERTION
+    // ⚡ 5. BULLETPROOF SERVER-SIDE MATH (Overrides old cached tabs)
+    const mins = Number(bookingDetails.duration);
+    let basePrice = bookingDetails.bookingType === "Half Court"
+      ? Math.round((mins / 60) * 1100) // Strictly ₹1100
+      : Math.round((mins / 60) * 2200); // Strictly ₹2200
+
+    // ⚡ Check VIP Database safely in the backend
+    const { data: vipData } = await supabase
+      .from("regular_customers")
+      .select("id")
+      .eq("email", bookingDetails.email)
+      .eq("phone", bookingDetails.phone)
+      .limit(1);
+
+    let discount = 0;
+    if (vipData && vipData.length > 0) {
+      const { data: pastBookings } = await supabase
+        .from("bookings")
+        .select("id")
+        .eq("email", bookingDetails.email)
+        .eq("phone", bookingDetails.phone)
+        .gte("booking_date", "2026-09-21");
+        
+      const count = pastBookings ? pastBookings.length : 0;
+      if (count > 0 && (count % 6 === 5)) {
+        discount = 1000;
+      }
+    }
+
+    // Force the correct mathematical totals
+    const fullTotal = Math.max(0, basePrice - discount);
+    const advancePaid = Math.min(200, fullTotal); // Adjusts dynamically if price falls below 200
+    const balanceDue = fullTotal - advancePaid;
+
+    // 6. SECURE SERVER-SIDE DATABASE INSERTION
     const datePart = bookingDetails.bookingDate.replace(/-/g, "");
     const timePart = bookingDetails.startTime.substring(0, 5).replace(":", "");
     const randomTag = Math.floor(1000 + Math.random() * 9000); 
     const bookingReference = `SMES-${datePart}-${timePart}-${randomTag}`;
-
-    const fullTotal = Number(bookingDetails.totalAmount);
-    const advancePaid = 200; // Hardcoded fixed ₹200 advance
-    const balanceDue = fullTotal - advancePaid;
 
     const { data: insertedData, error } = await supabase.from("bookings").insert([
       {
@@ -131,13 +160,12 @@ export async function POST(req: Request) {
       throw error;
     }
 
-    // 6. SEND CONFIRMATION WHATSAPP & EMAIL
+    // 7. SEND CONFIRMATION WHATSAPP & EMAIL
     try {
       const host = req.headers.get("host");
       const protocol = process.env.NODE_ENV === "development" ? "http" : "https";
       const baseUrl = `${protocol}://${host}`;
 
-      // --- CALCULATE EXACT END TIME ---
       const [timeStr, ampm] = bookingDetails.startTime.split(" ");
       let [h, m] = timeStr.split(":").map(Number);
       if (ampm === "PM" && h !== 12) h += 12;
@@ -150,10 +178,7 @@ export async function POST(req: Request) {
       const endAMPM = endH24 >= 12 ? "PM" : "AM";
 
       const endTime = `${String(endH12).padStart(2, "0")}:${String(endM).padStart(2, "0")} ${endAMPM}`;
-      
-      // ⚡ META API FIX: A function to instantly strip all forbidden formatting
       const sanitize = (str: string) => str.replace(/[\n\t]/g, ' ').replace(/\s{2,}/g, ' ').trim();
-
       const safeTimeFormat = sanitize(`${bookingDetails.startTime} - ${endTime}`);
       const safeName = sanitize(bookingDetails.name);
       const safeSport = sanitize(bookingDetails.sport);
@@ -178,13 +203,7 @@ export async function POST(req: Request) {
         }),
       });
 
-      if (!waResponse.ok) {
-        const errorText = await waResponse.text();
-        console.error("❌ WhatsApp API Rejected the Message:", errorText);
-      } else {
-        console.log("✅ WhatsApp Message Sent Successfully!");
-      }
-
+      if (!waResponse.ok) console.error("❌ WhatsApp API Rejected the Message");
     } catch(waErr) {
       console.error("❌ Server WA Dispatch Failed", waErr);
     }
@@ -209,9 +228,7 @@ export async function POST(req: Request) {
 
             <div style="background-color: #171717; padding: 20px; border-left: 4px solid #a3e635; margin-top: 25px;">
               <h3 style="margin-top: 0; color: #ffffff;">Hello ${bookingDetails.name},</h3>
-              <p style="color: #d4d4d4; line-height: 1.6;">
-                Your turf slot has been successfully locked and verified. Please find your match details below.
-              </p>
+              <p style="color: #d4d4d4; line-height: 1.6;">Your turf slot has been successfully locked and verified. Please find your match details below.</p>
             </div>
 
             <table style="width: 100%; margin-top: 25px; border-collapse: collapse;">
@@ -229,7 +246,7 @@ export async function POST(req: Request) {
               </tr>
               <tr style="background-color: #171717; border-bottom: 1px solid #262626;">
                 <td style="padding: 15px; color: #a3a3a3; text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Advance Paid</td>
-                <td style="padding: 15px; font-weight: bold; color: #a3e635; text-align: right;">₹200 (+ ₹5 Fee)</td>
+                <td style="padding: 15px; font-weight: bold; color: #a3e635; text-align: right;">₹${advancePaid} (+ ₹5 Fee)</td>
               </tr>
               <tr style="background-color: #171717;">
                 <td style="padding: 15px; color: #a3a3a3; text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Balance Due at Venue</td>
@@ -240,7 +257,6 @@ export async function POST(req: Request) {
         `,
       };
 
-      // ⚡ CRITICAL FIX: Added AWAIT
       await transporter.sendMail(mailOptions).catch(err => console.error("Email dispatch failed:", err));
     }
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
 import { createClient } from "@supabase/supabase-js";
-import { findCourtAvailability, timeToMinutes } from "../../lib/booking-rules";
+import { findCourtAvailability } from "../../lib/booking-rules";
 
 // Initialize Server Supabase
 const supabase = createClient(
@@ -10,21 +10,18 @@ const supabase = createClient(
 );
 
 const razorpay = new Razorpay({
-  key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!, // Make sure this matches your .env
+  key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!, 
   key_secret: process.env.RAZORPAY_KEY_SECRET!,
 });
 
 export async function POST(req: Request) {
   try {
-    // ⚡ FIX: Destructure all the customer and sport details sent from the frontend
     const { 
       bookingDate, startTime, duration, bookingType, amount, 
       totalAmount, name, phone, email, sport 
     } = await req.json();
 
-    // 1. CALCULATE ADJACENT DATES (Yesterday, Today, Tomorrow)
     const selectedDate = new Date(bookingDate);
-
     const prevDate = new Date(selectedDate);
     prevDate.setDate(prevDate.getDate() - 1);
     const prevDateStr = prevDate.toISOString().split("T")[0];
@@ -33,7 +30,6 @@ export async function POST(req: Request) {
     nextDate.setDate(nextDate.getDate() + 1);
     const nextDateStr = nextDate.toISOString().split("T")[0];
 
-    // 2. FETCH ALL RELEVANT DATA IN ONE SINGLE QUERY
     const { data: allBookings, error: checkError } = await supabase
       .from("bookings")
       .select("start_time, duration_minutes, booking_type, court_number, booking_date")
@@ -46,7 +42,6 @@ export async function POST(req: Request) {
 
     if (checkError) throw checkError;
 
-    // Filter the single dataset into the separate arrays your booking rules expect
     const existingBookings = allBookings?.filter(b => b.booking_date === bookingDate) || [];
     const previousDayBookings = allBookings?.filter(b => b.booking_date === prevDateStr) || [];
     const nextDayBookings = allBookings?.filter(b => b.booking_date === nextDateStr) || [];
@@ -55,7 +50,6 @@ export async function POST(req: Request) {
     const previousDayBlockedSlots = allBlockedSlots?.filter(b => b.booking_date === prevDateStr) || [];
     const nextDayBlockedSlots = allBlockedSlots?.filter(b => b.booking_date === nextDateStr) || [];
 
-    // 3. ENFORCE OVERLAP RULES
     const availability = findCourtAvailability(
       startTime,
       Number(duration),
@@ -72,12 +66,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: availability.error }, { status: 409 });
     }
 
-    // 4. SECURE TO PROCEED: CREATE RAZORPAY ORDER
     const options = {
-      amount: amount * 100, // Amount in paise
+      amount: amount * 100, 
       currency: "INR",
       receipt: `rcpt_${Date.now()}`,
-      // ⚡ FIX: Add notes so the webhook can recover dropped payments
       notes: {
         name,
         phone,
