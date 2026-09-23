@@ -47,7 +47,7 @@ export default function Home() {
 
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
   
-  // 🏆 VIP LOYALTY TRACKER STATE (Upgraded to ₹ Spend)
+  // 🏆 VIP LOYALTY TRACKER STATE
   const [pastSpend, setPastSpend] = useState(0);
   const [isDiscountAvailable, setIsDiscountAvailable] = useState(false);
   const [isRegularVIP, setIsRegularVIP] = useState(false);
@@ -186,15 +186,22 @@ export default function Home() {
             bookingData.forEach((b: any) => {
               const mins = b.duration_minutes || 60;
               const isHalf = b.booking_type === "Half Court";
-              const base = Math.round((mins / 60) * (isHalf ? 1100 : 2200));
+              let base = Math.round((mins / 60) * (isHalf ? 1100 : 2200));
+              
+              // ⚡ FIX: If offline booking has a higher manual total, trust it!
+              if (b.total_amount !== null && b.total_amount > base) {
+                  base = b.total_amount;
+              }
+
               pastTotalBase += base;
               pastTotalPaid += (b.total_amount !== null ? b.total_amount : base);
             });
           }
 
-          // Mathematical check: Earned discounts vs Applied discounts
           const earnedDiscounts = Math.floor(pastTotalBase / 11000);
-          const discountsReceived = Math.round((pastTotalBase - pastTotalPaid) / 1000);
+          
+          // ⚡ FIX: Math.max(0) absolutely prevents negative discounts from glitching the system
+          const discountsReceived = Math.max(0, Math.round((pastTotalBase - pastTotalPaid) / 1000));
           
           setPastSpend(pastTotalBase);
           setIsDiscountAvailable(earnedDiscounts > discountsReceived);
@@ -254,7 +261,7 @@ export default function Home() {
     if (bookingType === "Half Court") {
       return { baseAmount: Math.round((mins / 60) * 1100), regularAmount: Math.round((mins / 60) * 1500) };
     } else {
-      return { baseAmount: Math.round((mins / 60) * 2200), regularAmount: Math.round((mins / 60) * 2400) };
+      return { baseAmount: Math.round((mins / 60) * 2200), regularAmount: Math.round((mins / 60) * 3000) };
     }
   }, [duration, bookingType]);
 
@@ -740,7 +747,7 @@ export default function Home() {
             <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500" />
           </span>
           <p className="text-[11px] sm:text-xs font-mono uppercase tracking-wide text-neutral-300">
-            ⚡ Turf Rate: <span className="text-neutral-500 line-through mr-1 font-medium">₹2400</span> <span className="text-lime-400 font-bold">₹2200 / Hr</span>
+            ⚡ Turf Rate: <span className="text-neutral-500 line-through mr-1 font-medium">₹3000</span> <span className="text-lime-400 font-bold">₹2200 / Hr</span>
            </p>
         </motion.div>
       </motion.header>

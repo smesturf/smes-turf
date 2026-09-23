@@ -119,14 +119,22 @@ export async function POST(req: Request) {
         pastBookings.forEach((b: any) => {
           const m = b.duration_minutes || 60;
           const isHalf = b.booking_type === "Half Court";
-          const pastBase = Math.round((m / 60) * (isHalf ? 1100 : 2200));
+          let pastBase = Math.round((m / 60) * (isHalf ? 1100 : 2200));
+          
+          // ⚡ FIX: Trust manual total_amount if it's higher than the calculation
+          if (b.total_amount !== null && b.total_amount > pastBase) {
+              pastBase = b.total_amount;
+          }
+
           pastTotalBase += pastBase;
           pastTotalPaid += (b.total_amount !== null ? b.total_amount : pastBase);
         });
       }
 
       const earnedDiscounts = Math.floor(pastTotalBase / 11000);
-      const discountsReceived = Math.round((pastTotalBase - pastTotalPaid) / 1000);
+      
+      // ⚡ FIX: Math.max prevents false negative discounts
+      const discountsReceived = Math.max(0, Math.round((pastTotalBase - pastTotalPaid) / 1000));
 
       if (earnedDiscounts > discountsReceived) {
         discount = 1000;
