@@ -92,10 +92,10 @@ export async function POST(req: Request) {
     // ⚡ 5. BULLETPROOF SERVER-SIDE MATH (Overrides old cached tabs)
     const mins = Number(bookingDetails.duration);
     let basePrice = bookingDetails.bookingType === "Half Court"
-      ? Math.round((mins / 60) * 1100) // Strictly ₹1100
-      : Math.round((mins / 60) * 2200); // Strictly ₹2200
+      ? Math.round((mins / 60) * 1100) 
+      : Math.round((mins / 60) * 2200); 
 
-    // ⚡ Check VIP Database safely in the backend
+    // ⚡ Check VIP Spend Database safely in the backend
     const { data: vipData } = await supabase
       .from("regular_customers")
       .select("id")
@@ -107,20 +107,35 @@ export async function POST(req: Request) {
     if (vipData && vipData.length > 0) {
       const { data: pastBookings } = await supabase
         .from("bookings")
-        .select("id")
+        .select("duration_minutes, booking_type, total_amount")
         .eq("email", bookingDetails.email)
         .eq("phone", bookingDetails.phone)
         .gte("booking_date", "2026-09-21");
         
-      const count = pastBookings ? pastBookings.length : 0;
-      if (count > 0 && (count % 6 === 5)) {
+      let pastTotalBase = 0;
+      let pastTotalPaid = 0;
+
+      if (pastBookings && pastBookings.length > 0) {
+        pastBookings.forEach((b: any) => {
+          const m = b.duration_minutes || 60;
+          const isHalf = b.booking_type === "Half Court";
+          const pastBase = Math.round((m / 60) * (isHalf ? 1100 : 2200));
+          pastTotalBase += pastBase;
+          pastTotalPaid += (b.total_amount !== null ? b.total_amount : pastBase);
+        });
+      }
+
+      const earnedDiscounts = Math.floor(pastTotalBase / 11000);
+      const discountsReceived = Math.round((pastTotalBase - pastTotalPaid) / 1000);
+
+      if (earnedDiscounts > discountsReceived) {
         discount = 1000;
       }
     }
 
     // Force the correct mathematical totals
     const fullTotal = Math.max(0, basePrice - discount);
-    const advancePaid = Math.min(200, fullTotal); // Adjusts dynamically if price falls below 200
+    const advancePaid = Math.min(200, fullTotal); 
     const balanceDue = fullTotal - advancePaid;
 
     // 6. SECURE SERVER-SIDE DATABASE INSERTION

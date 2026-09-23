@@ -47,8 +47,9 @@ export default function Home() {
 
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
   
-  // 🏆 VIP LOYALTY TRACKER STATE
-  const [pastBookingCount, setPastBookingCount] = useState(0);
+  // 🏆 VIP LOYALTY TRACKER STATE (Upgraded to ₹ Spend)
+  const [pastSpend, setPastSpend] = useState(0);
+  const [isDiscountAvailable, setIsDiscountAvailable] = useState(false);
   const [isRegularVIP, setIsRegularVIP] = useState(false);
   const [isCheckingLoyalty, setIsCheckingLoyalty] = useState(false);
 
@@ -155,13 +156,12 @@ export default function Home() {
     fetchWeather();
   }, []);
 
-  /* -------- VIP Database Scanner -------- */
+  /* -------- VIP Database Scanner (₹11,000 Total Tracker) -------- */
   useEffect(() => {
     const checkLoyalty = async () => {
       if (email.includes("@") && email.includes(".") && phone.length === 10) {
         setIsCheckingLoyalty(true);
 
-        // ⚡ FIX: Strictly require BOTH email AND phone to match
         const { data: vipData } = await supabase
           .from("regular_customers")
           .select("id")
@@ -172,23 +172,43 @@ export default function Home() {
         if (vipData && vipData.length > 0) {
           setIsRegularVIP(true);
           
-          // ⚡ FIX: Strictly check bookings with BOTH email AND phone
           const { data: bookingData } = await supabase
             .from("bookings")
-            .select("id")
+            .select("duration_minutes, booking_type, total_amount")
             .eq("email", email)
             .eq("phone", phone)
             .gte("booking_date", "2026-09-21"); 
             
-          setPastBookingCount(bookingData ? bookingData.length : 0);
+          let pastTotalBase = 0;
+          let pastTotalPaid = 0;
+
+          if (bookingData && bookingData.length > 0) {
+            bookingData.forEach((b: any) => {
+              const mins = b.duration_minutes || 60;
+              const isHalf = b.booking_type === "Half Court";
+              const base = Math.round((mins / 60) * (isHalf ? 1100 : 2200));
+              pastTotalBase += base;
+              pastTotalPaid += (b.total_amount !== null ? b.total_amount : base);
+            });
+          }
+
+          // Mathematical check: Earned discounts vs Applied discounts
+          const earnedDiscounts = Math.floor(pastTotalBase / 11000);
+          const discountsReceived = Math.round((pastTotalBase - pastTotalPaid) / 1000);
+          
+          setPastSpend(pastTotalBase);
+          setIsDiscountAvailable(earnedDiscounts > discountsReceived);
+
         } else {
           setIsRegularVIP(false);
-          setPastBookingCount(0);
+          setPastSpend(0);
+          setIsDiscountAvailable(false);
         }
         setIsCheckingLoyalty(false);
       } else {
         setIsRegularVIP(false);
-        setPastBookingCount(0);
+        setPastSpend(0);
+        setIsDiscountAvailable(false);
       }
     };
     
@@ -234,11 +254,11 @@ export default function Home() {
     if (bookingType === "Half Court") {
       return { baseAmount: Math.round((mins / 60) * 1100), regularAmount: Math.round((mins / 60) * 1500) };
     } else {
-      return { baseAmount: Math.round((mins / 60) * 2200), regularAmount: Math.round((mins / 60) * 3000) };
+      return { baseAmount: Math.round((mins / 60) * 2200), regularAmount: Math.round((mins / 60) * 2400) };
     }
   }, [duration, bookingType]);
 
-  const isLoyaltyDiscount = isRegularVIP && pastBookingCount > 0 && (pastBookingCount % 6 === 5);
+  const isLoyaltyDiscount = isRegularVIP && isDiscountAvailable;
   const discountAmount = isLoyaltyDiscount ? 1000 : 0;
   
   const totalAmount = Math.max(0, baseAmount - discountAmount);
@@ -720,7 +740,7 @@ export default function Home() {
             <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500" />
           </span>
           <p className="text-[11px] sm:text-xs font-mono uppercase tracking-wide text-neutral-300">
-            ⚡ Turf Rate: <span className="text-neutral-500 line-through mr-1 font-medium">₹3000</span> <span className="text-lime-400 font-bold">₹2200 / Hr</span>
+            ⚡ Turf Rate: <span className="text-neutral-500 line-through mr-1 font-medium">₹2400</span> <span className="text-lime-400 font-bold">₹2200 / Hr</span>
            </p>
         </motion.div>
       </motion.header>
@@ -869,7 +889,7 @@ export default function Home() {
                     <span>Phone Number</span>
                     {phone.length === 10 && (isCheckingLoyalty || isRegularVIP) && (
                       <span className="text-[9px] text-fuchsia-400 tracking-widest font-black">
-                        {isCheckingLoyalty ? "Checking VIP..." : isRegularVIP ? `VIP Bookings: ${pastBookingCount}` : ""}
+                        {isCheckingLoyalty ? "Checking VIP..." : isRegularVIP ? `VIP Spend: ₹${pastSpend}` : ""}
                       </span>
                     )}
                   </label>
@@ -1225,13 +1245,24 @@ export default function Home() {
               {/* Pricing Breakdown */}
               <div className="px-5 sm:px-6 py-2 space-y-4">
                 
-                {/* 🏆 VIP Status Badge */}
+                {/* 🏆 VIP Status Badge with ₹ Progress Bar */}
                 {isRegularVIP && (
-                  <div className="flex items-center gap-2 p-2 bg-fuchsia-500/10 border border-fuchsia-500/30 rounded-sm">
-                    <span className="text-sm">👑</span>
-                    <div>
-                      <span className="text-[9px] font-mono font-black text-fuchsia-400 uppercase tracking-widest block">Verified VIP Member</span>
-                      <span className="text-[8px] font-mono text-fuchsia-500 block">Past Bookings: {pastBookingCount}</span>
+                  <div className="flex items-start gap-3 p-3 bg-fuchsia-500/10 border border-fuchsia-500/30 rounded-sm">
+                    <span className="text-xl">👑</span>
+                    <div className="w-full">
+                      <span className="text-[10px] font-mono font-black text-fuchsia-400 uppercase tracking-widest block">Verified VIP Member</span>
+                      <div className="flex justify-between items-end mt-2">
+                        <span className="text-[9px] font-mono text-fuchsia-500 block">Reward Progress:</span>
+                        <span className="text-[10px] font-mono text-fuchsia-400 font-bold block">₹{pastSpend % 11000} / ₹11,000</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-fuchsia-950/50 mt-1.5 rounded-full overflow-hidden border border-fuchsia-900/50">
+                        <motion.div 
+                          initial={{ width: 0 }}
+                          animate={{ width: `${((pastSpend % 11000) / 11000) * 100}%` }}
+                          transition={{ duration: 1, ease: easeOut }}
+                          className="h-full bg-fuchsia-500" 
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1258,7 +1289,7 @@ export default function Home() {
                   >
                     <div>
                       <span className="text-[10px] font-mono font-black text-fuchsia-400 uppercase tracking-widest block">🎉 Loyalty Reward Applied</span>
-                      <span className="text-[9px] font-mono text-fuchsia-500 mt-0.5 block">Milestone Booking Unlocked!</span>
+                      <span className="text-[9px] font-mono text-fuchsia-500 mt-0.5 block">₹11,000 Spend Milestone Unlocked!</span>
                     </div>
                     <span className="text-xl font-black text-fuchsia-400 leading-none">-₹1000</span>
                   </motion.div>
