@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 /* ------------------------------------------------------------------ */
@@ -52,6 +52,7 @@ const calculateHealthStats = (weight: number, height: number, sport: string) => 
 export default function HealthDashboard() {
   const [students, setStudents] = useState(initialStudentData);
   const [searchTerm, setSearchTerm] = useState("");
+  const [isLoaded, setIsLoaded] = useState(false);
   
   // Form State
   const [showAddForm, setShowAddForm] = useState(false);
@@ -60,6 +61,15 @@ export default function HealthDashboard() {
   const [newSport, setNewSport] = useState("");
   const [newWeight, setNewWeight] = useState("");
   const [newHeight, setNewHeight] = useState("");
+
+  // ⚡ FIX: Load data from browser storage when the page first opens
+  useEffect(() => {
+    const savedData = localStorage.getItem("smes_health_athletes");
+    if (savedData) {
+      setStudents(JSON.parse(savedData));
+    }
+    setIsLoaded(true); // Prevents visual glitching during load
+  }, []);
 
   const filteredStudents = students.filter(student =>
     student.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -74,7 +84,7 @@ export default function HealthDashboard() {
     }
 
     const newStudent = {
-      id: Date.now(), // Generates a unique ID
+      id: Date.now(), 
       name: newName,
       age: Number(newAge),
       sport: newSport,
@@ -82,8 +92,13 @@ export default function HealthDashboard() {
       height: Number(newHeight),
     };
 
-    // Add new student to the top of the list
-    setStudents([newStudent, ...students]);
+    const updatedList = [newStudent, ...students];
+
+    // Update the screen instantly
+    setStudents(updatedList);
+
+    // ⚡ FIX: Save the new list to the browser's hard drive permanently
+    localStorage.setItem("smes_health_athletes", JSON.stringify(updatedList));
 
     // Reset the form and close it
     setNewName("");
@@ -93,6 +108,9 @@ export default function HealthDashboard() {
     setNewHeight("");
     setShowAddForm(false);
   };
+
+  // Wait until local storage is loaded to avoid React mismatch errors
+  if (!isLoaded) return null;
 
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight p-4 sm:p-8">
