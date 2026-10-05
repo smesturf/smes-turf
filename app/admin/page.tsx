@@ -72,6 +72,7 @@ export default function AdminPage() {
   const [rescheduleCourt, setRescheduleCourt] = useState("Full Court");
   const [availableRescheduleSlots, setAvailableRescheduleSlots] = useState<string[]>([]);
   const [extendMinutes, setExtendMinutes] = useState(30);
+  const [extendCourtSize, setExtendCourtSize] = useState(false);
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
 
   // 🔒 Master Admin OTP Security States
@@ -268,7 +269,6 @@ export default function AdminPage() {
         const slotStart = convertToMins(slot);
         const slotEnd = slotStart + slotDuration;
 
-        // Strictly enforce 11 PM Closing Rule
         if (slotEnd > 23 * 60) return;
 
         const isOverlapping = allBusyItems.some((item: any) => {
@@ -294,7 +294,6 @@ export default function AdminPage() {
     fetchAvailableTimes();
   }, [slotDate, slotDuration, slotCourt, showManageSlots, adminTimeSlots]);
 
-  // Safely auto-reset selected time if it becomes invalid due to duration/court changes
   useEffect(() => {
     if (slotTime && availableAdminSlots.length > 0 && !availableAdminSlots.includes(slotTime)) {
       setSlotTime("");
@@ -473,7 +472,6 @@ export default function AdminPage() {
 
     let query = supabase.from("bookings").select("*");
 
-    // ⚡ FIX 1: We removed the "else" block so it downloads your ENTIRE history
     if (filterDate) {
       query = query.eq("booking_date", filterDate);
     }
@@ -484,7 +482,6 @@ export default function AdminPage() {
 
     if (error) { console.log(error); return; }
 
-    // Sanitize: Force advance to 0 for offline bookings to prevent DB default glitches
     const sanitizedBookings = (data || []).map((b: any) => ({
       ...b,
       advance_amount: b.customer_name === "Offline Booking" ? 0 : b.advance_amount
@@ -512,12 +509,11 @@ export default function AdminPage() {
     let dCash = 0;
     let dUpi = 0;
     let tomSlots = 0;
-    let activeBookingsCount = 0; // ⚡ NEW: Counter for future/ongoing active bookings
+    let activeBookingsCount = 0;
 
     const tomorrowStr = getTomorrowStr();
     const todayStr = getTodayStr();
 
-    // Get current time in minutes to check if today's slots have passed
     const now = new Date();
     const istTimeStr = now.toLocaleTimeString("en-US", { timeZone: "Asia/Kolkata", hour12: false });
     const [currentHours, currentMins] = istTimeStr.split(":").map(Number);
@@ -533,13 +529,11 @@ export default function AdminPage() {
       const cashTotal = Number(booking.cash_received || 0);
       const upiTotal = Math.max(0, totalPaid - cashTotal);
 
-      // --- Determine if Booking is still "Active" ---
       let isCompleted = false;
-      if (Number(booking.balance_amount || 0) <= 0) { // If fully paid
+      if (Number(booking.balance_amount || 0) <= 0) {
         if (!bDate || bDate < todayStr) {
-          isCompleted = true; // Fully paid & in the past
+          isCompleted = true;
         } else if (bDate === todayStr) {
-          // If it's today, check if the end time has already passed
           const timeParts = (booking.start_time || "").trim().split(" ");
           if (timeParts[0]) {
             const [hStr, mStr] = timeParts[0].split(":");
@@ -553,18 +547,15 @@ export default function AdminPage() {
             const durationMins = Number(booking.duration_minutes || 60);
             const endMinutes = (h * 60 + m) + durationMins;
             
-            // If the match end time is in the past, it's no longer active
             if (endMinutes <= currentMinutes) isCompleted = true;
           }
         }
       }
       
-      // If it has pending dues OR is in the future, count it as Active
       if (!isCompleted) {
         activeBookingsCount++;
       }
 
-      // 1. Match Schedule Logic (How many matches playing today?)
       if (bDate === targetDateStr) {
         dSlots += 1;
         dBalance += Number(booking.balance_amount || 0);
@@ -573,9 +564,8 @@ export default function AdminPage() {
         tomSlots += 1;
       }
 
-      // 2. Exact Cash Flow Logic (Money collected ON the Target Date)
       if (cDate === targetDateStr) {
-         dAdvance += advance; // Advance was collected today
+         dAdvance += advance;
          
          if (booking.customer_name === "Offline Booking") {
              if (pDate === targetDateStr) {
@@ -583,20 +573,17 @@ export default function AdminPage() {
                  dUpi += upiTotal;
              }
          } else {
-             // Online booking advance is ALWAYS UPI
              dUpi += advance;
              
-             // Did they ALSO pay the balance today? 
              if (pDate === targetDateStr && booking.balance_amount === 0 && booking.total_amount > advance) {
                  dCash += cashTotal;
                  dUpi += Math.max(0, upiTotal - advance); 
              }
          }
       } 
-      // If the match was booked previously, but the balance was collected TODAY
       else if (pDate === targetDateStr && booking.balance_amount === 0) {
          dCash += cashTotal;
-         dUpi += Math.max(0, upiTotal - advance); // Extract the advance, add only new UPI collected
+         dUpi += Math.max(0, upiTotal - advance);
       }
     });
 
@@ -640,7 +627,6 @@ export default function AdminPage() {
       const slotStart = convertToMins(slot);
       const slotEnd = slotStart + duration;
 
-      // Restrict Reschedule to 11 PM
       if (slotEnd > 23 * 60) return;
 
       const isConflict = allBusy.some((b: any) => {
@@ -748,7 +734,6 @@ export default function AdminPage() {
       return;
     }
 
-    // Append Name & Phone into the Block Reason for Tournaments & Maintenance so it shows on the UI
     let finalReason = slotReason;
     if (slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE") {
       const extras = [];
@@ -783,7 +768,6 @@ export default function AdminPage() {
   const handleSendWhatsApp = async () => {
     if (!selectedManageBooking) return;
     
-    // Automatically prompt for a phone number if the booking has no phone ("-")
     let targetPhone = selectedManageBooking.phone;
     if (!targetPhone || targetPhone === "-") {
       const enteredPhone = window.prompt("No phone number found for this booking.\n\nEnter 10-digit phone number to send WhatsApp:");
@@ -797,7 +781,6 @@ export default function AdminPage() {
     setIsSendingWhatsApp(true);
     
     try {
-      // 1. Calculate perfect start and end time (handling raw DB formats like '05:00:00' securely)
       let startH = 0, startM = 0, ampm = "AM";
       const rawTime = selectedManageBooking.start_time || "";
       
@@ -826,7 +809,6 @@ export default function AdminPage() {
 
       const displayEnd = `${String(endH12).padStart(2, "0")}:${String(endM).padStart(2, "0")} ${endAMPM}`;
       
-      // 2. Safe Meta Formatter
       const sanitize = (str: string) => (str || "").replace(/[\n\t]/g, ' ').replace(/\s{2,}/g, ' ').trim();
 
       const safeTimeFormat = sanitize(`${displayStart} - ${displayEnd}`);
@@ -912,7 +894,6 @@ export default function AdminPage() {
         setShowOtpModal(false);
         setOtpInput("");
         
-        // Execute the correct function with otpVerified = true bypass flag
         if (pendingAction === "cancel_refund") await handleCancelWithRefund(true);
         else if (pendingAction === "reschedule") await handleRescheduleBooking(true);
         else if (pendingAction === "cancel_no_refund") await handleCancelWithoutRefund(true);
@@ -933,7 +914,6 @@ export default function AdminPage() {
   const handleCancelWithRefund = async (otpVerified = false) => {
     if (!selectedManageBooking) return;
 
-    // Calculate the actual total money collected (Works perfectly for 1500 offline bookings)
     const totalPaid = (selectedManageBooking.total_amount || 0) - (selectedManageBooking.balance_amount || 0);
     
     if (!otpVerified) {
@@ -943,10 +923,9 @@ export default function AdminPage() {
       if (!confirmCancel) return;
       
       await triggerOtpProtection("cancel_refund");
-      return; // Stop execution here until OTP is verified
+      return;
     }
 
-    // Deleting it automatically deducts the 1500 from today's Cash/UPI Vault calculation
     const { error } = await supabase.from("bookings").delete().eq("id", selectedManageBooking.id);
     if (error) { alert(error.message); return; }
 
@@ -991,7 +970,7 @@ export default function AdminPage() {
 
     if (!otpVerified) {
       await triggerOtpProtection("reschedule");
-      return; // Stop execution here until OTP is verified
+      return;
     }
 
     const originalDur = selectedManageBooking.duration_minutes || 60;
@@ -1032,7 +1011,7 @@ export default function AdminPage() {
       if (!confirmCancel) return;
       
       await triggerOtpProtection("cancel_no_refund");
-      return; // Stop execution here until OTP is verified
+      return;
     }
 
     const { error } = await supabase.from("bookings").delete().eq("id", selectedManageBooking.id);
@@ -1054,7 +1033,6 @@ export default function AdminPage() {
     const extensionStart = startMins + currentDur;
     const extensionEnd = extensionStart + Number(extendMinutes);
 
-    // Hard Boundary Check for 11 PM
     if (extensionEnd > 23 * 60) {
        alert("⚠️ Extension Failed: The turf closes strictly at 11:00 PM.");
        return;
@@ -1068,15 +1046,18 @@ export default function AdminPage() {
       ...(existingBlocks || [])
     ];
 
+    const checkStart = extensionStart;
+    const targetCourt = extendCourtSize ? "Full Court" : (selectedManageBooking.court_number || "Full Court");
+
     const isOverlapping = allBusyItems.some((item) => {
       const itemStart = convertToMins(item.start_time);
       const itemEnd = itemStart + (item.duration_minutes || 60);
-      const overlaps = extensionStart < itemEnd && extensionEnd > itemStart;
+      const overlaps = checkStart < itemEnd && extensionEnd > itemStart;
       if (!overlaps) return false;
-      const court = selectedManageBooking.court_number || "Full Court";
-      if (court === "Full Court" || court === "Both Courts") return true;
+      
+      if (targetCourt === "Full Court" || targetCourt === "Both Courts") return true;
       if (item.booking_type === "Full Court" || item.court_number === "Full Court" || item.court_number === "Both Courts") return true;
-      return item.court_number === court;
+      return item.court_number === targetCourt;
     });
 
     if (isOverlapping) {
@@ -1086,18 +1067,22 @@ export default function AdminPage() {
     
     if (!otpVerified) {
       await triggerOtpProtection("extend");
-      return; // Stop execution here until OTP is verified
+      return;
     }
 
     const currentTotal = selectedManageBooking.total_amount || 0;
     const currentBalance = selectedManageBooking.balance_amount || 0;
     
     const pricePerMin = currentTotal / currentDur;
-    const addedPrice = Math.round(pricePerMin * Number(extendMinutes));
+    const addedPrice = extendCourtSize 
+      ? Math.round((pricePerMin * 2) * Number(extendMinutes)) 
+      : Math.round(pricePerMin * Number(extendMinutes));
     
     const newDuration = currentDur + Number(extendMinutes);
     const newTotal = currentTotal + addedPrice;
     const newBalance = currentBalance + addedPrice;
+    const newBookingType = extendCourtSize ? "Full Court" : selectedManageBooking.booking_type;
+    const newCourtNumber = extendCourtSize ? "Full Court" : selectedManageBooking.court_number;
 
     const { error } = await supabase
       .from("bookings")
@@ -1105,6 +1090,8 @@ export default function AdminPage() {
         duration_minutes: newDuration,
         total_amount: newTotal,
         balance_amount: newBalance,
+        booking_type: newBookingType,
+        court_number: newCourtNumber,
       })
       .eq("id", selectedManageBooking.id);
 
@@ -1122,7 +1109,6 @@ export default function AdminPage() {
   const exportToExcel = async () => {
     const XLSX = await import("xlsx");
     
-    // FETCH FULL DB HISTORY FOR EXPORT (Not just active feed)
     const { data: dbBookings, error: dbError } = await supabase
       .from("bookings")
       .select("*")
@@ -1134,7 +1120,6 @@ export default function AdminPage() {
       return;
     }
     
-    // Sanitize ghost advance values for Excel Export
     const fullBookings = (dbBookings || []).map((b: any) => ({
       ...b,
       advance_amount: b.customer_name === "Offline Booking" ? 0 : b.advance_amount
@@ -1169,7 +1154,7 @@ export default function AdminPage() {
     const currentYearNum = new Date().getFullYear();
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     
-    const { data: dbStudents } = await supabase.from("students").select(`*, student_payments(*), student_attendance(*)`).order("name", { ascending: true });
+    const { data: dbStudents } = await supabase.from("students").select(`*, student_payments(*), student_attendance(*)`)?.order("name", { ascending: true });
 
     const morningStudents = [...(dbStudents || [])].filter(s => s.batch === "Morning Batch").sort((a, b) => a.name.localeCompare(b.name));
     const eveningStudents = [...(dbStudents || [])].filter(s => s.batch === "Evening Batch").sort((a, b) => a.name.localeCompare(b.name));
@@ -1393,7 +1378,6 @@ export default function AdminPage() {
     router.push("/staff");
   };
 
-  // ⚡ FIX: Adjusted savePayment to properly accumulate cash/UPI on top of the original Razorpay advance
   const savePayment = async () => {
     if (!selectedBooking) return;
     const balance = Number(selectedBooking.balance_amount || 0);
@@ -1415,7 +1399,6 @@ export default function AdminPage() {
     const newCash = Number(selectedBooking.cash_received || 0) + addCash;
     const newUpi = Number(selectedBooking.upi_received || 0) + addUpi;
 
-    // Smart payment method label update
     let finalMethod = selectedBooking.payment_method || "Cash + UPI";
     if (selectedBooking.payment_method === "UPI" && paymentType === "Full Cash") finalMethod = "Cash + UPI";
     else if (selectedBooking.payment_method === "Cash" && paymentType === "Full UPI") finalMethod = "Cash + UPI";
@@ -1447,14 +1430,13 @@ export default function AdminPage() {
     const confirmed = confirm("Reset this payment? The advance will remain untouched, but the remaining balance will be marked as DUE again.");
     if (!confirmed) return;
     
-    // Maintain the fixed ₹200 advance (or whatever it is in DB), only restore the pending balance
     const originalBalance = (booking.total_amount || 0) - (booking.advance_amount || 0);
     
     const { error = null } = await supabase
       .from("bookings")
       .update({
         cash_received: 0,
-        upi_received: booking.advance_amount || 0, // Preserve the original Razorpay advance in the UPI vault
+        upi_received: booking.advance_amount || 0,
         payment_method: booking.advance_amount > 0 ? "UPI" : null,
         payment_completed: false,
         balance_amount: originalBalance, 
@@ -1479,7 +1461,6 @@ export default function AdminPage() {
 
   /* -------- HELPER: AUTO-HIDE PAST COMPLETED BOOKINGS -------- */
   const isBookingCompletedAndPassed = (booking: any) => {
-    // Keep pending dues visible always
     if (Number(booking.balance_amount || 0) > 0) return false;
     
     const bDate = booking.booking_date?.split("T")[0];
@@ -1489,13 +1470,11 @@ export default function AdminPage() {
     if (bDate < todayStr) return true;
     if (bDate > todayStr) return false;
 
-    // If it's today, check if end time has passed
     const now = new Date();
     const istTimeStr = now.toLocaleTimeString("en-US", { timeZone: "Asia/Kolkata", hour12: false });
     const [currentHours, currentMins] = istTimeStr.split(":").map(Number);
     const currentMinutes = currentHours * 60 + currentMins;
 
-    // Safe extraction of 24-hour time saved in Supabase
     const timeParts = (booking.start_time || "").trim().split(" ");
     if (!timeParts[0]) return false;
 
@@ -1503,7 +1482,6 @@ export default function AdminPage() {
     let h = Number(hStr);
     const m = parseInt(mStr || "0", 10);
 
-    // Handle legacy AM/PM format if it exists
     if (timeParts[1]) {
       const ampm = timeParts[1].toUpperCase();
       if (ampm === "PM" && h !== 12) h += 12;
@@ -1518,10 +1496,8 @@ export default function AdminPage() {
 
   const filteredBookings = bookings
     .filter((booking) => {
-      // ⚡ FIX 2: If the admin is typing in the search bar, instantly un-hide all past history!
       if (searchTerm.trim() !== "") return true;
 
-      // 1. Check Date Filter Logic (Only runs if search bar is completely empty)
       if (filterDate) {
         if (booking.booking_date?.split("T")[0] !== filterDate) return false;
       } else {
@@ -1533,16 +1509,13 @@ export default function AdminPage() {
       let search = searchTerm.toLowerCase().trim();
       if (!search) return true;
 
-      // ⚡ FIX: Allow searching by "#124" or "124" by stripping the hashtag
       const cleanIdSearch = search.replace("#", "");
 
-      // ⚡ FIX: If the exact ID exists in the database, ONLY show that exact booking
       const exactMatchExists = currentFiltered.some(b => b.id?.toString() === cleanIdSearch);
       if (exactMatchExists) {
         return booking.id?.toString() === cleanIdSearch;
       }
 
-      // Otherwise, do a normal search across all text fields
       return (
         booking.customer_name?.toLowerCase().includes(search) ||
         booking.phone?.toLowerCase().includes(search) ||
@@ -2120,7 +2093,7 @@ export default function AdminPage() {
           // Showing {filteredBookings.length} booking(s) active
         </p>
 
-        {/* ---------- COMPACT BOOKINGS TABLE (NOW ONLY RENDERS ONCE) ---------- */}
+        {/* ---------- COMPACT BOOKINGS TABLE ---------- */}
         <motion.section
           variants={fadeUp}
           initial="hidden"
@@ -2305,6 +2278,7 @@ export default function AdminPage() {
                                 setSelectedManageBooking(booking);
                                 setManageMode("options");
                                 setExtendMinutes(30);
+                                setExtendCourtSize(false);
 
                                 const bDate = booking.booking_date?.split("T")[0] || getTodayStr();
                                 const bDur = booking.duration_minutes || 60;
@@ -2663,7 +2637,29 @@ export default function AdminPage() {
                     </select>
                   </div>
 
-                  <div className="p-3 bg-cyan-950/30 border border-cyan-800/50 text-xs font-mono text-cyan-300">
+                  {selectedManageBooking.booking_type === "Half Court" && (
+                    <div className="space-y-1.5 border-t border-neutral-800 pt-3 mt-3">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Court Size Upgrade</label>
+                      <button
+                        type="button"
+                        onClick={() => setExtendCourtSize(!extendCourtSize)}
+                        className="flex items-center gap-3 w-full p-2 bg-neutral-900 border border-neutral-800 transition-colors hover:bg-neutral-800"
+                      >
+                        <div className={`relative w-10 h-5 rounded-full transition-colors ${extendCourtSize ? 'bg-cyan-400' : 'bg-neutral-700'}`}>
+                          <motion.div
+                            layout
+                            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm ${extendCourtSize ? 'translate-x-5' : 'translate-x-0'}`}
+                            transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                          />
+                        </div>
+                        <span className={`text-[11px] font-mono font-bold uppercase tracking-widest ${extendCourtSize ? 'text-cyan-400' : 'text-neutral-500'}`}>
+                          {extendCourtSize ? "Upgrading to 7v7 Full Arena" : "Keep 5v5 Half Court"}
+                        </span>
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="p-3 bg-cyan-950/30 border border-cyan-800/50 text-xs font-mono text-cyan-300 mt-3">
                     Projected Target Range:<br />
                     <span className="font-bold text-white text-sm">
                       {getTimeRangeLabel(
@@ -2674,7 +2670,9 @@ export default function AdminPage() {
                     <br /><br />
                     Projected Added Cost:<br />
                     <span className="font-bold text-white text-sm">
-                       + ₹{Math.round((selectedManageBooking.total_amount / (selectedManageBooking.duration_minutes || 60)) * Number(extendMinutes))}
+                       + ₹{extendCourtSize 
+                         ? Math.round(((selectedManageBooking.total_amount / (selectedManageBooking.duration_minutes || 60)) * 2) * Number(extendMinutes))
+                         : Math.round((selectedManageBooking.total_amount / (selectedManageBooking.duration_minutes || 60)) * Number(extendMinutes))}
                     </span>
                   </div>
 
@@ -2764,27 +2762,36 @@ export default function AdminPage() {
                   </select>
                 </div>
 
-                {paymentType === "Cash + UPI" && (
+                {(paymentType === "Full UPI" || paymentType === "Cash + UPI") && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
-                    className="grid grid-cols-2 gap-2 p-3 bg-neutral-900 border border-neutral-800"
+                    className="flex flex-col gap-3"
                   >
-                    <input
-                      type="number"
-                      placeholder="Cash Amount"
-                      value={cashAmount}
-                      onChange={(e) => setCashAmount(e.target.value)}
-                      className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                    />
-                    <input
-                      type="number"
-                      placeholder="UPI Amount"
-                      value={upiAmount}
-                      onChange={(e) => setUpiAmount(e.target.value)}
-                      className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                    />
+                    <div className="flex flex-col items-center justify-center p-4 bg-neutral-900 border border-neutral-800 rounded-md mt-2">
+                      <span className="text-[10px] font-mono text-neutral-400 uppercase tracking-widest mb-3">Scan to Pay</span>
+                      <img src="/scanner.jpeg" alt="UPI QR Code" className="w-48 h-48 object-contain rounded-md border border-neutral-700 shadow-[0_0_15px_rgba(163,230,53,0.1)]" />
+                    </div>
+
+                    {paymentType === "Cash + UPI" && (
+                      <div className="grid grid-cols-2 gap-2 p-3 bg-neutral-900 border border-neutral-800">
+                        <input
+                          type="number"
+                          placeholder="Cash Amount"
+                          value={cashAmount}
+                          onChange={(e) => setCashAmount(e.target.value)}
+                          className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                        />
+                        <input
+                          type="number"
+                          placeholder="UPI Amount"
+                          value={upiAmount}
+                          onChange={(e) => setUpiAmount(e.target.value)}
+                          className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                        />
+                      </div>
+                    )}
                   </motion.div>
                 )}
               </div>
@@ -2859,7 +2866,7 @@ export default function AdminPage() {
                   <input
                     type="date"
                     value={slotDate}
-                    min={getTodayStr()} // Prevents selecting past dates
+                    min={getTodayStr()}
                     onChange={(e) => {
                       setSlotDate(e.target.value);
                     }}
@@ -2931,7 +2938,6 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                {/* --- ⚡ NEW: OPTIONAL FIELDS FOR OFFLINE, TOURNAMENTS & MAINTENANCE --- */}
                 {(slotReason === "OFFLINE BOOKING" || slotReason === "TOURNAMENT" || slotReason === "MAINTENANCE") && (
                   <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-neutral-800 mt-2">
                     <div className="space-y-1.5">
