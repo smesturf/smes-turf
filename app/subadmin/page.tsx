@@ -62,7 +62,7 @@ export default function SubAdminPage() {
   const [adminExistingMethod, setAdminExistingMethod] = useState("UPI");
   const [isSendingEmails, setIsSendingEmails] = useState(false);
 
-  // ⚙️ Manage Booking Pop-Up States
+  // ⚙️️ Manage Booking Pop-Up States
   const [showManageModal, setShowManageModal] = useState(false);
   const [selectedManageBooking, setSelectedManageBooking] = useState<any>(null);
   const [manageMode, setManageMode] = useState<"options" | "reschedule" | "extend">("options");
@@ -72,6 +72,7 @@ export default function SubAdminPage() {
   const [rescheduleCourt, setRescheduleCourt] = useState("Full Court");
   const [availableRescheduleSlots, setAvailableRescheduleSlots] = useState<string[]>([]);
   const [extendMinutes, setExtendMinutes] = useState(30);
+  const [extendCourtSize, setExtendCourtSize] = useState(false);
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
 
   // 🔒 Security OTP States (Sub-Admin Restricted)
@@ -951,7 +952,10 @@ export default function SubAdminPage() {
     const extensionStart = startMins + currentDur;
     const extensionEnd = extensionStart + Number(extendMinutes);
 
-    // Hard Boundary Check for 11 PM
+    // Check overlap ONLY for the newly extended time, ignoring the past hour
+    const checkStart = extensionStart; 
+    const targetCourt = extendCourtSize ? "Full Court" : (selectedManageBooking.court_number || "Full Court");
+
     if (extensionEnd > 23 * 60) {
        alert("⚠️ Extension Failed: The turf closes strictly at 11:00 PM.");
        return;
@@ -968,33 +972,38 @@ export default function SubAdminPage() {
     const isOverlapping = allBusyItems.some((item) => {
       const itemStart = convertToMins(item.start_time);
       const itemEnd = itemStart + (item.duration_minutes || 60);
-      const overlaps = extensionStart < itemEnd && extensionEnd > itemStart;
+      const overlaps = checkStart < itemEnd && extensionEnd > itemStart;
       if (!overlaps) return false;
-      const court = selectedManageBooking.court_number || "Full Court";
-      if (court === "Full Court" || court === "Both Courts") return true;
+      
+      if (targetCourt === "Full Court" || targetCourt === "Both Courts") return true;
       if (item.booking_type === "Full Court" || item.court_number === "Full Court" || item.court_number === "Both Courts") return true;
-      return item.court_number === court;
+      return item.court_number === targetCourt;
     });
 
     if (isOverlapping) {
-      alert("⚠️ Extension Failed: The target extended time slot is already booked or blocked.");
+      alert("⚠️ Extension Failed: The target extended time slot is already booked/blocked.");
       return;
     }
     
     if (!otpVerified) {
       await triggerOtpProtection("extend");
-      return; // Stop execution here until OTP is verified
+      return; 
     }
 
     const currentTotal = selectedManageBooking.total_amount || 0;
     const currentBalance = selectedManageBooking.balance_amount || 0;
     
+    // Math Fix: Keep the original paid time as-is, and ONLY charge the Full Court rate for the extra minutes added
     const pricePerMin = currentTotal / currentDur;
-    const addedPrice = Math.round(pricePerMin * Number(extendMinutes));
+    const addedPrice = extendCourtSize 
+      ? Math.round((pricePerMin * 2) * Number(extendMinutes)) 
+      : Math.round(pricePerMin * Number(extendMinutes));
     
     const newDuration = currentDur + Number(extendMinutes);
     const newTotal = currentTotal + addedPrice;
     const newBalance = currentBalance + addedPrice;
+    const newBookingType = extendCourtSize ? "Full Court" : selectedManageBooking.booking_type;
+    const newCourtNumber = extendCourtSize ? "Full Court" : selectedManageBooking.court_number;
 
     const { error } = await supabase
       .from("bookings")
@@ -1002,6 +1011,8 @@ export default function SubAdminPage() {
         duration_minutes: newDuration,
         total_amount: newTotal,
         balance_amount: newBalance,
+        booking_type: newBookingType,
+        court_number: newCourtNumber
       })
       .eq("id", selectedManageBooking.id);
 
@@ -1863,7 +1874,7 @@ export default function SubAdminPage() {
                               onClick={() => deleteStudent(s.id, s.name)}
                               className="px-2.5 py-1 text-[10px] font-mono uppercase bg-neutral-900 hover:bg-red-950 border border-neutral-800 hover:border-red-900 text-red-400 hover:text-white transition-colors shrink-0"
                             >
-                              🗑️ Delete
+                              🗑️️ Delete
                             </button>
                           </div>
                           <div className="grid grid-cols-2 gap-2 text-[11px] bg-neutral-950/60 p-2.5 border border-neutral-900 font-mono">
@@ -2195,6 +2206,7 @@ export default function SubAdminPage() {
                                 setSelectedManageBooking(booking);
                                 setManageMode("options");
                                 setExtendMinutes(30);
+                                setExtendCourtSize(false);
 
                                 const bDate = booking.booking_date?.split("T")[0] || getTodayStr();
                                 const bDur = booking.duration_minutes || 60;
@@ -2763,7 +2775,28 @@ export default function SubAdminPage() {
                     </select>
                   </div>
 
-                  <div className="p-3 bg-cyan-950/30 border border-cyan-800/50 text-xs font-mono text-cyan-300">
+                  {selectedManageBooking.booking_type === "Half Court" && (
+                    <div className="space-y-1.5 border-t border-neutral-800 pt-3 mt-3">
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Court Size Upgrade</label>
+                      <button
+                        onClick={() => setExtendCourtSize(!extendCourtSize)}
+                        className="flex items-center gap-3 w-full p-2 bg-neutral-900 border border-neutral-800 transition-colors hover:bg-neutral-800"
+                      >
+                        <div className={`relative w-10 h-5 rounded-full transition-colors ${extendCourtSize ? 'bg-cyan-400' : 'bg-neutral-700'}`}>
+                          <motion.div
+                            layout
+                            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm ${extendCourtSize ? 'translate-x-5' : 'translate-x-0'}`}
+                            transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                          />
+                        </div>
+                        <span className={`text-[11px] font-mono font-bold uppercase tracking-widest ${extendCourtSize ? 'text-cyan-400' : 'text-neutral-500'}`}>
+                          {extendCourtSize ? "Upgrading to 7v7 Full Arena" : "Keep 5v5 Half Court"}
+                        </span>
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="p-3 bg-cyan-950/30 border border-cyan-800/50 text-xs font-mono text-cyan-300 mt-3">
                     Projected Target Range:<br />
                     <span className="font-bold text-white text-sm">
                       {getTimeRangeLabel(
@@ -2772,9 +2805,11 @@ export default function SubAdminPage() {
                       )}
                     </span>
                     <br /><br />
-                    Projected Added Cost:<br />
+                   Projected Added Cost:<br />
                     <span className="font-bold text-white text-sm">
-                       + ₹{Math.round((selectedManageBooking.total_amount / (selectedManageBooking.duration_minutes || 60)) * Number(extendMinutes))}
+                       + ₹{extendCourtSize 
+                         ? Math.round(((selectedManageBooking.total_amount / (selectedManageBooking.duration_minutes || 60)) * 2) * Number(extendMinutes))
+                         : Math.round((selectedManageBooking.total_amount / (selectedManageBooking.duration_minutes || 60)) * Number(extendMinutes))}
                     </span>
                   </div>
 
@@ -2864,27 +2899,36 @@ export default function SubAdminPage() {
                   </select>
                 </div>
 
-                {paymentType === "Cash + UPI" && (
+                {(paymentType === "Full UPI" || paymentType === "Cash + UPI") && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
-                    className="grid grid-cols-2 gap-2 p-3 bg-neutral-900 border border-neutral-800"
+                    className="flex flex-col gap-3"
                   >
-                    <input
-                      type="number"
-                      placeholder="Cash Amount"
-                      value={cashAmount}
-                      onChange={(e) => setCashAmount(e.target.value)}
-                      className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                    />
-                    <input
-                      type="number"
-                      placeholder="UPI Amount"
-                      value={upiAmount}
-                      onChange={(e) => setUpiAmount(e.target.value)}
-                      className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
-                    />
+                    <div className="flex flex-col items-center justify-center p-4 bg-neutral-900 border border-neutral-800 rounded-md mt-2">
+                      <span className="text-[10px] font-mono text-neutral-400 uppercase tracking-widest mb-3">Scan to Pay</span>
+                      <img src="/scanner.jpeg" alt="UPI QR Code" className="w-48 h-48 object-contain rounded-md border border-neutral-700 shadow-[0_0_15px_rgba(163,230,53,0.1)]" />
+                    </div>
+                    
+                    {paymentType === "Cash + UPI" && (
+                      <div className="grid grid-cols-2 gap-2 p-3 bg-neutral-900 border border-neutral-800">
+                        <input
+                          type="number"
+                          placeholder="Cash Amount"
+                          value={cashAmount}
+                          onChange={(e) => setCashAmount(e.target.value)}
+                          className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                        />
+                        <input
+                          type="number"
+                          placeholder="UPI Amount"
+                          value={upiAmount}
+                          onChange={(e) => setUpiAmount(e.target.value)}
+                          className="w-full p-3 bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                        />
+                      </div>
+                    )}
                   </motion.div>
                 )}
               </div>
