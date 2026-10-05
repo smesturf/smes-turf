@@ -946,7 +946,13 @@ export default function Home() {
                 <div className="space-y-2">
                   <label className="text-xs font-mono uppercase text-neutral-400 flex justify-between items-center">
                     <span>Arena Scale Configuration</span>
-                    <span className="text-lime-400 tracking-wider font-black">{bookingType ? bookingType.toUpperCase() : "PENDING"}</span>
+                    {bookingType ? (
+                      <span className="text-lime-400 tracking-wider font-black">{bookingType.toUpperCase()}</span>
+                    ) : (
+                      <span className="text-red-400 tracking-wider font-black animate-pulse flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 bg-red-400 rounded-full inline-block" /> REQUIRED
+                      </span>
+                    )}
                   </label>
                   
                   <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 bg-neutral-900/40 p-3 sm:p-4 border border-neutral-800">
@@ -1006,31 +1012,32 @@ export default function Home() {
                     <div className="flex flex-row sm:flex-col w-full sm:w-1/3 gap-2">
                       <motion.button
                         type="button"
-                        whileHover={{ x: 2 }}
+                        whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.96 }}
                         onClick={() => setBookingType("Half Court")}
-                        className={`flex-1 flex flex-col items-center justify-center py-2.5 px-3 transition-all border ${
+                        className={`flex-1 flex flex-col items-center justify-center py-3 px-3 transition-all border-2 ${
                           bookingType === "Half Court" 
-                            ? "bg-lime-400 text-black border-lime-400 shadow-[0_0_20px_rgba(163,230,53,0.3)]" 
-                            : "bg-neutral-950 text-neutral-500 border-neutral-800 hover:border-neutral-700 hover:text-white"
+                            ? "bg-lime-400 text-black border-lime-400 border-solid shadow-[0_0_20px_rgba(163,230,53,0.4)]" 
+                            : "bg-neutral-900/80 text-white border-neutral-500 border-dashed hover:border-lime-400 hover:bg-lime-400/5 hover:text-lime-400"
                         }`}
                       >
-                        <span className="text-[9px] uppercase tracking-widest mb-0.5 font-bold opacity-80">5v5 Mode</span>
-                        <span className="font-mono font-black text-xs sm:text-sm uppercase tracking-wider">Half Court</span>
+                        <span className="text-[10px] uppercase tracking-widest mb-0.5 font-bold opacity-90">5v5 Mode</span>
+                        <span className="font-mono font-black text-sm uppercase tracking-wider">Half Court</span>
                       </motion.button>
+                      
                       <motion.button
                         type="button"
-                        whileHover={{ x: 2 }}
+                        whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.96 }}
                         onClick={() => setBookingType("Full Court")}
-                        className={`flex-1 flex flex-col items-center justify-center py-2.5 px-3 transition-all border ${
+                        className={`flex-1 flex flex-col items-center justify-center py-3 px-3 transition-all border-2 ${
                           bookingType === "Full Court" 
-                            ? "bg-lime-400 text-black border-lime-400 shadow-[0_0_20px_rgba(163,230,53,0.3)]" 
-                            : "bg-neutral-950 text-neutral-500 border-neutral-800 hover:border-neutral-700 hover:text-white"
+                            ? "bg-lime-400 text-black border-lime-400 border-solid shadow-[0_0_20px_rgba(163,230,53,0.4)]" 
+                            : "bg-neutral-900/80 text-white border-neutral-500 border-dashed hover:border-lime-400 hover:bg-lime-400/5 hover:text-lime-400"
                         }`}
                       >
-                        <span className="text-[9px] uppercase tracking-widest mb-0.5 font-bold opacity-80">7v7 Mode</span>
-                        <span className="font-mono font-black text-xs sm:text-sm uppercase tracking-wider">Full Arena</span>
+                        <span className="text-[10px] uppercase tracking-widest mb-0.5 font-bold opacity-90">7v7 Mode</span>
+                        <span className="font-mono font-black text-sm uppercase tracking-wider">Full Arena</span>
                       </motion.button>
                     </div>
                   </div>
