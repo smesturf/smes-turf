@@ -73,6 +73,7 @@ export default function AdminPage() {
   const [availableRescheduleSlots, setAvailableRescheduleSlots] = useState<string[]>([]);
   const [extendMinutes, setExtendMinutes] = useState(30);
   const [extendCourtSize, setExtendCourtSize] = useState(false);
+  const [overrideAmount, setOverrideAmount] = useState(""); // ⚡ NEW: Manual price edit override
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
 
   // 🔒 Master Admin OTP Security States
@@ -935,7 +936,7 @@ export default function AdminPage() {
     loadBookings();
   };
 
-  // 2. Reschedule
+  // 2. Reschedule & Reduce & Manual Amount Edit
   const handleRescheduleBooking = async (otpVerified = false) => {
     if (!selectedManageBooking || !rescheduleDate || !rescheduleTime) {
       alert("Please select both Date and Time for rescheduling.");
@@ -976,9 +977,14 @@ export default function AdminPage() {
     const originalDur = selectedManageBooking.duration_minutes || 60;
     const originalTotal = selectedManageBooking.total_amount || 0;
     const pricePerMin = originalTotal / originalDur;
-    const newTotal = Math.round(pricePerMin * rescheduleDuration);
+    
+    // ⚡ NEW: Use custom override amount if provided, otherwise compute based on duration ratio
+    const calculatedNewTotal = Math.round(pricePerMin * rescheduleDuration);
+    const newTotal = overrideAmount !== "" ? Number(overrideAmount) : calculatedNewTotal;
+
     const priceDiff = newTotal - originalTotal;
-    const newBalance = (selectedManageBooking.balance_amount || 0) + priceDiff;
+    const currentPaid = originalTotal - (selectedManageBooking.balance_amount || 0);
+    const newBalance = Math.max(0, newTotal - currentPaid);
 
     const { error } = await supabase
       .from("bookings")
@@ -994,9 +1000,10 @@ export default function AdminPage() {
 
     if (error) { alert(error.message); return; }
 
-    alert("✅ Booking Rescheduled Successfully with updated rates!");
+    alert("✅ Booking Modified Successfully!");
     setShowManageModal(false);
     setSelectedManageBooking(null);
+    setOverrideAmount("");
     loadBookings();
   };
 
@@ -2279,6 +2286,7 @@ export default function AdminPage() {
                                 setManageMode("options");
                                 setExtendMinutes(30);
                                 setExtendCourtSize(false);
+                                setOverrideAmount("");
 
                                 const bDate = booking.booking_date?.split("T")[0] || getTodayStr();
                                 const bDur = booking.duration_minutes || 60;
@@ -2472,12 +2480,12 @@ export default function AdminPage() {
                   >
                     <div className="flex justify-between items-center">
                       <span className="text-xs font-black uppercase text-lime-400 group-hover:text-lime-300">
-                        📅 Reschedule Time Slot
+                        📅 Reschedule / Modify Slot
                       </span>
-                      <span className="text-xs font-mono text-neutral-400">Change slot →</span>
+                      <span className="text-xs font-mono text-neutral-400">Modify time & amount →</span>
                     </div>
                     <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">
-                      Shift this booking to a new time slot or date.
+                      Shift time, reduce/extend duration, or edit total amount.
                     </p>
                   </motion.button>
 
@@ -2547,7 +2555,7 @@ export default function AdminPage() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono uppercase text-neutral-400">Duration (Same or Extend)</label>
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Duration (Extend or Reduce)</label>
                       <select
                         value={rescheduleDuration}
                         onChange={(e) => {
@@ -2557,11 +2565,9 @@ export default function AdminPage() {
                         }}
                         className="w-full p-3 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
                       >
-                        {[60, 90, 120, 150, 180]
-                          .filter((d) => d >= (selectedManageBooking?.duration_minutes || 60))
-                          .map((d) => (
-                            <option key={d} value={d}>{formatDurationLabel(d)}</option>
-                          ))}
+                        {[30, 60, 90, 120, 150, 180].map((d) => (
+                          <option key={d} value={d}>{formatDurationLabel(d)}</option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -2580,10 +2586,23 @@ export default function AdminPage() {
                     </select>
                   </div>
 
+                  {/* ⚡ NEW: Manual Override Total Amount Option */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono uppercase text-neutral-400">Edit / Override Total Amount (₹)</label>
+                    <input
+                      type="number"
+                      placeholder={`Default: ₹${Math.round((selectedManageBooking.total_amount / (selectedManageBooking.duration_minutes || 60)) * rescheduleDuration)}`}
+                      value={overrideAmount}
+                      onChange={(e) => setOverrideAmount(e.target.value)}
+                      className="w-full p-3 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                    />
+                  </div>
+
                   <div className="p-3 bg-lime-950/30 border border-lime-800/50 text-xs font-mono text-lime-400">
                     Calculated New Price Matrix:<br />
                     <span className="font-bold text-white text-sm">
-                      Total: ₹{Math.round((selectedManageBooking.total_amount / (selectedManageBooking.duration_minutes || 60)) * rescheduleDuration)} | Pending Due: ₹{(selectedManageBooking.balance_amount || 0) + (Math.round((selectedManageBooking.total_amount / (selectedManageBooking.duration_minutes || 60)) * rescheduleDuration) - selectedManageBooking.total_amount)}
+                      Total: ₹{overrideAmount !== "" ? overrideAmount : Math.round((selectedManageBooking.total_amount / (selectedManageBooking.duration_minutes || 60)) * rescheduleDuration)} 
+                      {" "}| Pending Due: ₹{Math.max(0, (overrideAmount !== "" ? Number(overrideAmount) : Math.round((selectedManageBooking.total_amount / (selectedManageBooking.duration_minutes || 60)) * rescheduleDuration)) - ((selectedManageBooking.total_amount || 0) - (selectedManageBooking.balance_amount || 0)))}
                     </span>
                   </div>
 
@@ -2594,7 +2613,7 @@ export default function AdminPage() {
                       onClick={() => handleRescheduleBooking(false)}
                       className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors flex items-center justify-center gap-2"
                     >
-                      🔒 OTP & Reschedule
+                      🔒 OTP & Modify
                     </motion.button>
 
                     <button
@@ -2912,7 +2931,7 @@ export default function AdminPage() {
                     <select
                       value={slotEndTime}
                       onChange={(e) => setSlotEndTime(e.target.value)}
-                      className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                      className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
                     >
                       <option value="">-- Select End Time --</option>
                       {adminTimeSlots.map((t) => (
@@ -2926,7 +2945,7 @@ export default function AdminPage() {
                     <select
                       value={slotDuration}
                       onChange={(e) => setSlotDuration(Number(e.target.value))}
-                      className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-mono font-medium transition-colors"
+                      className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-sm font-medium transition-colors"
                     >
                       <option value={30}>30 mins</option>
                       <option value={60}>60 Mins (1 Hour)</option>
