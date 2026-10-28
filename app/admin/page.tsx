@@ -1406,7 +1406,7 @@ export default function AdminPage() {
     const newCash = Number(selectedBooking.cash_received || 0) + addCash;
     const newUpi = Number(selectedBooking.upi_received || 0) + addUpi;
 
-    let finalMethod = selectedBooking.payment_method || "Cash + UPI";
+    let finalMethod = selectedBooking.payment_method || " Cash + UPI ";
     if (selectedBooking.payment_method === "UPI" && paymentType === "Full Cash") finalMethod = "Cash + UPI";
     else if (selectedBooking.payment_method === "Cash" && paymentType === "Full UPI") finalMethod = "Cash + UPI";
     else if (paymentType === "Cash + UPI") finalMethod = "Cash + UPI";
@@ -3160,4 +3160,4 @@ export default function AdminPage() {
 
     </main>
   );
-}nn
+}
