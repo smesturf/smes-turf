@@ -47,11 +47,17 @@ export default function Home() {
 
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
   
-  // 🏆 VIP LOYALTY TRACKER STATE
+  // 🏆 VIP LOYALTY TRACKER & SPECIAL OFFER STATE
   const [pastSpend, setPastSpend] = useState(0);
   const [isDiscountAvailable, setIsDiscountAvailable] = useState(false);
   const [isRegularVIP, setIsRegularVIP] = useState(false);
   const [isCheckingLoyalty, setIsCheckingLoyalty] = useState(false);
+  const [specialOffer, setSpecialOffer] = useState<{
+    discount_percent: number;
+    start_date: string;
+    end_date: string;
+    reason: string;
+  } | null>(null);
 
   // 🔒 CLIENT DATE STATE (Strictly IST)
   const [minDate, setMinDate] = useState("");
@@ -156,16 +162,33 @@ export default function Home() {
     fetchWeather();
   }, []);
 
-  /* -------- VIP Database Scanner (₹11,000 Total Tracker) -------- */
+  /* -------- VIP Database Scanner & Special Percentage Offer Scanner -------- */
   useEffect(() => {
     const checkLoyalty = async () => {
-      if (email.includes("@") && email.includes(".") && phone.length === 10) {
+      const cleanEmail = email.trim().toLowerCase();
+      if (cleanEmail.includes("@") && cleanEmail.includes(".") && phone.length === 10) {
         setIsCheckingLoyalty(true);
 
+        // 1. Check for Special Percentage Discount (Tournament Practice Offer)
+        const { data: offerData } = await supabase
+          .from("customer_discounts")
+          .select("discount_percent, start_date, end_date, reason")
+          .ilike("email", cleanEmail)
+          .eq("phone", phone)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (offerData && offerData.length > 0) {
+          setSpecialOffer(offerData[0]);
+        } else {
+          setSpecialOffer(null);
+        }
+
+        // 2. Check Regular VIP Loyalty (₹11,000 Tracker)
         const { data: vipData } = await supabase
           .from("regular_customers")
           .select("id")
-          .eq("email", email)
+          .ilike("email", cleanEmail)
           .eq("phone", phone)
           .limit(1);
 
@@ -175,7 +198,7 @@ export default function Home() {
           const { data: bookingData } = await supabase
             .from("bookings")
             .select("duration_minutes, booking_type, total_amount")
-            .eq("email", email)
+            .ilike("email", cleanEmail)
             .eq("phone", phone)
             .gte("booking_date", "2026-09-21"); 
             
@@ -213,6 +236,7 @@ export default function Home() {
         }
         setIsCheckingLoyalty(false);
       } else {
+        setSpecialOffer(null);
         setIsRegularVIP(false);
         setPastSpend(0);
         setIsDiscountAvailable(false);
@@ -254,7 +278,7 @@ export default function Home() {
     if (bookingDate && bookingType) loadBookedSlots(bookingDate);
   }, [bookingDate, bookingType, liveTick]);
 
-  // ⚡ DYNAMIC PRICE CALCULATION & VIP MATH
+  // ⚡ DYNAMIC PRICE CALCULATION, SPECIAL OFFER & VIP MATH
   const { baseAmount, regularAmount } = useMemo(() => {
     if (!bookingType || !duration) return { baseAmount: 0, regularAmount: 0 };
     const mins = Number(duration);
@@ -265,8 +289,20 @@ export default function Home() {
     }
   }, [duration, bookingType]);
 
-  const isLoyaltyDiscount = isRegularVIP && isDiscountAvailable;
-  const discountAmount = isLoyaltyDiscount ? 1000 : 0;
+  const checkComparisonDate = bookingDate || minDate;
+  const isSpecialOfferValid = Boolean(
+    specialOffer &&
+    checkComparisonDate >= specialOffer.start_date &&
+    checkComparisonDate <= specialOffer.end_date
+  );
+
+  const specialDiscountAmount = isSpecialOfferValid
+    ? Math.round((baseAmount * Number(specialOffer?.discount_percent || 0)) / 100)
+    : 0;
+
+  const isLoyaltyDiscount = !isSpecialOfferValid && isRegularVIP && isDiscountAvailable;
+  const loyaltyDiscountAmount = isLoyaltyDiscount ? 1000 : 0;
+  const discountAmount = specialDiscountAmount + loyaltyDiscountAmount;
   
   const totalAmount = Math.max(0, baseAmount - discountAmount);
   
@@ -894,9 +930,15 @@ export default function Home() {
                 <div className="space-y-2 relative">
                   <label className="text-xs font-mono uppercase text-neutral-400 flex justify-between items-end">
                     <span>Phone Number</span>
-                    {phone.length === 10 && (isCheckingLoyalty || isRegularVIP) && (
+                    {phone.length === 10 && (isCheckingLoyalty || specialOffer || isRegularVIP) && (
                       <span className="text-[9px] text-fuchsia-400 tracking-widest font-black">
-                        {isCheckingLoyalty ? "Checking VIP..." : isRegularVIP ? `VIP Spend: ₹${pastSpend}` : ""}
+                        {isCheckingLoyalty
+                          ? "Checking..."
+                          : specialOffer
+                          ? `${specialOffer.discount_percent}% Offer Found`
+                          : isRegularVIP
+                          ? `VIP Spend: ₹${pastSpend}`
+                          : ""}
                       </span>
                     )}
                   </label>
@@ -1294,6 +1336,26 @@ export default function Home() {
                     ₹{baseAmount}
                   </span>
                 </div>
+
+                {/* 🏷️ Special Percentage Offer Badge */}
+                {isSpecialOfferValid && specialOffer && (
+                  <motion.div 
+                    initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
+                    className="flex justify-between items-center p-3 bg-emerald-500/10 border border-emerald-500/30"
+                  >
+                    <div>
+                      <span className="text-[10px] font-mono font-black text-emerald-400 uppercase tracking-widest block">
+                        🏷️ {specialOffer.discount_percent}% Special Offer Applied
+                      </span>
+                      <span className="text-[9px] font-mono text-emerald-500 mt-0.5 block">
+                        {specialOffer.reason || "Practice Discount"} (Valid till {new Date(specialOffer.end_date).toLocaleDateString("en-GB")})
+                      </span>
+                    </div>
+                    <span className="text-xl font-black text-emerald-400 leading-none">
+                      -₹{specialDiscountAmount}
+                    </span>
+                  </motion.div>
+                )}
 
                 {/* 🏆 Loyalty Discount Milestone Badge */}
                 {isLoyaltyDiscount && (
