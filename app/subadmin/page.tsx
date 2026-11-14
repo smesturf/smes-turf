@@ -2511,7 +2511,7 @@ export default function SubAdminPage() {
             <table className="w-full text-left border-collapse min-w-[800px]">
               <thead>
                 <tr className="border-b border-neutral-900 bg-neutral-950/40 text-[10px] font-mono uppercase tracking-widest text-neutral-500">
-                  <th className="p-4">Order & Client</th>
+                  <th className="p-4 sticky left-0 z-30 bg-neutral-950 shadow-[2px_0_0_0_rgba(38,38,38,1)] sm:static sm:z-auto sm:bg-transparent sm:shadow-none">Order & Client</th>
                   <th className="p-4">Schedule Info</th>
                   <th className="p-4">Arena Details</th>
                   <th className="p-4">Financials</th>
@@ -2530,6 +2530,9 @@ export default function SubAdminPage() {
                     let rowColor = "bg-transparent";
                     if (bookingDate === getTodayStr()) rowColor = "bg-lime-500/[0.05]";
                     else if (bookingDate === getTomorrowStr()) rowColor = "bg-amber-500/[0.04]";
+                    let stickyBg = "bg-neutral-950";
+                    if (bookingDate === getTodayStr()) stickyBg = "bg-[#10150a]";
+                    else if (bookingDate === getTomorrowStr()) stickyBg = "bg-[#15110a]";
 
                     return (
                       <motion.tr
@@ -2538,7 +2541,7 @@ export default function SubAdminPage() {
                         layout
                         className={`${rowColor} hover:bg-white/[0.03] transition-colors`}
                       >
-                        <td className="p-4 align-top">
+                        <td className={`p-4 align-top sticky left-0 z-20 ${stickyBg} shadow-[2px_0_0_0_rgba(38,38,38,1)] max-w-[170px] sm:max-w-none sm:static sm:z-auto sm:bg-transparent sm:shadow-none`}>
                           <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-black text-white text-sm whitespace-nowrap">{booking.customer_name}</span>
