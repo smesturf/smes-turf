@@ -3089,23 +3089,23 @@ export default function SubAdminPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]"
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 z-[9999]"
           >
             <motion.div
               initial={{ scale: 0.9, y: 12, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.9, y: 12, opacity: 0 }}
               transition={{ duration: 0.3, ease: easeOut }}
-              className="bg-neutral-950 border border-neutral-800 p-4 sm:p-6 w-full max-w-md space-y-4 relative overflow-y-auto max-h-[90vh] rounded-lg shadow-2xl"
+              className="bg-neutral-950 border border-neutral-800 p-3 sm:p-6 w-full max-w-md space-y-2 sm:space-y-4 relative overflow-y-auto max-h-[96vh] sm:max-h-[90vh] rounded-lg shadow-2xl"
             >
               <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-fuchsia-500/10 to-transparent pointer-events-none" />
 
               {/* Modal Header */}
               <div className="relative">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-fuchsia-400 block mb-1">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-fuchsia-400 hidden sm:block mb-1">
                   // Order Management Node
                 </span>
-                <h2 className="text-xl font-black uppercase tracking-tight text-white">
+                <h2 className="text-base sm:text-xl font-black uppercase tracking-tight text-white">
                   ⚙️ Manage Booking
                 </h2>
                 <p className="text-neutral-400 text-xs mt-1 font-mono">
@@ -3115,8 +3115,8 @@ export default function SubAdminPage() {
 
               {/* Mode Switcher */}
               {manageMode === "options" ? (
-                <div className="space-y-2.5 relative">
-                  <div className="p-3 bg-neutral-900/80 border border-neutral-800 text-xs font-mono space-y-1">
+                <div className="space-y-1.5 sm:space-y-2.5 relative">
+                  <div className="p-2 sm:p-3 bg-neutral-900/80 border border-neutral-800 text-xs font-mono space-y-0.5 sm:space-y-1">
                     <div className="flex justify-between text-neutral-400">
                       <span>Total Amount:</span>
                       <span className="text-white font-bold">₹{selectedManageBooking.total_amount}</span>
@@ -3133,7 +3133,7 @@ export default function SubAdminPage() {
                     whileTap={{ scale: 0.98 }}
                     onClick={handleSendWhatsApp}
                     disabled={isSendingWhatsApp}
-                    className="w-full text-left p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-green-950/30 transition-colors group"
+                    className="w-full text-left p-2.5 sm:p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-green-950/30 transition-colors group"
                   >
                     <div className="flex justify-between items-center">
                       <span className="text-xs font-black uppercase text-green-400 group-hover:text-green-300">
@@ -3143,7 +3143,7 @@ export default function SubAdminPage() {
                         Send →
                       </span>
                     </div>
-                    <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">
+                    <p className="hidden sm:block text-[10px] text-neutral-500 mt-0.5 font-mono">
                       Manually trigger confirmation receipt to customer's phone.
                     </p>
                   </motion.button>
@@ -3153,7 +3153,7 @@ export default function SubAdminPage() {
                     whileHover={{ scale: 1.01, borderColor: "rgba(163, 230, 53, 0.6)" }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => setManageMode("reschedule")}
-                    className="w-full text-left p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-lime-950/30 transition-colors group"
+                    className="w-full text-left p-2.5 sm:p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-lime-950/30 transition-colors group"
                   >
                     <div className="flex justify-between items-center">
                       <span className="text-xs font-black uppercase text-lime-400 group-hover:text-lime-300">
@@ -3161,7 +3161,7 @@ export default function SubAdminPage() {
                       </span>
                       <span className="text-xs font-mono text-neutral-400">Change slot →</span>
                     </div>
-                    <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">
+                    <p className="hidden sm:block text-[10px] text-neutral-500 mt-0.5 font-mono">
                       Shift this booking to a new time slot or date.
                     </p>
                   </motion.button>
@@ -3171,7 +3171,7 @@ export default function SubAdminPage() {
                     whileHover={{ scale: 1.01, borderColor: "rgba(6, 182, 212, 0.6)" }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => setManageMode("extend")}
-                    className="w-full text-left p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-cyan-950/30 transition-colors group"
+                    className="w-full text-left p-2.5 sm:p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-cyan-950/30 transition-colors group"
                   >
                     <div className="flex justify-between items-center">
                       <span className="text-xs font-black uppercase text-cyan-400 group-hover:text-cyan-300">
@@ -3179,7 +3179,7 @@ export default function SubAdminPage() {
                       </span>
                       <span className="text-xs font-mono text-cyan-400">Extend →</span>
                     </div>
-                    <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">
+                    <p className="hidden sm:block text-[10px] text-neutral-500 mt-0.5 font-mono">
                       Check next slot availability and extend match duration.
                     </p>
                   </motion.button>
@@ -3190,7 +3190,7 @@ export default function SubAdminPage() {
                       whileHover={{ scale: 1.01, borderColor: "rgba(168, 85, 247, 0.6)" }}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => { setUpgradeAfterMins(Math.min(30, selectedManageBooking.duration_minutes || 60)); setUpgradeExtraMins(0); setUpgradeAmountInput(""); setManageMode("upgrade"); }}
-                      className="w-full text-left p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-purple-950/30 transition-colors group"
+                      className="w-full text-left p-2.5 sm:p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-purple-950/30 transition-colors group"
                     >
                       <div className="flex justify-between items-center">
                         <span className="text-xs font-black uppercase text-purple-400 group-hover:text-purple-300">
@@ -3198,7 +3198,7 @@ export default function SubAdminPage() {
                         </span>
                         <span className="text-xs font-mono text-purple-400">Upgrade →</span>
                       </div>
-                      <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">
+                      <p className="hidden sm:block text-[10px] text-neutral-500 mt-0.5 font-mono">
                         Customer playing on Half Court wants the full court for the rest of the time.
                       </p>
                     </motion.button>
@@ -3209,13 +3209,13 @@ export default function SubAdminPage() {
                     whileHover={{ scale: 1.01, borderColor: "rgba(239, 68, 68, 0.6)" }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => handleCancelWithRefund(false)}
-                    className="w-full text-left p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-red-950/40 transition-colors group"
+                    className="w-full text-left p-2.5 sm:p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-red-950/40 transition-colors group"
                   >
                     <div className="flex justify-between items-center">
                       <span className="text-xs font-black uppercase text-red-400 group-hover:text-red-300">❌ Cancel & Refund</span>
                       <span className="text-xs font-mono text-emerald-400 font-black">🔒 OTP Required</span>
                     </div>
-                    <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">Cancels order completely & returns paid amount.</p>
+                    <p className="hidden sm:block text-[10px] text-neutral-500 mt-0.5 font-mono">Cancels order completely & returns paid amount.</p>
                   </motion.button>
 
                   {/* Cancel Without Refund (OTP) */}
@@ -3223,13 +3223,13 @@ export default function SubAdminPage() {
                     whileHover={{ scale: 1.01, borderColor: "rgba(245, 158, 11, 0.6)" }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => handleCancelWithoutRefund(false)}
-                    className="w-full text-left p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-amber-950/30 transition-colors group"
+                    className="w-full text-left p-2.5 sm:p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-amber-950/30 transition-colors group"
                   >
                     <div className="flex justify-between items-center">
                       <span className="text-xs font-black uppercase text-amber-400 group-hover:text-amber-300">⛔ Cancel Without Refund</span>
                       <span className="text-xs font-mono text-amber-400">🔒 OTP Required</span>
                     </div>
-                    <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">Cancels order but retains advance deposit.</p>
+                    <p className="hidden sm:block text-[10px] text-neutral-500 mt-0.5 font-mono">Cancels order but retains advance deposit.</p>
                   </motion.button>
                 </div>
               ) : manageMode === "reschedule" ? (
