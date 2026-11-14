@@ -1,11 +1,11 @@
 import type { NextConfig } from "next";
 
-const ONE_YEAR = 60 * 60 * 24 * 365;
+const THIRTY_DAYS = 60 * 60 * 24 * 30;
 
 const nextConfig: NextConfig = {
-  // Keep resized gallery images for a year instead of the short default
+  // Keep resized gallery images for 30 days
   images: {
-    minimumCacheTTL: ONE_YEAR,
+    minimumCacheTTL: THIRTY_DAYS,
   },
 
   // Cache only the photos folder (logo + gallery).
@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: "Cache-Control",
-            value: `public, max-age=${ONE_YEAR}, immutable`,
+            value: `public, max-age=${THIRTY_DAYS}`,
           },
         ],
       },
