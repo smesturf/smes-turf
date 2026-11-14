@@ -100,6 +100,13 @@ function normSport(v: any) {
   const t = String(v ?? "").trim().toLowerCase();
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : "-";
 }
+/** YYYY-MM-DD of a timestamp in IST. */
+function istDay(ts?: string | null) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+}
+
 /**
  * Payment log -> only the collections that are still standing.
  * A "booking_reset" cancels the balance collected earlier on that booking, and a
@@ -399,6 +406,20 @@ export async function downloadMasterReport(input: ReportInput) {
 
   // collections that are still standing (resets / removed fees are netted out)
   const liveLog = netPaymentLog(paymentLog);
+  const STAFF_KINDS = ["booking_advance", "booking_balance", "student_fee"];
+  let collectionEntries: any[] = [];
+  if (paymentLog.length > 0) {
+    collectionEntries = liveLog.filter((p) => STAFF_KINDS.includes(p.kind));
+  } else {
+    bookings.forEach((b) => {
+      if (b.collected_by && b.collected_at) collectionEntries.push({ created_at: b.collected_at, collected_by: b.collected_by, kind: "booking_balance", amount: moneyOf(b).paid });
+    });
+    activeStudents.forEach((st) =>
+      (st.student_payments || []).forEach((p: any) => {
+        if (p.collected_by && p.collected_at && p.status === "settled") collectionEntries.push({ created_at: p.collected_at, collected_by: p.collected_by, kind: "student_fee", amount: num(p.amount_paid) });
+      })
+    );
+  }
 
   /* ======================= 1. SUMMARY ======================= */
   {
@@ -552,8 +573,8 @@ export async function downloadMasterReport(input: ReportInput) {
   {
     const ws = wb.addWorksheet("Bookings");
     setup(ws, "FF2563EB");
-    const headers = ["S.No.", "Date", "Time", "Customer", "Phone", "Sport", "Type", "Court", "Duration (min)", "Total (₹)", "Advance (₹)", "Balance (₹)", "Cash (₹)", "UPI / Online (₹)", "Payment Method", "Booking Status", "Payment", "Collected By", "Collector Role", "Collected At", "Email", "Reference ID", "Booking ID"];
-    setWidths(ws, [5, 11, 8, 26, 11, 9, 10, 8, 8, 9, 9, 9, 8, 9, 11, 8, 8, 11, 10, 17, 26, 19, 7]); // tight, so the whole sheet fits one A4 page width
+    const headers = ["S.No.", "Date", "Time", "Customer", "Phone", "Sport", "Type", "Court", "Duration (min)", "Total (₹)", "Advance (₹)", "Balance (₹)", "Cash (₹)", "UPI / Online (₹)", "Payment Method", "Booking Status", "Payment", "Collected By", "Collector Role", "Collected At", "Booking ID"];
+    setWidths(ws, [5, 11, 8, 30, 12, 9, 10, 8, 8, 10, 10, 10, 9, 10, 12, 9, 9, 13, 11, 18, 8]); // fits one A4 page width
     titleBar(ws, "BOOKINGS  ·  FULL HISTORY", `${bookings.length} bookings  ·  ${sub}`, headers.length, 4);
     const HR = 4;
     headerRow(ws, HR, headers);
@@ -581,8 +602,6 @@ export async function downloadMasterReport(input: ReportInput) {
         b.collected_by || "-",
         b.collected_by_role || "-",
         fmtIST(b.collected_at),
-        b.email || "-",
-        b.booking_reference || "-",
         b.id,
       ] as any[];
     });
@@ -598,7 +617,7 @@ export async function downloadMasterReport(input: ReportInput) {
       if (row[17] !== "-") ws.getCell(rr, 18).font = { bold: true, size: 10, color: { argb: C.blueTx } };
       ws.getCell(rr, 19).alignment = { horizontal: "center", vertical: "middle" };
       // long text shrinks to fit its cell, so nothing is cut off when printed
-      [4, 21, 22].forEach((c) => (ws.getCell(rr, c).alignment = { horizontal: "left", vertical: "middle", shrinkToFit: true }));
+      ws.getCell(rr, 4).alignment = { horizontal: "left", vertical: "middle", shrinkToFit: true };
       [18, 20].forEach((c) => (ws.getCell(rr, c).alignment = { horizontal: "center", vertical: "middle", shrinkToFit: true }));
     });
     if (rows.length > 0) {
@@ -606,36 +625,86 @@ export async function downloadMasterReport(input: ReportInput) {
       ws.autoFilter = { from: { row: HR, column: 1 }, to: { row: l, column: headers.length } };
     }
     ws.views = [{ state: "frozen", xSplit: 4, showGridLines: false }];
-    finishPrint(ws, headers.length, { titleRows: "4:4", pagesWide: 1, sideMargin: 0.25 });
+    // print: leave out the last column (Booking ID). It stays visible in Excel.
+    const printLast = headers.length - 1;
+    finishPrint(ws, printLast, { titleRows: "4:4", pagesWide: 1, sideMargin: 0.25 });
+    ws.pageSetup.printArea = `A1:${ws.getColumn(printLast).letter}${ws.rowCount}`;
   }
 
   /* ======================= 3. DAILY SUMMARY ======================= */
   {
     const ws = wb.addWorksheet("Daily Summary");
     setup(ws, "FF0891B2");
-    const headers = ["Date", "Day", "Bookings", "Revenue (₹)", "Advance (₹)", "Cash (₹)", "UPI / Online (₹)", "Money In Hand (₹)", "Pending (₹)", "Status"];
-    setWidths(ws, [14, 8, 11, 15, 15, 15, 17, 18, 15, 18]);
+    // staff who collected money (biggest collector first) -> one column each
+    const staffTotals: Record<string, number> = {};
+    collectionEntries.forEach((p) => (staffTotals[p.collected_by || "Unknown"] = (staffTotals[p.collected_by || "Unknown"] || 0) + num(p.amount)));
+    const staffNames = Object.keys(staffTotals).sort((a, b) => staffTotals[b] - staffTotals[a]);
+    const base = ["Date", "Day", "Bookings", "Revenue (₹)", "Advance (₹)", "Cash (₹)", "UPI / Online (₹)", "Money In Hand (₹)", "Pending (₹)", "Status"];
+    const headers = [...base, ...staffNames.map((n) => `Collected by ${n} (₹)`), "Total Collected by Staff (₹)", "Who Collected How Much"];
+    setWidths(ws, [14, 8, 11, 15, 15, 15, 17, 18, 15, 18, ...staffNames.map(() => 17), 17, 52]);
     titleBar(ws, "DAILY SUMMARY", sub, headers.length, 1);
     headerRow(ws, 4, headers);
+    ws.getRow(4).height = 44;
+
     const byDay: Record<string, any[]> = {};
     bookings.forEach((b) => {
       const d = (b.booking_date || "").split("T")[0] || "Unknown";
       (byDay[d] = byDay[d] || []).push(b);
     });
-    const days = Object.keys(byDay).sort();
+    // staff collections by the day the money was collected (IST)
+    const collByDay: Record<string, Record<string, number>> = {};
+    const collKind: Record<string, Record<string, { b: number; s: number }>> = {};
+    collectionEntries.forEach((p) => {
+      const d = istDay(p.created_at);
+      if (!d) return;
+      const who = p.collected_by || "Unknown";
+      const m = (collByDay[d] = collByDay[d] || {});
+      m[who] = (m[who] || 0) + num(p.amount);
+      const k = ((collKind[d] = collKind[d] || {})[who] = collKind[d][who] || { b: 0, s: 0 });
+      if (p.kind === "student_fee") k.s += num(p.amount);
+      else k.b += num(p.amount);
+    });
+    const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
+    const days = Array.from(new Set([...Object.keys(byDay), ...Object.keys(collByDay)])).sort();
     const rows = days.map((d) => {
-      const s = statsOf(byDay[d]);
+      const s = statsOf(byDay[d] || []);
       const dt = toDate(d);
       const dayName = dt ? dt.toLocaleDateString("en-IN", { weekday: "short", timeZone: "UTC" }) : "-";
-      return [dt || d, dayName, s.count, s.total, s.adv, s.cash, s.upi, s.inHand, s.bal, s.bal > 0 ? `⚠ ₹${s.bal.toLocaleString("en-IN")} DUE` : "✔ SETTLED"] as any[];
+      const perStaff = staffNames.map((n) => (collByDay[d] && collByDay[d][n]) || 0);
+      const status = s.count === 0 ? "-" : s.bal > 0 ? `⚠ ₹${s.bal.toLocaleString("en-IN")} DUE` : "✔ SETTLED";
+      const detail =
+        staffNames
+          .filter((n, k) => perStaff[k] > 0)
+          .map((n) => {
+            const k = (collKind[d] && collKind[d][n]) || { b: 0, s: 0 };
+            const parts = [k.b > 0 ? `Bookings ${inr(k.b)}` : "", k.s > 0 ? `Students ${inr(k.s)}` : ""].filter(Boolean).join(" · ");
+            return `${n}: ${inr(k.b + k.s)}${parts ? ` (${parts})` : ""}`;
+          })
+          .join("\n") || "-";
+      return [dt || d, dayName, s.count, s.total, s.adv, s.cash, s.upi, s.inHand, s.bal, status, ...perStaff, perStaff.reduce((a, v) => a + v, 0), detail] as any[];
     });
-    const [f, l] = bodyRows(ws, 5, rows, ["dd-mmm-yyyy", undefined, "#,##0", INR, INR, INR, INR, INR, INR], ["center", "center", "center"]);
+    const fm: (string | undefined)[] = ["dd-mmm-yyyy", undefined, "#,##0", INR, INR, INR, INR, INR, INR];
+    const [f, l] = bodyRows(ws, 5, rows, [...fm, undefined, ...staffNames.map(() => INR), INR, undefined], ["center", "center", "center"]);
     rows.forEach((row, i) => {
-      tone(ws.getCell(f + i, 10), row[8] > 0 ? "bad" : "good");
+      tone(ws.getCell(f + i, 10), row[9] === "-" ? "grey" : row[8] > 0 ? "bad" : "good");
       ws.getCell(f + i, 8).font = { bold: true, size: 10, color: { argb: C.greenTx } };
+      for (let k = 0; k <= staffNames.length; k++) {
+        const cell = ws.getCell(f + i, 11 + k);
+        cell.font = { bold: row[10 + k] > 0, size: 10, color: { argb: row[10 + k] > 0 ? C.blueTx : C.mute } };
+        cell.alignment = { horizontal: "right", vertical: "middle" };
+      }
+      const dc = ws.getCell(f + i, 12 + staffNames.length);
+      dc.font = { size: 9, color: { argb: C.blueTx } };
+      dc.alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+      const lines = String(row[11 + staffNames.length]).split("\n").length;
+      ws.getRow(f + i).height = Math.max(20, lines * 13 + 6);
     });
     if (rows.length > 0) {
-      totalsRow(ws, l + 1, "TOTAL (follows filters)", f, l, [3, 4, 5, 6, 7, 8, 9], { 3: sAll.count, 4: sAll.total, 5: sAll.adv, 6: sAll.cash, 7: sAll.upi, 8: sAll.inHand, 9: sAll.bal }, INR, headers.length);
+      const sumCols = [3, 4, 5, 6, 7, 8, 9, ...staffNames.map((_, k) => 11 + k), 11 + staffNames.length];
+      const colSum = (idx: number) => rows.reduce((a, r) => a + (Number(r[idx]) || 0), 0);
+      const vals: Record<number, number> = {};
+      sumCols.forEach((c) => (vals[c] = colSum(c - 1)));
+      totalsRow(ws, l + 1, "TOTAL (follows filters)", f, l, sumCols, vals, INR, headers.length);
       ws.getCell(l + 1, 3).numFmt = "#,##0";
       ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: l, column: headers.length } };
       ws.addConditionalFormatting({
@@ -643,19 +712,25 @@ export async function downloadMasterReport(input: ReportInput) {
         rules: [{ type: "colorScale", cfvo: [{ type: "min" }, { type: "max" }], color: [{ argb: "FFFFFFFF" }, { argb: C.lime }] }],
       });
     }
+    // overall staff summary (all days): who collected how much, split into bookings / student fees
+    {
+      const start = rows.length > 0 ? l + 3 : 6;
+      sectionBand(ws, start, "👤  COLLECTED BY STAFF (ALL DAYS)", 7);
+      staffTable(ws, start + 1, staffRowsFromLog(collectionEntries), 7, paymentLog.length > 0 ? "Source: payment log. Reset / removed payments are not counted." : "Source: latest collector saved on each booking / student payment.");
+    }
     ws.views = [{ state: "frozen", xSplit: 1, showGridLines: false }];
-    finishPrint(ws, headers.length, { titleRows: "4:4", titleCols: "A:A" });
+    finishPrint(ws, headers.length, { titleRows: "4:4", pagesWide: 1, sideMargin: 0.25 });
   }
 
   /* ======================= 4. COACHING ROSTER ======================= */
   {
     const ws = wb.addWorksheet("Coaching Roster");
     setup(ws, "FF7C3AED");
-    const fixed = ["ID", "Student Name", "Batch", "Phone", "Date of Birth", "Email", "Joined", "Type", "Monthly Fee (₹)", "Total Paid (₹)", "Months Pending"];
+    const fixed = ["ID", "Student Name", "Batch", "Phone", "Date of Birth", "Joined", "Type", "Monthly Fee (₹)", "Total Paid (₹)", "Months Pending"];
     const lastCol = fixed.length + allMonths.length * 2;
-    setWidths(ws, [5, 24, 14, 11, 11, 22, 11, 18, 9, 10, 8]);
-    for (let i = 0; i < allMonths.length * 2; i++) ws.getColumn(fixed.length + 1 + i).width = i % 2 === 0 ? 11 : 12;
-    titleBar(ws, "COACHING ROSTER  ·  FEES", `${sorted.length} students${leftSorted.length ? `  ·  ${leftSorted.length} left` : ""}  ·  ${sub}`, Math.max(lastCol, 11), 2);
+    setWidths(ws, [5, 26, 14, 11, 11, 11, 18, 10, 10, 9]);
+    for (let i = 0; i < allMonths.length * 2; i++) ws.getColumn(fixed.length + 1 + i).width = i % 2 === 0 ? 12 : 13;
+    titleBar(ws, "COACHING ROSTER  ·  FEES", `${sorted.length} students${leftSorted.length ? `  ·  ${leftSorted.length} left` : ""}  ·  ${sub}`, Math.max(lastCol, 10), 2);
     // two header rows: 4 = group, 5 = sub
     headerRow(ws, 5, fixed);
     fixed.forEach((_, i) => ws.mergeCells(4, i + 1, 5, i + 1));
@@ -693,7 +768,6 @@ export async function downloadMasterReport(input: ReportInput) {
         s.batch || "Unassigned",
         s.phone || "-",
         s.dob ? toDate(s.dob) || "-" : "-",
-        s.email || "-",
         s.created_at ? toDate(String(s.created_at).split("T")[0]) : "-",
         left ? `LEFT · ${leftOn}` : isNewStudent(s) ? "NEW" : "Existing",
         num(s.monthly_fee) || fixedFee,
@@ -708,18 +782,18 @@ export async function downloadMasterReport(input: ReportInput) {
       return row;
     };
     const rows = sorted.map((s, i) => mkRow(s, i, false));
-    const fmts: (string | undefined)[] = [undefined, undefined, undefined, undefined, "dd-mmm-yyyy", undefined, "dd-mmm-yyyy", undefined, INR, INR, "0"];
-    const aligns: (string | undefined)[] = ["center", undefined, "center", undefined, "center", undefined, "center", "center"];
+    const fmts: (string | undefined)[] = [undefined, undefined, undefined, undefined, "dd-mmm-yyyy", "dd-mmm-yyyy", undefined, INR, INR, "0"];
+    const aligns: (string | undefined)[] = ["center", undefined, "center", undefined, "center", "center", "center"];
     for (let i = 0; i < allMonths.length * 2; i++) aligns.push("center");
     const [f, l] = bodyRows(ws, 6, rows, fmts, aligns);
     const styleRow = (rr: number, row: any[], left: boolean) => {
       ws.getCell(rr, 2).font = { bold: true, size: 10 };
       // long text shrinks to fit its cell so nothing is cut off when printed
-      [2, 6].forEach((c) => (ws.getCell(rr, c).alignment = { horizontal: "left", vertical: "middle", shrinkToFit: true }));
+      ws.getCell(rr, 2).alignment = { horizontal: "left", vertical: "middle", shrinkToFit: true };
       tone(ws.getCell(rr, 3), row[2] === "Morning Batch" ? "warn" : row[2] === "Evening Batch" ? "violet" : "grey");
-      tone(ws.getCell(rr, 8), left ? "bad" : row[7] === "NEW" ? "info" : "grey");
-      ws.getCell(rr, 10).font = { bold: true, size: 10, color: { argb: C.greenTx } };
-      tone(ws.getCell(rr, 11), row[10] > 0 ? "bad" : "good");
+      tone(ws.getCell(rr, 7), left ? "bad" : row[6] === "NEW" ? "info" : "grey");
+      ws.getCell(rr, 9).font = { bold: true, size: 10, color: { argb: C.greenTx } };
+      tone(ws.getCell(rr, 10), row[9] > 0 ? "bad" : "good");
       allMonths.forEach((_, k) => {
         const cc = fixed.length + 1 + k * 2;
         const v = row[cc - 1];
@@ -731,20 +805,20 @@ export async function downloadMasterReport(input: ReportInput) {
     rows.forEach((row, i) => styleRow(f + i, row, false));
     if (rows.length > 0) {
       const tr = l + 1;
-      totalsRow(ws, tr, "TOTAL (follows filters)", f, l, [10], { 10: rows.reduce((a, r) => a + r[9], 0) }, INR, 11);
+      totalsRow(ws, tr, "TOTAL (follows filters)", f, l, [9], { 9: rows.reduce((a, r) => a + r[8], 0) }, INR, 10);
       ws.autoFilter = { from: { row: 5, column: 1 }, to: { row: l, column: lastCol } };
     }
 
     // students who have left / been removed: listed separately at the bottom
     if (leftSorted.length > 0) {
       const start = rows.length > 0 ? l + 3 : 6;
-      sectionBand(ws, start, `🚪  LEFT / REMOVED STUDENTS (${leftSorted.length})`, Math.max(lastCol, 11), 2);
+      sectionBand(ws, start, `🚪  LEFT / REMOVED STUDENTS (${leftSorted.length})`, Math.max(lastCol, 10), 2);
       const lrows = leftSorted.map((s, i) => mkRow(s, i, true));
       const [lf] = bodyRows(ws, start + 1, lrows, fmts, aligns);
       lrows.forEach((row, i) => styleRow(lf + i, row, true));
     }
     ws.views = [{ state: "frozen", xSplit: 2, showGridLines: false }];
-    finishPrint(ws, Math.max(lastCol, 11), { titleRows: "4:5", pagesWide: 1, sideMargin: 0.25 });
+    finishPrint(ws, Math.max(lastCol, 10), { titleRows: "4:5", pagesWide: 1, sideMargin: 0.25 });
   }
 
   /* ======================= 5. ATTENDANCE ======================= */
