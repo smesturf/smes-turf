@@ -55,6 +55,9 @@ const istMonthOfTimestamp = (ts?: string) =>
 // A student "owes" a month only if they have no settled payment AND had already joined by then
 const isDue = (s: any) => s.payment_status !== "settled" && s.payment_status !== "not_enrolled";
 
+// Coaching started in September 2026 — no earlier months are shown anywhere
+const COACHING_START_MONTH = "2026-09";
+
 // New students who join on or after this day of the month can pay half the fee for that first month
 const HALF_FEE_FROM_DAY = 13;
 
@@ -159,7 +162,10 @@ export default function AdminPage() {
   const currentMonthYear = getTodayStr().slice(0, 7); // ✅ IST month (was UTC, wrong just after midnight on the 1st)
   const currentMonthLabel = monthLabelOf(currentMonthYear);
   const feeMonthLabel = monthLabelOf(feeMonth);
-  const feeMonthOptions = Array.from({ length: 24 }, (_, i) => shiftMonth(currentMonthYear, -i));
+  const feeMonthOptions = (() => {
+    const list = Array.from({ length: 36 }, (_, i) => shiftMonth(currentMonthYear, -i)).filter((ym) => ym >= COACHING_START_MONTH);
+    return list.length > 0 ? list : [currentMonthYear];
+  })();
 
   const convertToMins = (t: string) => {
     if (!t) return 0;
@@ -1935,7 +1941,8 @@ export default function AdminPage() {
     if (!historyStudent) return [];
     const payments: any[] = historyStudent.student_payments || [];
     const joinYm = istMonthOfTimestamp(historyStudent.created_at) || currentMonthYear;
-    const earliest = [joinYm, ...payments.map((p: any) => p.month_year)].filter(Boolean).sort()[0];
+    const rawEarliest = [joinYm, ...payments.map((p: any) => p.month_year)].filter(Boolean).sort()[0];
+    const earliest = rawEarliest < COACHING_START_MONTH ? COACHING_START_MONTH : rawEarliest;
     const rows: { ym: string; rec: any }[] = [];
     for (let ym = currentMonthYear; ym >= earliest && rows.length < 60; ym = shiftMonth(ym, -1)) {
       rows.push({ ym, rec: payments.find((p: any) => p.month_year === ym) });
@@ -2154,8 +2161,9 @@ export default function AdminPage() {
                     <button
                       type="button"
                       aria-label="Previous month"
+                      disabled={feeMonth <= COACHING_START_MONTH}
                       onClick={() => setFeeMonth(shiftMonth(feeMonth, -1))}
-                      className="w-12 min-h-[48px] shrink-0 flex items-center justify-center bg-neutral-950 border border-neutral-800 text-lime-400 text-2xl active:bg-neutral-900"
+                      className="w-12 min-h-[48px] shrink-0 flex items-center justify-center bg-neutral-950 border border-neutral-800 text-lime-400 text-2xl active:bg-neutral-900 disabled:opacity-30"
                     >
                       ‹
                     </button>
