@@ -2508,10 +2508,10 @@ export default function SubAdminPage() {
           </div>
           
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[800px]">
-              <thead>
+            <table className="block sm:table w-full text-left border-collapse sm:min-w-[800px]">
+              <thead className="hidden sm:table-header-group">
                 <tr className="border-b border-neutral-900 bg-neutral-950/40 text-[10px] font-mono uppercase tracking-widest text-neutral-500">
-                  <th className="p-4 sticky left-0 z-30 bg-neutral-950 shadow-[2px_0_0_0_rgba(38,38,38,1)] sm:static sm:z-auto sm:bg-transparent sm:shadow-none">Order & Client</th>
+                  <th className="p-4">Order & Client</th>
                   <th className="p-4 sm:hidden">Contact</th>
                   <th className="p-4 hidden sm:table-cell">Schedule Info</th>
                   <th className="p-4">Arena Details</th>
@@ -2523,7 +2523,7 @@ export default function SubAdminPage() {
                 variants={stagger}
                 initial="hidden"
                 animate="show"
-                className="divide-y divide-neutral-900 text-sm font-medium text-neutral-300"
+                className="block sm:table-row-group divide-y divide-neutral-900 text-sm font-medium text-neutral-300"
               >
                 <AnimatePresence>
                   {filteredBookings.map((booking) => {
@@ -2531,18 +2531,15 @@ export default function SubAdminPage() {
                     let rowColor = "bg-transparent";
                     if (bookingDate === getTodayStr()) rowColor = "bg-lime-500/[0.05]";
                     else if (bookingDate === getTomorrowStr()) rowColor = "bg-amber-500/[0.04]";
-                    let stickyBg = "bg-neutral-950";
-                    if (bookingDate === getTodayStr()) stickyBg = "bg-[#10150a]";
-                    else if (bookingDate === getTomorrowStr()) stickyBg = "bg-[#15110a]";
 
                     return (
                       <motion.tr
                         key={booking.id}
                         variants={rowItem}
                         layout
-                        className={`${rowColor} hover:bg-white/[0.03] transition-colors`}
+                        className={`${rowColor} flex flex-wrap sm:table-row hover:bg-white/[0.03] transition-colors`}
                       >
-                        <td className={`p-3 sm:p-4 align-top sticky left-0 z-20 ${stickyBg} shadow-[2px_0_0_0_rgba(38,38,38,1)] max-w-[170px] sm:max-w-none sm:static sm:z-auto sm:bg-transparent sm:shadow-none`}>
+                        <td className="block sm:table-cell w-full sm:w-auto p-3 sm:p-4 align-top">
                           <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-black text-white text-sm whitespace-nowrap">{booking.customer_name}</span>
@@ -2579,19 +2576,11 @@ export default function SubAdminPage() {
                               }`}>
                                 {booking.booking_type || "Full Court"}
                               </span>
-                              <div className="flex items-center gap-1.5 font-mono text-[11px] whitespace-nowrap">
-                                <span className="text-neutral-500">₹{booking.total_amount}</span>
-                                {Number(booking.balance_amount || 0) > 0 ? (
-                                  <span className="text-red-400 font-black">Due ₹{booking.balance_amount}</span>
-                                ) : (
-                                  <span className="text-lime-400 font-black">Paid ✓</span>
-                                )}
-                              </div>
-                            </div>
+                                                          </div>
                           </div>
                         </td>
 
-                        <td className="p-4 align-top sm:hidden">
+                        <td className="block w-1/2 p-3 align-top sm:hidden">
                           <div className="flex flex-col gap-1">
                             <span className="font-mono text-xs text-white whitespace-nowrap">{booking.phone}</span>
                             <span className="font-mono text-[11px] text-neutral-400 whitespace-nowrap">
@@ -2629,7 +2618,7 @@ export default function SubAdminPage() {
                           </div>
                         </td>
 
-                        <td className="p-4 align-top">
+                        <td className="block w-1/2 sm:table-cell sm:w-auto p-3 sm:p-4 align-top">
                           <div className="flex flex-col gap-1 items-start whitespace-nowrap">
                             <span className="text-xs uppercase tracking-widest font-black text-neutral-300">
                               {booking.sport}
@@ -2647,8 +2636,8 @@ export default function SubAdminPage() {
                           </div>
                         </td>
 
-                        <td className="p-4 align-top">
-                          <div className="flex flex-col gap-1 font-mono text-xs min-w-[120px] whitespace-nowrap">
+                        <td className="block w-full sm:table-cell sm:w-auto p-3 sm:p-4 align-top">
+                          <div className="flex flex-col gap-1 font-mono text-xs sm:min-w-[120px] whitespace-nowrap">
                             <div className="flex justify-between">
                               <span className="text-neutral-500">Total:</span> 
                               <span className="text-neutral-200">₹{booking.total_amount}</span>
@@ -2674,8 +2663,8 @@ export default function SubAdminPage() {
                           </div>
                         </td>
 
-                        <td className="p-4 align-top text-center">
-                          <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+                        <td className="block w-full sm:table-cell sm:w-auto p-3 sm:p-4 align-top text-center">
+                          <div className="flex flex-row flex-wrap items-center justify-center gap-2">
                             {Number(booking.balance_amount || 0) > 0 ? (
                               <motion.button
                                 whileHover={{ y: -1 }}
