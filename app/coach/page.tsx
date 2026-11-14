@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+import StudentApplications from "../../components/StudentApplications";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 
@@ -620,6 +621,9 @@ export default function CoachPage() {
             </motion.div>
           ))}
         </motion.div>
+
+        {/* New student requests (from the public registration link) */}
+        <StudentApplications role="coach" onAccepted={loadCoachData} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
           <div className="lg:col-span-2 space-y-6 lg:space-y-8">

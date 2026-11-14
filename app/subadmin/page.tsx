@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabase";
+import StudentApplications from "../components/StudentApplications";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 
 /* ------------------------------------------------------------------ */
@@ -93,7 +94,7 @@ export default function SubAdminPage() {
   // ⚙️️ Manage Booking Pop-Up States
   const [showManageModal, setShowManageModal] = useState(false);
   const [selectedManageBooking, setSelectedManageBooking] = useState<any>(null);
-  const [manageMode, setManageMode] = useState<"options" | "reschedule" | "extend">("options");
+  const [manageMode, setManageMode] = useState<"options" | "reschedule" | "extend" | "upgrade">("options");
   const [rescheduleDate, setRescheduleDate] = useState("");
   const [rescheduleTime, setRescheduleTime] = useState("");
   const [rescheduleDuration, setRescheduleDuration] = useState(60);
@@ -101,6 +102,24 @@ export default function SubAdminPage() {
   const [availableRescheduleSlots, setAvailableRescheduleSlots] = useState<string[]>([]);
   const [extendMinutes, setExtendMinutes] = useState(30);
   const [extendCourtSize, setExtendCourtSize] = useState(false);
+
+  // 🔄 Half → Full Court upgrade while the customer is playing
+  const [upgradeAfterMins, setUpgradeAfterMins] = useState(30);      // minutes played on Half Court before switching
+  const [upgradeExtraMins, setUpgradeExtraMins] = useState(0);       // extra Full Court minutes after the current end
+  const [upgradeAmountInput, setUpgradeAmountInput] = useState(""); // "" = use the calculated amount
+  const [livePricing, setLivePricing] = useState({ full_hour: 2200, half_hour: 1100 });
+
+  useEffect(() => {
+    supabase.from("site_settings").select("key,value").then(({ data }) => {
+      const row = (data || []).find((r: any) => r.key === "pricing");
+      if (row?.value) {
+        setLivePricing((p) => ({
+          full_hour: Number(row.value.full_hour) || p.full_hour,
+          half_hour: Number(row.value.half_hour) || p.half_hour,
+        }));
+      }
+    });
+  }, []);
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
 
   // 🔒 Security OTP States (Sub-Admin Restricted)
@@ -108,7 +127,7 @@ export default function SubAdminPage() {
   const [otpInput, setOtpInput] = useState("");
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
-  const [pendingAction, setPendingAction] = useState<"reschedule" | "extend" | null>(null);
+  const [pendingAction, setPendingAction] = useState<"reschedule" | "extend" | "upgrade_full" | "cancel_refund" | "cancel_no_refund" | null>(null);
 
   const FIXED_COACHING_FEE = 2500;
   const HALF_COACHING_FEE = Math.round(FIXED_COACHING_FEE / 2);
@@ -890,7 +909,7 @@ export default function SubAdminPage() {
   /* 🔒 MASTER OTP SECURITY LOGIC */
   /* ========================================================================= */
 
-  type OtpActionType = "reschedule" | "extend";
+  type OtpActionType = "reschedule" | "extend" | "upgrade_full" | "cancel_refund" | "cancel_no_refund";
 
   // 📧 Builds the "what is being changed" lines that go into the OTP email
   const buildOtpDetails = (actionType: OtpActionType): { label: string; value: string }[] => {
@@ -912,9 +931,20 @@ export default function SubAdminPage() {
     rows.push({ label: "Current slot", value: `${fmtDate(b.booking_date)} · ${b.start_time} · ${dur} min · ${court}` });
     rows.push({ label: "Booking total", value: `₹${b.total_amount || 0} (paid ₹${totalPaid}, balance ₹${b.balance_amount || 0})` });
 
-    if (actionType === "extend") {
+    if (actionType === "cancel_refund") {
+      rows.push({ label: "Action", value: "Booking deleted" });
+      rows.push({ label: "Refund to return", value: `₹${totalPaid}` });
+    } else if (actionType === "cancel_no_refund") {
+      rows.push({ label: "Action", value: "Booking deleted" });
+      rows.push({ label: "Refund", value: "None (no refund issued)" });
+    } else if (actionType === "extend") {
       rows.push({ label: "Extension", value: `+${extendMinutes} minutes (new total ${dur + Number(extendMinutes)} min)` });
       if (extendCourtSize) rows.push({ label: "Court change", value: "Upgraded to Full Court" });
+    } else if (actionType === "upgrade_full") {
+      const c = upgradeCalc(b);
+      rows.push({ label: "Upgrade", value: `Half Court → Full Court after ${upgradeAfterMins} min of play` });
+      rows.push({ label: "Time", value: `${c.switchedMins} min of booked time switched to Full${c.extra ? ` + ${c.extra} min extra` : ""} (new total ${c.newDur} min)` });
+      rows.push({ label: "Extra amount", value: `₹${c.amount}${c.amount !== c.suggested ? ` (calculated ₹${c.suggested}, entered manually)` : ""}` });
     } else if (actionType === "reschedule") {
       rows.push({ label: "Moved to", value: `${fmtDate(rescheduleDate)} · ${rescheduleTime} · ${rescheduleDuration} min · ${rescheduleCourt}` });
       if (Number(rescheduleDuration) !== dur) {
@@ -990,6 +1020,9 @@ export default function SubAdminPage() {
         // Execute the correct function with otpVerified = true bypass flag
         if (pendingAction === "reschedule") await handleRescheduleBooking(true);
         else if (pendingAction === "extend") await checkAndExtendBooking(true);
+        else if (pendingAction === "upgrade_full") await handleUpgradeToFull(true);
+        else if (pendingAction === "cancel_refund") await handleCancelWithRefund(true);
+        else if (pendingAction === "cancel_no_refund") await handleCancelWithoutRefund(true);
         
         setPendingAction(null);
       } else {
@@ -1000,6 +1033,136 @@ export default function SubAdminPage() {
     } finally {
       setIsVerifyingOtp(false);
     }
+  };
+
+
+  // ❌ Cancel & Refund (OTP protected, same as Admin)
+  const handleCancelWithRefund = async (otpVerified = false) => {
+    if (!selectedManageBooking) return;
+    const totalPaid = (selectedManageBooking.total_amount || 0) - (selectedManageBooking.balance_amount || 0);
+
+    if (!otpVerified) {
+      const confirmCancel = confirm(
+        `Are you sure you want to cancel booking for "${selectedManageBooking.customer_name}"?\n\n💰 Refund to return: ₹${totalPaid}`
+      );
+      if (!confirmCancel) return;
+      await triggerOtpProtection("cancel_refund");
+      return;
+    }
+
+    const { error } = await supabase.from("bookings").delete().eq("id", selectedManageBooking.id);
+    if (error) { alert(error.message); return; }
+
+    alert(`✅ Booking Cancelled. Refund of ₹${totalPaid} marked to be returned.`);
+    setShowManageModal(false);
+    setSelectedManageBooking(null);
+    loadBookings();
+  };
+
+  // ⛔ Cancel Without Refund (OTP protected, same as Admin)
+  const handleCancelWithoutRefund = async (otpVerified = false) => {
+    if (!selectedManageBooking) return;
+
+    if (!otpVerified) {
+      const confirmCancel = confirm(
+        `Are you sure you want to cancel the booking for "${selectedManageBooking.customer_name}" WITHOUT issuing a refund?`
+      );
+      if (!confirmCancel) return;
+      await triggerOtpProtection("cancel_no_refund");
+      return;
+    }
+
+    const { error } = await supabase.from("bookings").delete().eq("id", selectedManageBooking.id);
+    if (error) { alert(error.message); return; }
+
+    alert("✅ Booking Cancelled (No Refund Issued).");
+    setShowManageModal(false);
+    setSelectedManageBooking(null);
+    loadBookings();
+  };
+
+  // 🔄 HALF → FULL COURT UPGRADE ------------------------------------------------
+  // Price logic: minutes already inside the booked slot that switch to Full Court cost the
+  // DIFFERENCE (full rate − half rate). Minutes added after the end cost the full rate.
+  const upgradeCalc = (b: any) => {
+    const dur = b?.duration_minutes || 60;
+    const fullPerMin = livePricing.full_hour / 60;
+    const halfPerMin = livePricing.half_hour / 60;
+    const switchedMins = Math.max(0, dur - Number(upgradeAfterMins));
+    const extra = Number(upgradeExtraMins);
+    const suggested = Math.round(switchedMins * (fullPerMin - halfPerMin) + extra * fullPerMin);
+    const entered = upgradeAmountInput === "" ? suggested : Math.max(0, Math.round(Number(upgradeAmountInput) || 0));
+    return { dur, switchedMins, extra, suggested, amount: entered, newDur: dur + extra };
+  };
+
+  const handleUpgradeToFull = async (otpVerified = false) => {
+    const b = selectedManageBooking;
+    if (!b) return;
+
+    const { dur, extra, amount, newDur } = upgradeCalc(b);
+    const after = Number(upgradeAfterMins);
+
+    if (!Number.isFinite(amount) || amount < 0) { alert("⚠️ Please enter a valid extra amount."); return; }
+    if (after < 30 || after > dur) { alert("⚠️ Please choose how long they played on Half Court."); return; }
+    if (after === dur && extra === 0) { alert("⚠️ Nothing to upgrade: add extra Full Court time, or choose an earlier switch point."); return; }
+
+    const bDate = b.booking_date?.split("T")[0];
+    const startMins = convertToMins(b.start_time);
+    const checkStart = startMins + after;
+    const newEnd = startMins + newDur;
+
+    if (newEnd > 23 * 60) { alert("⚠️ Upgrade Failed: The turf closes strictly at 11:00 PM."); return; }
+
+    // The OTHER half must be free from the switch point until the new end
+    const { data: existingBookings } = await supabase.from("bookings").select("*").eq("booking_date", bDate);
+    const { data: existingBlocks } = await supabase.from("blocked_slots").select("*").eq("booking_date", bDate);
+    const busy = [
+      ...(existingBookings || []).filter((x: any) => x.id !== b.id),
+      ...(existingBlocks || []),
+    ];
+    const isOverlapping = busy.some((item: any) => {
+      const itemStart = convertToMins(item.start_time);
+      const itemEnd = itemStart + (item.duration_minutes || 60);
+      return checkStart < itemEnd && newEnd > itemStart;
+    });
+    if (isOverlapping) {
+      alert("⚠️ Upgrade Failed: The other half of the court is booked or blocked during that time, so Full Court is not possible.");
+      return;
+    }
+
+    if (!otpVerified) {
+      const ok = confirm(
+        `Upgrade "${b.customer_name}" to FULL COURT?\n\n` +
+        `Extra amount to collect: ₹${amount}\n` +
+        `New end time: ${getTimeRangeLabel(b.start_time, newDur).split(" to ")[1]}`
+      );
+      if (!ok) return;
+      await triggerOtpProtection("upgrade_full");
+      return;
+    }
+
+    const newTotal = (b.total_amount || 0) + amount;
+    const newBalance = (b.balance_amount || 0) + amount;
+
+    const { error } = await supabase
+      .from("bookings")
+      .update({
+        duration_minutes: newDur,
+        total_amount: newTotal,
+        balance_amount: newBalance,
+        booking_type: "Full Court",
+        court_number: "Full Court",
+        // extra money is now due, so the booking must show up as "to collect" again
+        ...(amount > 0 ? { payment_completed: false } : {}),
+      })
+      .eq("id", b.id);
+
+    if (error) { alert(error.message); return; }
+
+    alert(`✅ Upgraded to Full Court. Extra ₹${amount} added — collect it with "Collect Payment". New total: ₹${newTotal}.`);
+    setShowManageModal(false);
+    setSelectedManageBooking(null);
+    loadBookings();
   };
 
   // 1. Reschedule
@@ -1752,6 +1915,10 @@ export default function SubAdminPage() {
               transition={{ duration: 0.35, ease: easeOut }}
               className="overflow-hidden mb-8"
             >
+              <div className="p-5 sm:p-6 pb-0 border border-b-0 border-neutral-900 bg-neutral-900/30 backdrop-blur">
+                {/* New student requests (from the public registration link) */}
+                <StudentApplications role="subadmin" onAccepted={loadAcademyData} />
+              </div>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-5 sm:p-6 border border-neutral-900 bg-neutral-900/30 backdrop-blur">
 
                 {/* Form Column */}
@@ -2454,6 +2621,9 @@ export default function SubAdminPage() {
                                 setManageMode("options");
                                 setExtendMinutes(30);
                                 setExtendCourtSize(false);
+                                setUpgradeAfterMins(30);
+                                setUpgradeExtraMins(0);
+                                setUpgradeAmountInput("");
 
                                 const bDate = booking.booking_date?.split("T")[0] || getTodayStr();
                                 const bDur = booking.duration_minutes || 60;
@@ -2886,6 +3056,54 @@ export default function SubAdminPage() {
                       Check next slot availability and extend match duration.
                     </p>
                   </motion.button>
+
+                  {/* Half → Full Court upgrade (only for Half Court bookings) */}
+                  {selectedManageBooking.booking_type === "Half Court" && (
+                    <motion.button
+                      whileHover={{ scale: 1.01, borderColor: "rgba(168, 85, 247, 0.6)" }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => { setUpgradeAfterMins(Math.min(30, selectedManageBooking.duration_minutes || 60)); setUpgradeExtraMins(0); setUpgradeAmountInput(""); setManageMode("upgrade"); }}
+                      className="w-full text-left p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-purple-950/30 transition-colors group"
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-black uppercase text-purple-400 group-hover:text-purple-300">
+                          🔄 Upgrade Half → Full Court
+                        </span>
+                        <span className="text-xs font-mono text-purple-400">Upgrade →</span>
+                      </div>
+                      <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">
+                        Customer playing on Half Court wants the full court for the rest of the time.
+                      </p>
+                    </motion.button>
+                  )}
+
+                  {/* Cancel & Refund (OTP) */}
+                  <motion.button
+                    whileHover={{ scale: 1.01, borderColor: "rgba(239, 68, 68, 0.6)" }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => handleCancelWithRefund(false)}
+                    className="w-full text-left p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-red-950/40 transition-colors group"
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-black uppercase text-red-400 group-hover:text-red-300">❌ Cancel & Refund</span>
+                      <span className="text-xs font-mono text-emerald-400 font-black">🔒 OTP Required</span>
+                    </div>
+                    <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">Cancels order completely & returns paid amount.</p>
+                  </motion.button>
+
+                  {/* Cancel Without Refund (OTP) */}
+                  <motion.button
+                    whileHover={{ scale: 1.01, borderColor: "rgba(245, 158, 11, 0.6)" }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => handleCancelWithoutRefund(false)}
+                    className="w-full text-left p-3.5 bg-neutral-900 border border-neutral-800 hover:bg-amber-950/30 transition-colors group"
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-black uppercase text-amber-400 group-hover:text-amber-300">⛔ Cancel Without Refund</span>
+                      <span className="text-xs font-mono text-amber-400">🔒 OTP Required</span>
+                    </div>
+                    <p className="text-[10px] text-neutral-500 mt-0.5 font-mono">Cancels order but retains advance deposit.</p>
+                  </motion.button>
                 </div>
               ) : manageMode === "reschedule" ? (
                 /* Reschedule View */
@@ -2981,6 +3199,108 @@ export default function SubAdminPage() {
                     </button>
                   </div>
                 </div>
+              ) : manageMode === "upgrade" ? (
+                /* Half → Full Court Upgrade View */
+                (() => {
+                  const c = upgradeCalc(selectedManageBooking);
+                  const stepOptions: number[] = [];
+                  for (let m = 30; m <= c.dur; m += 30) stepOptions.push(m);
+                  const clockAt = (mins: number) => getTimeRangeLabel(selectedManageBooking.start_time, mins).split(" to ")[1];
+                  return (
+                    <div className="space-y-3 relative">
+                      <div className="p-3 bg-neutral-900 border border-neutral-800 text-xs font-mono space-y-1">
+                        <div className="flex justify-between text-neutral-400">
+                          <span>Booked Slot:</span>
+                          <span className="text-white font-bold">{getTimeRangeLabel(selectedManageBooking.start_time, c.dur)}</span>
+                        </div>
+                        <div className="flex justify-between text-neutral-400">
+                          <span>Current Court:</span>
+                          <span className="text-purple-400 font-bold">Half Court · {c.dur} mins</span>
+                        </div>
+                        <div className="flex justify-between text-neutral-400">
+                          <span>Total / Balance Due:</span>
+                          <span className="text-white font-bold">₹{selectedManageBooking.total_amount} / ₹{selectedManageBooking.balance_amount || 0}</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-mono uppercase text-neutral-400">Played on Half Court for</label>
+                        <select
+                          value={upgradeAfterMins}
+                          onChange={(e) => { setUpgradeAfterMins(Number(e.target.value)); setUpgradeAmountInput(""); }}
+                          className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-purple-400 outline-none text-sm font-mono font-medium transition-colors"
+                        >
+                          {stepOptions.map((m) => (
+                            <option key={m} value={m}>
+                              {m} min — Full Court starts at {clockAt(m)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-mono uppercase text-neutral-400">Extra Full Court time after the booked end</label>
+                        <select
+                          value={upgradeExtraMins}
+                          onChange={(e) => { setUpgradeExtraMins(Number(e.target.value)); setUpgradeAmountInput(""); }}
+                          className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-purple-400 outline-none text-sm font-mono font-medium transition-colors"
+                        >
+                          <option value={0}>None — only the rest of the booked time</option>
+                          <option value={30}>+ 30 minutes</option>
+                          <option value={60}>+ 60 minutes (1 hour)</option>
+                          <option value={90}>+ 90 minutes (1.5 hours)</option>
+                          <option value={120}>+ 120 minutes (2 hours)</option>
+                        </select>
+                      </div>
+
+                      <div className="p-3 bg-purple-950/30 border border-purple-800/50 text-xs font-mono text-purple-200 space-y-1">
+                        <div className="flex justify-between"><span>Half Court until</span><span className="font-bold text-white">{clockAt(Number(upgradeAfterMins))}</span></div>
+                        <div className="flex justify-between"><span>Full Court until</span><span className="font-bold text-white">{clockAt(c.newDur)}</span></div>
+                        <div className="flex justify-between"><span>Booked time switched to Full</span><span className="font-bold text-white">{c.switchedMins} min</span></div>
+                        <div className="flex justify-between"><span>Extra time added</span><span className="font-bold text-white">{c.extra} min</span></div>
+                        <div className="flex justify-between border-t border-purple-800/50 pt-1 mt-1"><span>Calculated extra amount</span><span className="font-black text-white">₹{c.suggested}</span></div>
+                        <p className="text-[10px] text-purple-300/70 pt-1">
+                          Based on ₹{livePricing.half_hour}/hr Half and ₹{livePricing.full_hour}/hr Full. Switched time costs the difference; extra time costs the full rate.
+                        </p>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-mono uppercase text-neutral-400">Extra amount to collect (₹) — you can change it</label>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          value={upgradeAmountInput === "" ? String(c.suggested) : upgradeAmountInput}
+                          onChange={(e) => setUpgradeAmountInput(e.target.value)}
+                          className="w-full p-3.5 bg-neutral-900 text-white border border-neutral-800 focus:border-purple-400 outline-none text-lg font-mono font-black transition-colors"
+                        />
+                        {upgradeAmountInput !== "" && Number(upgradeAmountInput) !== c.suggested && (
+                          <button type="button" onClick={() => setUpgradeAmountInput("")} className="text-[10px] font-mono uppercase text-purple-400 underline">
+                            Reset to calculated ₹{c.suggested}
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 pt-2">
+                        <motion.button
+                          whileHover={{ y: -1 }}
+                          whileTap={{ scale: 0.97 }}
+                          onClick={() => handleUpgradeToFull(false)}
+                          className="w-full bg-purple-500 hover:bg-purple-400 text-black font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors"
+                        >
+                          🔒 Upgrade · +₹{c.amount}
+                        </motion.button>
+                        <button
+                          type="button"
+                          onClick={() => setManageMode("options")}
+                          className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-400 font-mono text-xs uppercase tracking-widest py-3 font-black transition-colors"
+                        >
+                          ← Back
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()
               ) : (
                 /* Extend Slot View */
                 <div className="space-y-3 relative">

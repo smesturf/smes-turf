@@ -48,6 +48,8 @@ export default function Home() {
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
   // Slots that are blocked for Half Court too (2 half bookings, a full booking, admin block, academy)
   const [halfBlockedSlots, setHalfBlockedSlots] = useState<string[]>([]);
+  // Slots held for Football Coaching on the selected date (so we can tell customers WHY they are blocked)
+  const [academyBlockedSlots, setAcademyBlockedSlots] = useState<string[]>([]);
   // Slot the customer tapped that is only available as Half Court (waiting for confirmation)
   const [pendingHalfSlot, setPendingHalfSlot] = useState<string | null>(null);
   
@@ -465,6 +467,45 @@ export default function Home() {
     !isSlotAvailableFor(slot, bookedSlots) &&
     isSlotAvailableFor(slot, halfBlockedSlots);
 
+  // True when a slot is unavailable because (part of) it falls inside Football Coaching hours
+  const isAcademyBlocked = (slot: string) => {
+    if (!bookingDate || !duration || !bookingType || academyBlockedSlots.length === 0) return false;
+    const idx = allSlots.indexOf(slot);
+    if (idx === -1) return false;
+    const needed = Number(duration) / 30;
+    for (let i = 0; i < needed; i++) {
+      const s = allSlots[idx + i];
+      if (!s) return false;
+      if (academyBlockedSlots.includes(s)) return true;
+      if (bookedSlots.includes(s)) return false;
+    }
+    return false;
+  };
+
+  // Friendly "06:00 AM – 07:00 AM" ranges of today's coaching hours, for the notice under the grid
+  const academyRangesLabel = useMemo(() => {
+    const idxs = academyBlockedSlots
+      .map((s) => allSlots.indexOf(s))
+      .filter((i) => i !== -1)
+      .sort((a, b) => a - b);
+    if (idxs.length === 0) return "";
+    const ranges: string[] = [];
+    let start = idxs[0];
+    let prev = idxs[0];
+    const close = (s: number, e: number) => {
+      const endLabel = allSlots[e + 1] ?? "11:00 PM";
+      ranges.push(`${allSlots[s]} – ${endLabel}`);
+    };
+    for (let k = 1; k < idxs.length; k++) {
+      if (idxs[k] === prev + 1) { prev = idxs[k]; continue; }
+      close(start, prev);
+      start = idxs[k];
+      prev = idxs[k];
+    }
+    close(start, prev);
+    return ranges.join("  ·  ");
+  }, [academyBlockedSlots, allSlots]);
+
   useEffect(() => {
     if (startTime && !isSlotAvailable(startTime)) setStartTime("");
   }, [bookingDate, bookedSlots, duration, bookingType, liveTick]);
@@ -562,13 +603,16 @@ export default function Home() {
 
     const dayOfWeek = new Date(`${dateStr}T00:00:00+05:30`).getDay();
 
+    const academyToday: string[] = [];
     if (academyHours.enabled && dateStr >= academyHours.start_date && academyHours.days.includes(dayOfWeek)) {
       academyHours.slots.forEach(slot => {
+        academyToday.push(slot);
         if (!blocked.includes(slot)) blocked.push(slot);
         if (!halfBlocked.includes(slot)) halfBlocked.push(slot);
       });
     }
 
+    setAcademyBlockedSlots(academyToday);
     setBookedSlots(blocked);
     setHalfBlockedSlots(halfBlocked);
   };
@@ -1285,7 +1329,7 @@ export default function Home() {
                           <span className="text-4xl drop-shadow-[0_0_15px_rgba(239,68,68,0.5)]">🚫</span>
                           <div>
                             <p className="text-sm font-mono text-red-400 font-black uppercase tracking-widest">No Slots Available</p>
-                            <p className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest mt-1 max-w-xs mx-auto">The arena is fully booked or under maintenance for this date.</p>
+                            <p className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest mt-1 max-w-xs mx-auto">{academyBlockedSlots.length > 0 ? "The arena is fully booked, or reserved for Football Coaching, on this date." : "The arena is fully booked or under maintenance for this date."}</p>
                           </div>
                         </div>
                       ) : (
@@ -1307,7 +1351,8 @@ export default function Home() {
                           const available = isSlotAvailable(slot);
                           const selected = startTime === slot;
                           const halfOnly = !available && isHalfOnlySlot(slot);
-                          const showBooked = !available && !halfOnly && bookingDate && duration && bookingType;
+                          const coaching = !available && !halfOnly && isAcademyBlocked(slot);
+                          const showBooked = !available && !halfOnly && !coaching && bookingDate && duration && bookingType;
 
                           return (
                             <motion.button
@@ -1330,6 +1375,8 @@ export default function Home() {
                                   ? "bg-red-600 border-red-500 text-white"
                                   : halfOnly
                                   ? "bg-amber-500/10 border-amber-500/40 text-amber-400 hover:bg-amber-500 hover:text-black cursor-pointer"
+                                  : coaching
+                                  ? "bg-sky-500/10 border-sky-500/30 text-sky-300 cursor-not-allowed"
                                   : available && bookingDate && duration && bookingType
                                   ? "bg-lime-500/10 border-lime-500/30 text-lime-400 hover:bg-lime-500 hover:text-black cursor-pointer"
                                   : "bg-neutral-950 border-neutral-900 text-neutral-600 opacity-60 cursor-not-allowed"
@@ -1353,6 +1400,10 @@ export default function Home() {
                                 <span className="relative z-10 text-[8px] text-amber-400 font-black tracking-widest bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded-sm leading-none text-center">ONLY HALF</span>
                               )}
 
+                              {coaching && (
+                                <span className="relative z-10 text-[8px] text-sky-300 font-black tracking-widest bg-sky-500/10 border border-sky-500/30 px-1.5 py-0.5 rounded-sm leading-none text-center whitespace-nowrap">⚽ COACHING</span>
+                              )}
+
                               {showBooked && (
                                 <span className="relative z-10 text-[8px] text-red-500 font-black tracking-widest bg-red-500/10 border border-red-500/20 px-1.5 py-0.5 rounded-sm leading-none">BOOKED</span>
                               )}
@@ -1363,6 +1414,21 @@ export default function Home() {
                     </motion.div>
                   </LayoutGroup>
                 </div>
+
+                {bookingDate && duration && bookingType && academyBlockedSlots.length > 0 && (
+                  <div className="flex items-start gap-3 p-3.5 bg-sky-500/10 border border-sky-500/30">
+                    <span className="text-xl leading-none">⚽</span>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-mono font-black uppercase tracking-widest text-sky-300">
+                        Football Coaching hours
+                      </p>
+                      <p className="text-[11px] font-mono text-neutral-400 mt-0.5 leading-relaxed">
+                        The ground is reserved for SMES Sports Academy football coaching on this day, so these times can&apos;t be booked:
+                      </p>
+                      <p className="text-[11px] font-mono font-bold text-sky-200 mt-1">{academyRangesLabel}</p>
+                    </div>
+                  </div>
+                )}
 
                 {startTime && duration ? (
                   <div className="flex items-center gap-3 p-3.5 bg-lime-400/10 border border-lime-400/40">
