@@ -1102,13 +1102,72 @@ export default function AdminPage() {
   /* 🔒 MASTER OTP SECURITY LOGIC */
   /* ========================================================================= */
 
-  const triggerOtpProtection = async (actionType: "cancel_refund" | "reschedule" | "cancel_no_refund" | "extend" | "update_settings") => {
+  type OtpActionType = "cancel_refund" | "reschedule" | "cancel_no_refund" | "extend" | "update_settings";
+
+  // 📧 Builds the "what is being changed" lines that go into the OTP email
+  const buildOtpDetails = (actionType: OtpActionType): { label: string; value: string }[] => {
+    const rows: { label: string; value: string }[] = [];
+    const fmtDate = (d?: string) =>
+      d ? new Date(d.split("T")[0] + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "-";
+
+    if (actionType === "update_settings") {
+      rows.push({ label: "Full Court price", value: `₹${pricingForm.full_hour}/hr (crossed-out ₹${pricingForm.full_regular})` });
+      rows.push({ label: "Half Court price", value: `₹${pricingForm.half_hour}/hr (crossed-out ₹${pricingForm.half_regular})` });
+      rows.push({
+        label: "Academy blocking",
+        value: academyForm.enabled
+          ? `ON from ${fmtDate(academyForm.start_date)} · ${[...academyForm.days].sort().map((d) => DAY_NAMES[d]).join(", ")} · ${academyForm.slots.length} slots: ${ALL_SLOT_LABELS.filter((l) => academyForm.slots.includes(l)).join(", ")}`
+          : "OFF",
+      });
+      return rows;
+    }
+
+    const b = selectedManageBooking;
+    if (!b) return rows;
+
+    const dur = b.duration_minutes || 60;
+    const court = b.court_number || b.booking_type || "-";
+    const totalPaid = (b.total_amount || 0) - (b.balance_amount || 0);
+
+    rows.push({ label: "Customer", value: `${b.customer_name || "-"}${b.phone ? ` (${b.phone})` : ""}` });
+    if (b.booking_reference) rows.push({ label: "Booking ref", value: String(b.booking_reference) });
+    rows.push({ label: "Current slot", value: `${fmtDate(b.booking_date)} · ${b.start_time} · ${dur} min · ${court}` });
+    rows.push({ label: "Booking total", value: `₹${b.total_amount || 0} (paid ₹${totalPaid}, balance ₹${b.balance_amount || 0})` });
+
+    if (actionType === "cancel_refund") {
+      rows.push({ label: "Action", value: "Booking deleted" });
+      rows.push({ label: "Refund to return", value: `₹${totalPaid}` });
+    } else if (actionType === "cancel_no_refund") {
+      rows.push({ label: "Action", value: "Booking deleted" });
+      rows.push({ label: "Refund", value: "None (no refund issued)" });
+    } else if (actionType === "extend") {
+      rows.push({ label: "Extension", value: `+${extendMinutes} minutes (new total ${dur + Number(extendMinutes)} min)` });
+      if (extendCourtSize) rows.push({ label: "Court change", value: "Upgraded to Full Court" });
+    } else if (actionType === "reschedule") {
+      rows.push({ label: "Moved to", value: `${fmtDate(rescheduleDate)} · ${rescheduleTime} · ${rescheduleDuration} min · ${rescheduleCourt}` });
+      if (Number(rescheduleDuration) !== dur) {
+        rows.push({
+          label: "Duration change",
+          value: `${dur} min → ${rescheduleDuration} min (${Number(rescheduleDuration) > dur ? "extended" : "reduced"})`,
+        });
+      }
+      if (overrideAmount !== "") rows.push({ label: "Manual amount override", value: `₹${overrideAmount}` });
+    }
+    return rows;
+  };
+
+  const triggerOtpProtection = async (actionType: OtpActionType) => {
     setIsSendingOtp(true);
     try {
       const response = await fetch("/api/admin-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "generate", email: "sports@smesturf.com", purpose: actionType === "update_settings" ? "settings" : "booking" })
+        body: JSON.stringify({
+          action: "generate",
+          email: "sports@smesturf.com",
+          actionType,
+          details: buildOtpDetails(actionType),
+        })
       });
       
       if (!response.ok) throw new Error("Failed to trigger OTP");
@@ -1119,6 +1178,21 @@ export default function AdminPage() {
       alert("Failed to send OTP. Please check your internet connection.");
     } finally {
       setIsSendingOtp(false);
+    }
+  };
+
+  // 📋 One-tap paste: copy the code in Gmail, then tap this
+  const pasteOtpFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const match = text.match(/\d{6}/);
+      if (match) {
+        setOtpInput(match[0]);
+      } else {
+        alert("No 6-digit code found on your clipboard. Copy the code from the email first.");
+      }
+    } catch {
+      alert("Couldn't read the clipboard. Long-press the box and choose Paste instead.");
     }
   };
 
@@ -4179,12 +4253,21 @@ export default function AdminPage() {
                 <div className="space-y-4 relative">
                   <input
                     type="text"
-                    maxLength={6}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
                     placeholder="••••••"
                     value={otpInput}
-                    onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ""))}
+                    onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
                     className="w-full p-4 bg-neutral-900 text-center text-white text-2xl tracking-[0.5em] border border-neutral-800 focus:border-red-500 outline-none font-mono font-black transition-colors"
                   />
+
+                  <button
+                    type="button"
+                    onClick={pasteOtpFromClipboard}
+                    className="w-full min-h-[44px] border border-neutral-700 bg-neutral-900 hover:bg-neutral-800 text-neutral-200 font-mono text-[11px] uppercase tracking-widest font-black transition-colors"
+                  >
+                    📋 Paste code from clipboard
+                  </button>
                   
                   <div className="grid grid-cols-2 gap-3">
                     <motion.button
