@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import StudentApplications from "../components/StudentApplications";
 import { getCurrentStaff, requireStaff, logPayment, ROLE_LABEL, type StaffInfo } from "../lib/staff";
+import { downloadMasterReport } from "../lib/excelReport";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 
 /* ------------------------------------------------------------------ */
@@ -1703,8 +1704,6 @@ export default function AdminPage() {
 
   /* -------- DYNAMIC EXCEL EXPORT (FIXED MATH & DOUBLE COUNT) -------- */
   const exportToExcel = async () => {
-    const XLSX = await import("xlsx");
-    
     const { data: dbBookings, error: dbError } = await supabase
       .from("bookings")
       .select("*")
@@ -1715,255 +1714,36 @@ export default function AdminPage() {
       alert("Failed to fetch full booking history for export.");
       return;
     }
-    
     const fullBookings = (dbBookings || []).map((b: any) => ({
       ...b,
       advance_amount: b.customer_name === "Offline Booking" ? 0 : b.advance_amount
     }));
-    
-    // --- 1. Master Bookings Data ---
-    const exportData = fullBookings.map((booking, index) => ({
-      "S.No.": index + 1,
-      "Booking ID": booking.id,
-      "Reference ID": booking.booking_reference || "N/A",
-      "Customer Name": booking.customer_name,
-      "Email ID": booking.email || "No Email Provided",
-      "Phone Number": booking.phone,
-      "Date": booking.booking_date?.split("T")[0],
-      "Time": booking.start_time,
-      "Duration (Mins)": booking.duration_minutes || 60,
-      "Sport": booking.sport,
-      "Type": booking.booking_type,
-      "Court": booking.court_number || "-",
-      "Total (₹)": booking.total_amount,
-      "Advance (₹)": booking.advance_amount,
-      "Balance (₹)": booking.balance_amount,
-      "Status": booking.payment_status,
-      "Payment Method": booking.payment_method || "-",
-      "Cash Received (₹)": booking.cash_received || 0,
-      "UPI Received (₹)": booking.upi_received || 0,
-      "Payment Status": booking.payment_completed ? "Paid" : "Pending",
-      "Collected By": booking.collected_by || "-",
-    }));
 
-    // --- 2. Coaching Data Processing ---
-    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    
-    const { data: dbStudents } = await supabase.from("students").select(`*, student_payments(*), student_attendance(*)`).is("deleted_at", null).order("name", { ascending: true });
+    const { data: dbStudents } = await supabase
+      .from("students")
+      .select(`*, student_payments(*), student_attendance(*)`)
+      .is("deleted_at", null)
+      .order("name", { ascending: true });
 
-    const morningStudents = [...(dbStudents || [])].filter(s => s.batch === "Morning Batch").sort((a, b) => a.name.localeCompare(b.name));
-    const eveningStudents = [...(dbStudents || [])].filter(s => s.batch === "Evening Batch").sort((a, b) => a.name.localeCompare(b.name));
+    // Payment log (only exists after the staff SQL has been run; ignore errors)
+    const { data: dbLog } = await supabase.from("payment_log").select("*").order("created_at", { ascending: false }).limit(5000);
+    const who = await getCurrentStaff();
 
-    let serialCounter = 1;
-    const rosterData: any[] = [];
-    const attendanceData: any[] = [];
-
-    const processBatch = (batchStudents: any[]) => {
-      batchStudents.forEach((s) => {
-        const isNew = istMonthOfTimestamp(s.created_at) === currentMonthYear;
-
-        const rRow: any = {
-          "ID": serialCounter,
-          "Student Name": s.name + (isNew ? " (NEW)" : ""),
-          "Batch": s.batch || "Unassigned",
-          "Phone Number": s.phone,
-          "Date of Birth": s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-",
-          "Email ID": s.email || "-",
-          "Monthly Fee (₹)": s.monthly_fee || FIXED_COACHING_FEE,
-          "Type": isNew ? "NEW STUDENT" : "EXISTING",
-        };
-
-        if (s.student_payments && s.student_payments.length > 0) {
-          s.student_payments.forEach((payment: any) => {
-            let formattedMonth = payment.month_year;
-            if (payment.month_year.includes("-")) {
-              const [yearStr, monthStr] = payment.month_year.split("-");
-              formattedMonth = `${monthNames[parseInt(monthStr, 10) - 1]} ${yearStr}`;
-            }
-            rRow[`Fee Status ${formattedMonth}`] = payment.status === "settled" ? "✅ SETTLED" : "❌ PENDING";
-            rRow[`Collected By ${formattedMonth}`] = payment.collected_by || "-";
-          });
-        }
-        rosterData.push(rRow);
-
-        const aRow: any = {
-          "ID": serialCounter,
-          "Student Name": s.name,
-          "Batch": s.batch || "Unassigned",
-        };
-
-        if (s.student_attendance && s.student_attendance.length > 0) {
-          const sortedAtt = [...s.student_attendance].sort((a: any, b: any) => a.date.localeCompare(b.date));
-          sortedAtt.forEach((att: any) => {
-            aRow[att.date] = att.status;
-          });
-        }
-        attendanceData.push(aRow);
-
-        serialCounter++;
+    try {
+      await downloadMasterReport({
+        bookings: fullBookings,
+        students: dbStudents || [],
+        paymentLog: dbLog || [],
+        todayStr: getTodayStr(),
+        exportedBy: who ? who.name : "Unknown",
+        exportedByRole: who ? ROLE_LABEL[who.role] : "-",
+        fixedFee: FIXED_COACHING_FEE,
+        isNewStudent: (s: any) => istMonthOfTimestamp(s.created_at) === currentMonthYear,
       });
-    };
-
-    processBatch(morningStudents);
-    if (morningStudents.length > 0 && eveningStudents.length > 0) {
-      rosterData.push({}); attendanceData.push({});
+    } catch (err: any) {
+      console.log("Excel export failed:", err);
+      alert("Excel export failed: " + (err?.message || err) + "\n\nMake sure the 'exceljs' package is installed (npm install exceljs).");
     }
-    processBatch(eveningStudents);
-
-    // --- 3. Build Workbook & Perfect Accounting Math ---
-    const workbook = XLSX.utils.book_new();
-    const todayStr = getTodayStr(); 
-
-    // A. Master Bookings Sheet
-    const totalRevenue = fullBookings.reduce((sum, booking) => sum + (booking.total_amount || 0), 0);
-    const totalAdvance = fullBookings.reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
-    const totalBalance = fullBookings.reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
-    
-    let totalCashCollected = 0;
-    let totalUpiCollected = 0;
-    fullBookings.forEach(booking => {
-       const totalPaid = (booking.total_amount || 0) - (booking.balance_amount || 0);
-       const cash = Number(booking.cash_received || 0);
-       const upi = Math.max(0, totalPaid - cash);
-       totalCashCollected += cash;
-       totalUpiCollected += upi;
-    });
-    const totalCollection = totalCashCollected + totalUpiCollected;
-
-    const worksheet = XLSX.utils.aoa_to_sheet([
-      ["SMES TURF FULL BOOKING REPORT"],
-      [`Export Date: ${new Date().toLocaleString("en-IN")}`],
-      [],
-      ["Total Bookings", fullBookings.length],
-      ["Total Revenue Expected (₹)", totalRevenue],
-      ["Advance Collected (₹)", totalAdvance],
-      ["Pending Balance (₹)", totalBalance],
-      ["Cash Collected (₹)", totalCashCollected],
-      ["UPI / Online Collected (₹)", totalUpiCollected],
-      ["Total Money In Hand (₹)", totalCollection],
-      [], [],
-    ]);
-    XLSX.utils.sheet_add_json(worksheet, exportData, { origin: "A13" });
-    worksheet["!autofilter"] = { ref: `A13:U${13 + exportData.length}` };
-    worksheet["!cols"] = [ { wch: 8 }, { wch: 12 }, { wch: 18 }, { wch: 22 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 15 }, { wch: 16 } ];
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Bookings");
-
-    // B. Today Sheet
-    const todayBookings = fullBookings.filter((booking) => booking.booking_date?.split("T")[0] === todayStr);
-    const tRevenue = todayBookings.reduce((sum, booking) => sum + (booking.total_amount || 0), 0);
-    const tAdvance = todayBookings.reduce((sum, booking) => sum + (booking.advance_amount || 0), 0);
-    const tBalance = todayBookings.reduce((sum, booking) => sum + (booking.balance_amount || 0), 0);
-    
-    let tCash = 0; let tUpi = 0;
-    todayBookings.forEach(booking => {
-       const totalPaid = (booking.total_amount || 0) - (booking.balance_amount || 0);
-       const cash = Number(booking.cash_received || 0);
-       const upi = Math.max(0, totalPaid - cash);
-       tCash += cash; tUpi += upi;
-    });
-    const tCollection = tCash + tUpi;
-
-    const todaySheet = XLSX.utils.aoa_to_sheet([
-      ["TODAY'S COLLECTION"], [],
-      ["Total Bookings", todayBookings.length],
-      ["Total Revenue Expected (₹)", tRevenue],
-      ["Advance Collected (₹)", tAdvance],
-      ["Pending Balance (₹)", tBalance],
-      ["Cash Collected (₹)", tCash],
-      ["UPI / Online Collected (₹)", tUpi],
-      ["Total Money In Hand (₹)", tCollection],
-      ["Settlement Status", tBalance > 0 ? `⚠️ ₹${tBalance} DUE` : "✅ SETTLED"],
-    ]);
-    XLSX.utils.book_append_sheet(workbook, todaySheet, "Today");
-
-    // C. Monthly Sheet
-    const thisMonthBookings = fullBookings.filter((booking) => {
-        const d = new Date(booking.booking_date);
-        return d.getMonth() + 1 === (new Date().getMonth() + 1) && d.getFullYear() === new Date().getFullYear();
-    });
-    
-    const mBookings = thisMonthBookings.length;
-    const mRevenue = thisMonthBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0);
-    const mAdvance = thisMonthBookings.reduce((sum, b) => sum + (b.advance_amount || 0), 0);
-    const mBalance = thisMonthBookings.reduce((sum, b) => sum + (b.balance_amount || 0), 0);
-    
-    let mCash = 0; let mUpi = 0;
-    thisMonthBookings.forEach(booking => {
-       const totalPaid = (booking.total_amount || 0) - (booking.balance_amount || 0);
-       const cash = Number(booking.cash_received || 0);
-       const upi = Math.max(0, totalPaid - cash);
-       mCash += cash; mUpi += upi;
-    });
-    const mCollection = mCash + mUpi;
-
-    const monthlySheet = XLSX.utils.aoa_to_sheet([
-      ["MONTHLY COLLECTION"], [],
-      ["Total Bookings", mBookings],
-      ["Total Revenue Expected (₹)", mRevenue],
-      ["Advance Collected (₹)", mAdvance],
-      ["Pending Balance (₹)", mBalance],
-      ["Cash Collected (₹)", mCash],
-      ["UPI / Online Collected (₹)", mUpi],
-      ["Total Money In Hand (₹)", mCollection],
-      ["Settlement Status", mBalance > 0 ? `⚠️ ₹${mBalance} DUE` : "✅ SETTLED"],
-    ]);
-    XLSX.utils.book_append_sheet(workbook, monthlySheet, "Monthly");
-
-    // D. Daily Summary Sheet
-    const dailyStats: Record<string, any> = {};
-    fullBookings.forEach(b => {
-      const d = b.booking_date?.split("T")[0] || "Unknown";
-      if (!dailyStats[d]) {
-        dailyStats[d] = {
-          "Date": d,
-          "Total Bookings": 0,
-          "Total Revenue (₹)": 0,
-          "Advance Collected (₹)": 0,
-          "Pending Balance (₹)": 0,
-          "Cash Collected (₹)": 0,
-          "UPI Collected (₹)": 0,
-          "Total Money In Hand (₹)": 0,
-        };
-      }
-      const advance = b.advance_amount || 0;
-      const balance = b.balance_amount || 0;
-      const totalPaid = (b.total_amount || 0) - balance;
-      const cash = Number(b.cash_received || 0);
-      const upi = Math.max(0, totalPaid - cash);
-
-      dailyStats[d]["Total Bookings"] += 1;
-      dailyStats[d]["Total Revenue (₹)"] += (b.total_amount || 0);
-      dailyStats[d]["Advance Collected (₹)"] += advance;
-      dailyStats[d]["Pending Balance (₹)"] += balance;
-      dailyStats[d]["Cash Collected (₹)"] += cash;
-      dailyStats[d]["UPI Collected (₹)"] += upi;
-      dailyStats[d]["Total Money In Hand (₹)"] += (cash + upi);
-    });
-
-    const dailySummaryArray = Object.values(dailyStats).map((stat: any) => ({
-      ...stat,
-      "Settlement Status": stat["Pending Balance (₹)"] > 0 ? `⚠️ ₹${stat["Pending Balance (₹)"]} DUE` : `✅ SETTLED`
-    })).sort((a: any, b: any) => a.Date.localeCompare(b.Date));
-    const dailySheet = XLSX.utils.json_to_sheet(dailySummaryArray);
-    dailySheet["!autofilter"] = { ref: `A1:I${1 + dailySummaryArray.length}` };
-    dailySheet["!cols"] = [ { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 28 }, { wch: 20 } ];
-    XLSX.utils.book_append_sheet(workbook, dailySheet, "Daily Summary");
-
-    // E. Coaching Roster Sheet
-    const rosterCols = [ { wch: 5 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 30 }, { wch: 15 }, { wch: 15 } ];
-    for (let i = 0; i < 24; i++) rosterCols.push({ wch: 22 });
-    const academySheet = XLSX.utils.json_to_sheet(rosterData);
-    academySheet["!cols"] = rosterCols;
-    XLSX.utils.book_append_sheet(workbook, academySheet, "Coaching Roster");
-
-    // F. Attendance Record Sheet
-    const attCols = [ { wch: 5 }, { wch: 25 }, { wch: 15 } ];
-    for (let i = 0; i < 31; i++) attCols.push({ wch: 12 });
-    const attendanceSheet = XLSX.utils.json_to_sheet(attendanceData);
-    attendanceSheet["!cols"] = attCols;
-    XLSX.utils.book_append_sheet(workbook, attendanceSheet, "Attendance Record");
-
-    XLSX.writeFile(workbook, `SMES_Full_Master_Report_${todayStr}.xlsx`);
   };
 
   const handleLogout = async () => {
