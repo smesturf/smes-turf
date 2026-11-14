@@ -715,36 +715,6 @@ export default function AdminPage() {
     triggerOtpProtection("update_settings");
   };
 
-  const saveSettings = async () => {
-    setIsSavingSettings(true);
-    const now = new Date().toISOString();
-    const pricingValue = {
-      full_hour: Number(pricingForm.full_hour),
-      full_regular: Number(pricingForm.full_regular),
-      half_hour: Number(pricingForm.half_hour),
-      half_regular: Number(pricingForm.half_regular),
-    };
-    const academyValue = {
-      enabled: academyForm.enabled,
-      start_date: academyForm.start_date,
-      days: [...academyForm.days].sort(),
-      slots: ALL_SLOT_LABELS.filter((l) => academyForm.slots.includes(l)),
-    };
-    const { error } = await supabase.from("site_settings").upsert(
-      [
-        { key: "pricing", value: pricingValue, updated_at: now },
-        { key: "academy_hours", value: academyValue, updated_at: now },
-      ],
-      { onConflict: "key" }
-    );
-    setIsSavingSettings(false);
-    if (error) {
-      alert(`Database Error: ${error.message}\n\nMake sure the SQL setup (site_settings table) has been run in Supabase.`);
-      return;
-    }
-    alert("✅ Saved! Customers will see the new prices and academy hours the next time they load the booking page.");
-  };
-
   const loadBookings = async () => {
     const todayStr = getTodayStr();
 
@@ -1138,7 +1108,7 @@ export default function AdminPage() {
       const response = await fetch("/api/admin-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "generate", email: "sports@smesturf.com" })
+        body: JSON.stringify({ action: "generate", email: "sports@smesturf.com", purpose: actionType === "update_settings" ? "settings" : "booking" })
       });
       
       if (!response.ok) throw new Error("Failed to trigger OTP");
@@ -1160,6 +1130,42 @@ export default function AdminPage() {
     
     setIsVerifyingOtp(true);
     try {
+      // 💰 Pricing / academy hours: the server checks the OTP and saves in one step
+      if (pendingAction === "update_settings") {
+        setIsSavingSettings(true);
+        const saveRes = await fetch("/api/admin-otp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "save_settings",
+            otp: otpInput,
+            pricing: {
+              full_hour: Number(pricingForm.full_hour),
+              full_regular: Number(pricingForm.full_regular),
+              half_hour: Number(pricingForm.half_hour),
+              half_regular: Number(pricingForm.half_regular),
+            },
+            academy: {
+              enabled: academyForm.enabled,
+              start_date: academyForm.start_date,
+              days: [...academyForm.days].sort(),
+              slots: ALL_SLOT_LABELS.filter((l) => academyForm.slots.includes(l)),
+            },
+          }),
+        });
+        const saveData = await saveRes.json();
+        setIsSavingSettings(false);
+        if (saveData.success) {
+          setShowOtpModal(false);
+          setOtpInput("");
+          setPendingAction(null);
+          alert("✅ Saved! Customers will see the new prices and academy hours the next time they load the booking page.");
+        } else {
+          alert(`❌ ${saveData.message || "Invalid or expired OTP. Please try again."}`);
+        }
+        return;
+      }
+
       const response = await fetch("/api/admin-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1176,7 +1182,6 @@ export default function AdminPage() {
         else if (pendingAction === "reschedule") await handleRescheduleBooking(true);
         else if (pendingAction === "cancel_no_refund") await handleCancelWithoutRefund(true);
         else if (pendingAction === "extend") await checkAndExtendBooking(true);
-        else if (pendingAction === "update_settings") await saveSettings();
         
         setPendingAction(null);
       } else {

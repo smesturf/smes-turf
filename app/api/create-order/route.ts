@@ -21,6 +21,75 @@ export async function POST(req: Request) {
       totalAmount, name, phone, email, sport 
     } = await req.json();
 
+    // ---------------------------------------------------------------
+    // 🔒 Never trust the browser for money: rebuild the price on the server
+    // ---------------------------------------------------------------
+    const mins = Number(duration);
+    if (![60, 90, 120, 150, 180].includes(mins) || !["Full Court", "Half Court"].includes(bookingType)) {
+      return NextResponse.json({ error: "Invalid booking details. Please refresh and try again." }, { status: 400 });
+    }
+
+    // Live hourly rates set by admin (falls back to the original rates)
+    let rates = { full_hour: 2200, half_hour: 1100 };
+    try {
+      const { data: priceRow } = await supabase
+        .from("site_settings")
+        .select("value")
+        .eq("key", "pricing")
+        .maybeSingle();
+      if (priceRow?.value) {
+        rates = {
+          full_hour: Number(priceRow.value.full_hour) || rates.full_hour,
+          half_hour: Number(priceRow.value.half_hour) || rates.half_hour,
+        };
+      }
+    } catch {
+      /* keep defaults */
+    }
+
+    const baseAmount = Math.round((mins / 60) * (bookingType === "Half Court" ? rates.half_hour : rates.full_hour));
+
+    // Special percentage offer (same lookup the booking page does)
+    let offerCheckOk = true;
+    let specialDiscount = 0;
+    let offerApplies = false;
+    try {
+      const { data: offerRows, error: offerError } = await supabase
+        .from("customer_discounts")
+        .select("discount_percent, start_date, end_date")
+        .ilike("email", String(email || "").trim().toLowerCase())
+        .eq("phone", phone)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (offerError) throw offerError;
+      const offer = offerRows?.[0];
+      if (offer && bookingDate >= offer.start_date && bookingDate <= offer.end_date) {
+        offerApplies = true;
+        specialDiscount = Math.round((baseAmount * Number(offer.discount_percent || 0)) / 100);
+      }
+    } catch {
+      offerCheckOk = false; // can't verify offers right now → skip the strict total check
+    }
+
+    const expectedTotals = offerApplies
+      ? [Math.max(0, baseAmount - specialDiscount)]
+      : [baseAmount, Math.max(0, baseAmount - 1000)]; // 2nd value = loyalty ₹1000 discount
+
+    if (offerCheckOk && !expectedTotals.includes(Number(totalAmount))) {
+      return NextResponse.json(
+        { error: "Prices have been updated. Please refresh the page and try again." },
+        { status: 409 }
+      );
+    }
+
+    const expectedAdvance = Number(totalAmount) > 0 ? Math.min(200, Number(totalAmount)) + 5 : 0;
+    if (Number(amount) !== expectedAdvance || expectedAdvance <= 0) {
+      return NextResponse.json(
+        { error: "Payment amount mismatch. Please refresh the page and try again." },
+        { status: 409 }
+      );
+    }
+
     const selectedDate = new Date(bookingDate);
     const prevDate = new Date(selectedDate);
     prevDate.setDate(prevDate.getDate() - 1);
