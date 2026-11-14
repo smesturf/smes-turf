@@ -1335,6 +1335,11 @@ export default function Home() {
                                 />
                                )}
                               <span className={`relative z-10 ${showBooked ? 'line-through opacity-40' : ''}`}>{slot}</span>
+                              {selected && duration && (
+                                <span className="relative z-10 text-[9px] font-black tracking-wider text-white/90 leading-none normal-case">
+                                  → {getTimeRangeLabel(slot, duration).split(" - ")[1]}
+                                </span>
+                              )}
                               
                               {halfOnly && (
                                 <span className="relative z-10 text-[8px] text-amber-400 font-black tracking-widest bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded-sm leading-none text-center">ONLY HALF</span>
@@ -1350,6 +1355,25 @@ export default function Home() {
                     </motion.div>
                   </LayoutGroup>
                 </div>
+
+                {startTime && duration ? (
+                  <div className="flex items-center gap-3 p-3.5 bg-lime-400/10 border border-lime-400/40">
+                    <span className="text-2xl">🕒</span>
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-400 block">Your session</span>
+                      <span className="text-base sm:text-lg font-black text-lime-400 font-mono block">
+                        {getTimeRangeLabel(startTime, duration)}
+                      </span>
+                      <span className="text-[11px] font-mono text-neutral-400 block">
+                        {duration} minutes · {bookingType}
+                      </span>
+                    </div>
+                  </div>
+                ) : bookingDate && duration && bookingType ? (
+                  <p className="text-[11px] font-mono text-neutral-500 leading-relaxed">
+                    👆 Tap a start time. You&apos;ll see exactly when your {duration}-minute session ends.
+                  </p>
+                ) : null}
               </motion.div>
             </div>
           </motion.div>
@@ -1416,7 +1440,7 @@ export default function Home() {
                 </div>
                 <div>
                   <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Kickoff</span>
-                  <span className="text-xs sm:text-sm font-bold text-lime-400 uppercase tracking-wider">{startTime || "TBD"}</span>
+                  <span className="text-xs sm:text-sm font-bold text-lime-400 uppercase tracking-wider">{startTime ? getTimeRangeLabel(startTime, duration) : "TBD"}</span>
                 </div>
                 <div className="col-span-2">
                   <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Timeframe</span>
@@ -1695,7 +1719,7 @@ export default function Home() {
                   </div>
                   <div>
                      <span className="text-[10px] text-neutral-500 font-mono uppercase block mb-1">Kick-off</span>
-                     <span className="text-sm font-bold text-lime-400 uppercase tracking-wider">{startTime}</span>
+                     <span className="text-sm font-bold text-lime-400 uppercase tracking-wider">{getTimeRangeLabel(startTime, duration)}</span>
                   </div>
                   <div>
                      <span className="text-[10px] text-neutral-500 font-mono uppercase block mb-1">Timeframe</span>
