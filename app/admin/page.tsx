@@ -3261,7 +3261,7 @@ export default function AdminPage() {
                 variants={stagger}
                 initial="hidden"
                 animate="show"
-                className="block sm:table-row-group divide-y divide-neutral-900 text-sm font-medium text-neutral-300"
+                className="block sm:table-row-group p-2 sm:p-0 space-y-2 sm:space-y-0 sm:divide-y sm:divide-neutral-900 text-sm font-medium text-neutral-300"
               >
                 <AnimatePresence>
                   {filteredBookings.map((booking) => {
@@ -3275,14 +3275,14 @@ export default function AdminPage() {
                         key={booking.id}
                         variants={rowItem}
                         layout
-                        className={`${rowColor} flex items-stretch sm:table-row hover:bg-white/[0.03] transition-colors`}
+                        className={`${rowColor} flex items-stretch sm:table-row ring-1 ring-neutral-700 sm:ring-0 hover:bg-white/[0.03] transition-colors`}
                       >
                         <td className="block flex-1 min-w-0 sm:table-cell sm:flex-none p-2.5 sm:p-4 align-top">
                           <div className="flex flex-col gap-1">
                             {/* Mobile only: ID | Name | REF on one line */}
                             <div className="sm:hidden flex items-center gap-1.5 min-w-0">
                               <span className="shrink-0 px-1.5 py-0.5 bg-neutral-900 border border-neutral-800 text-[9px] font-mono text-neutral-400">#{booking.id}</span>
-                              <span className="font-black text-white text-sm truncate max-w-[50%] shrink-0">{booking.customer_name}</span>
+                              <span className="font-black text-white text-sm leading-tight min-w-0 break-words">{booking.customer_name}</span>
                             </div>
                             <div className="hidden sm:flex items-center gap-2 flex-wrap">
                               <span className="font-black text-white text-sm whitespace-nowrap">{booking.customer_name}</span>
@@ -3488,13 +3488,17 @@ export default function AdminPage() {
                               )}
                             </div>
                             {Number(booking.balance_amount || 0) === 0 && (() => {
+                              // Advance paid online sits inside upi_received, so remove it to see how the balance was collected
+                              const isOffline = booking.customer_name === "Offline Booking";
+                              const advance = isOffline ? 0 : Number(booking.advance_amount || 0);
                               const cash = Number(booking.cash_received || 0);
-                              const upi = Number(booking.upi_received || 0);
+                              const upi = Math.max(0, Number(booking.upi_received || 0) - advance);
                               let label = "";
                               let color = "text-neutral-300";
                               if (cash > 0 && upi > 0) { label = "Cash + UPI"; color = "text-fuchsia-400"; }
                               else if (cash > 0) { label = "Full Cash"; color = "text-amber-400"; }
                               else if (upi > 0) { label = "Full UPI"; color = "text-cyan-400"; }
+                              else if (Number(booking.upi_received || 0) > 0) { label = "Full UPI"; color = "text-cyan-400"; }
                               else if (booking.payment_method) { label = String(booking.payment_method); }
                               if (!label) return null;
                               return (
