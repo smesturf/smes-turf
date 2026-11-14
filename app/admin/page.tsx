@@ -3251,7 +3251,6 @@ export default function AdminPage() {
               <thead className="hidden sm:table-header-group">
                 <tr className="border-b border-neutral-900 bg-neutral-950/40 text-[10px] font-mono uppercase tracking-widest text-neutral-500">
                   <th className="p-4">Order & Client</th>
-                  <th className="p-4 sm:hidden">Contact</th>
                   <th className="p-4 hidden sm:table-cell">Schedule Info</th>
                   <th className="p-4">Arena Details</th>
                   <th className="p-4">Financials</th>
@@ -3276,14 +3275,19 @@ export default function AdminPage() {
                         key={booking.id}
                         variants={rowItem}
                         layout
-                        className={`${rowColor} flex flex-wrap sm:table-row hover:bg-white/[0.03] transition-colors`}
+                        className={`${rowColor} flex items-stretch sm:table-row hover:bg-white/[0.03] transition-colors`}
                       >
-                        <td className="block sm:table-cell w-full sm:w-auto p-3 sm:p-4 align-top">
+                        <td className="block flex-1 min-w-0 sm:table-cell sm:flex-none p-2.5 sm:p-4 align-top">
                           <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-2 flex-wrap">
+                            {/* Mobile only: ID | Name | REF on one line */}
+                            <div className="sm:hidden flex items-center gap-1.5 min-w-0">
+                              <span className="shrink-0 px-1.5 py-0.5 bg-neutral-900 border border-neutral-800 text-[9px] font-mono text-neutral-400">#{booking.id}</span>
+                              <span className="font-black text-white text-sm truncate max-w-[50%] shrink-0">{booking.customer_name}</span>
+                            </div>
+                            <div className="hidden sm:flex items-center gap-2 flex-wrap">
                               <span className="font-black text-white text-sm whitespace-nowrap">{booking.customer_name}</span>
                               <span className="px-1.5 py-0.5 bg-neutral-900 border border-neutral-800 text-[9px] font-mono text-neutral-400 uppercase whitespace-nowrap">
-                                #{booking.id}<span className="hidden sm:inline">{booking.booking_reference ? ` | REF: ${booking.booking_reference}` : ""}</span>
+                                #{booking.id}{booking.booking_reference ? ` | REF: ${booking.booking_reference}` : ""}
                               </span>
                             </div>
                             <span className="hidden sm:block font-mono text-[11px] text-neutral-400 truncate max-w-[200px]">
@@ -3292,42 +3296,58 @@ export default function AdminPage() {
                             <span className="hidden sm:block font-mono text-xs text-neutral-500 whitespace-nowrap">
                               {booking.phone}
                             </span>
-                            {/* Mobile only: schedule + court type stay frozen */}
-                            <div className="sm:hidden flex flex-col gap-1 mt-1 pt-1.5 border-t border-neutral-800">
+                            {/* Mobile only: compact info block */}
+                            <div className="sm:hidden flex flex-col gap-0.5 mt-0.5 font-mono text-[11px] leading-tight">
                               <div className="flex items-center gap-1.5 whitespace-nowrap">
-                                <span className="text-neutral-200 font-mono text-[11px]">
-                                  {new Date(bookingDate).toLocaleDateString("en-GB")}
+                                <span className="text-neutral-400">
+                                  {new Date(bookingDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                                </span>
+                                <span className="text-neutral-600">•</span>
+                                <span className="text-white font-black">
+                                  {getTimeRangeLabel(booking.start_time, booking.duration_minutes || 60)}
                                 </span>
                                 {bookingDate === getTodayStr() && (
-                                  <span className="px-1.5 py-0.5 bg-lime-400/10 border border-lime-400/30 text-lime-400 text-[8px] font-black uppercase">Today</span>
+                                  <span className="px-1 py-px bg-lime-400/10 border border-lime-400/30 text-lime-400 text-[8px] font-black uppercase">Today</span>
                                 )}
                                 {bookingDate === getTomorrowStr() && (
-                                  <span className="px-1.5 py-0.5 bg-amber-400/10 border border-amber-400/30 text-amber-400 text-[8px] font-black uppercase">Tmrw</span>
+                                  <span className="px-1 py-px bg-amber-400/10 border border-amber-400/30 text-amber-400 text-[8px] font-black uppercase">Tmrw</span>
                                 )}
                               </div>
-                              <span className="font-mono text-[11px] text-white whitespace-nowrap">
-                                {getTimeRangeLabel(booking.start_time, booking.duration_minutes || 60)}
-                              </span>
-                              <span className={`self-start px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-widest ${
-                                booking.booking_type === "Half Court"
-                                  ? "bg-cyan-500/10 border border-cyan-500/30 text-cyan-400"
-                                  : "bg-fuchsia-500/10 border border-fuchsia-500/30 text-fuchsia-400"
-                              }`}>
-                                {booking.booking_type || "Full Court"}
-                              </span>
-                                                          </div>
-                          </div>
-                        </td>
-
-                        <td className="block w-1/2 p-3 align-top sm:hidden">
-                          <div className="flex flex-col gap-1">
-                            <span className="font-mono text-xs text-white whitespace-nowrap">{booking.phone}</span>
-                            <span className="font-mono text-[11px] text-neutral-400 whitespace-nowrap">
-                              {booking.email || "No Email Provided"}
-                            </span>
-                            {booking.booking_reference && (
-                              <span className="font-mono text-[10px] text-neutral-500 whitespace-nowrap">REF: {booking.booking_reference}</span>
-                            )}
+                              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                <span className={`px-1 py-px text-[8px] uppercase tracking-widest ${
+                                  booking.booking_type === "Half Court"
+                                    ? "bg-cyan-500/10 border border-cyan-500/30 text-cyan-400"
+                                    : "bg-fuchsia-500/10 border border-fuchsia-500/30 text-fuchsia-400"
+                                }`}>
+                                  {booking.booking_type || "Full Court"}
+                                </span>
+                                <span className="text-neutral-400">{booking.sport} {booking.court_number || ""}</span>
+                              </div>
+                              <div className="flex flex-col">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <a
+                                    href={`tel:${String(booking.phone || "").replace(/\s/g, "")}`}
+                                    className="shrink-0 text-sky-400 underline underline-offset-2 whitespace-nowrap"
+                                  >
+                                    {booking.phone}
+                                  </a>
+                                  <span className="min-w-0 truncate text-[9px] text-neutral-500">{booking.booking_reference || ""}</span>
+                                </div>
+                                <span className="text-neutral-500 truncate max-w-[200px]">{booking.email || "No Email Provided"}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                <span className="text-neutral-400">₹{booking.total_amount}</span>
+                                <span className="text-emerald-400">Adv ₹{booking.advance_amount ?? ((booking.total_amount || 0) - (booking.balance_amount || 0))}</span>
+                                {Number(booking.balance_amount || 0) > 0 ? (
+                                  <span className="text-red-400 font-black">Due ₹{booking.balance_amount}</span>
+                                ) : (
+                                  <>
+                                    <span className="text-lime-400 font-black">Due ₹0</span>
+                                    <span className="text-lime-400 font-black">✓ Paid</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </td>
 
@@ -3357,7 +3377,7 @@ export default function AdminPage() {
                           </div>
                         </td>
 
-                        <td className="block w-1/2 sm:table-cell sm:w-auto p-3 sm:p-4 align-top">
+                        <td className="hidden sm:table-cell p-4 align-top">
                           <div className="flex flex-col gap-1 items-start whitespace-nowrap">
                             <span className="text-xs uppercase tracking-widest font-black text-neutral-300">
                               {booking.sport}
@@ -3375,8 +3395,8 @@ export default function AdminPage() {
                           </div>
                         </td>
 
-                        <td className="block w-full sm:table-cell sm:w-auto p-3 sm:p-4 align-top">
-                          <div className="flex flex-col gap-1 font-mono text-xs sm:min-w-[120px] whitespace-nowrap">
+                        <td className="hidden sm:table-cell p-4 align-top">
+                          <div className="flex flex-col gap-1 font-mono text-xs min-w-[120px] whitespace-nowrap">
                             <div className="flex justify-between">
                               <span className="text-neutral-500">Total:</span> 
                               <span className="text-neutral-200">₹{booking.total_amount}</span>
@@ -3402,8 +3422,8 @@ export default function AdminPage() {
                           </div>
                         </td>
 
-                        <td className="block w-full sm:table-cell sm:w-auto p-3 sm:p-4 align-top text-center">
-                          <div className="flex flex-row flex-wrap items-center justify-center gap-2">
+                        <td className="block shrink-0 sm:table-cell p-2.5 sm:p-4 align-top text-center">
+                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-1.5 sm:gap-2">
                             {Number(booking.balance_amount || 0) > 0 ? (
                               <motion.button
                                 whileHover={{ y: -1 }}
@@ -3456,6 +3476,34 @@ export default function AdminPage() {
                             >
                               ⚙️ Manage
                             </motion.button>
+                          </div>
+
+                          {/* Mobile only: collected by + payment method */}
+                          <div className="sm:hidden mt-1.5 flex flex-col gap-0.5 font-mono text-[11px] leading-tight text-left whitespace-nowrap">
+                            <div className="flex items-center gap-1 min-w-0">
+                              {booking.collected_by ? (
+                                <span className="text-fuchsia-400 font-black truncate">👤 {booking.collected_by}</span>
+                              ) : (
+                                <span className="text-neutral-600">👤 —</span>
+                              )}
+                            </div>
+                            {Number(booking.balance_amount || 0) === 0 && (() => {
+                              const cash = Number(booking.cash_received || 0);
+                              const upi = Number(booking.upi_received || 0);
+                              let label = "";
+                              let color = "text-neutral-300";
+                              if (cash > 0 && upi > 0) { label = "Cash + UPI"; color = "text-fuchsia-400"; }
+                              else if (cash > 0) { label = "Full Cash"; color = "text-amber-400"; }
+                              else if (upi > 0) { label = "Full UPI"; color = "text-cyan-400"; }
+                              else if (booking.payment_method) { label = String(booking.payment_method); }
+                              if (!label) return null;
+                              return (
+                                <div className="flex justify-between gap-2">
+                                  <span className="text-neutral-500">Via</span>
+                                  <span className={`font-black ${color}`}>{label}</span>
+                                </div>
+                              );
+                            })()}
                           </div>
                         </td>
                       </motion.tr>
