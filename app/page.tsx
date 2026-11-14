@@ -46,6 +46,10 @@ export default function Home() {
   const [duration, setDuration] = useState(""); 
 
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
+  // Slots that are blocked for Half Court too (2 half bookings, a full booking, admin block, academy)
+  const [halfBlockedSlots, setHalfBlockedSlots] = useState<string[]>([]);
+  // Slot the customer tapped that is only available as Half Court (waiting for confirmation)
+  const [pendingHalfSlot, setPendingHalfSlot] = useState<string | null>(null);
   
   // 🏆 VIP LOYALTY TRACKER & SPECIAL OFFER STATE
   const [pastSpend, setPastSpend] = useState(0);
@@ -322,7 +326,7 @@ export default function Home() {
     return slots;
   }, []);
 
-  const isSlotAvailable = (slot: string) => {
+  const isSlotAvailableFor = (slot: string, blockedList: string[]) => {
     if (!bookingDate || !duration || !bookingType) return false;
     
     const [time, ampm] = slot.split(" ");
@@ -342,7 +346,7 @@ export default function Home() {
       const targetIndex = slotIndex + i;
       if (targetIndex >= allSlots.length) return false;
       const nextSlot = allSlots[targetIndex];
-      if (bookedSlots.includes(nextSlot)) return false;
+      if (blockedList.includes(nextSlot)) return false;
     }
     
     const today = getLocalDateString();
@@ -358,6 +362,15 @@ export default function Home() {
     
     return slotMinutes > currentMinutes;
   };
+
+  const isSlotAvailable = (slot: string) => isSlotAvailableFor(slot, bookedSlots);
+
+  // Customer is looking at Full Court, slot is not free for Full Court,
+  // but one half court is still free for the whole duration.
+  const isHalfOnlySlot = (slot: string) =>
+    bookingType === "Full Court" &&
+    !isSlotAvailableFor(slot, bookedSlots) &&
+    isSlotAvailableFor(slot, halfBlockedSlots);
 
   useEffect(() => {
     if (startTime && !isSlotAvailable(startTime)) setStartTime("");
@@ -443,11 +456,14 @@ export default function Home() {
     processSlots(blockedData, true);
 
     const blocked: string[] = [];
+    const halfBlocked: string[] = [];
     Object.entries(slotCounts).forEach(([slot, count]) => {
+      // Half Court is blocked only when both halves are taken (or a full booking/block exists)
+      if (count >= 2) halfBlocked.push(slot);
       if (bookingType === "Full Court") {
         if (count >= 1) blocked.push(slot); 
       } else {
-        if (count >= 2 || count === 999) blocked.push(slot); 
+        if (count >= 2) blocked.push(slot); 
       }
     });
 
@@ -458,10 +474,12 @@ export default function Home() {
       const academyBlocks = ["06:00 AM", "06:30 AM", "05:30 PM", "06:00 PM"];
       academyBlocks.forEach(slot => {
         if (!blocked.includes(slot)) blocked.push(slot);
+        if (!halfBlocked.includes(slot)) halfBlocked.push(slot);
       });
     }
 
     setBookedSlots(blocked);
+    setHalfBlockedSlots(halfBlocked);
   };
 
   /* -------- Secure Razorpay Intent -------- */
@@ -1141,13 +1159,13 @@ export default function Home() {
                       className={`grid gap-2 p-3 sm:p-4 bg-neutral-900/30 border border-neutral-800 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-700 transition-all ${
                         !bookingDate || !duration || !bookingType 
                           ? "opacity-40 pointer-events-none select-none grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8" 
-                          : (bookingDate && duration && bookingType && !allSlots.some(s => isSlotAvailable(s)) 
+                          : (bookingDate && duration && bookingType && !allSlots.some(s => isSlotAvailable(s) || isHalfOnlySlot(s)) 
                               ? "grid-cols-1" 
                               : "grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8")
                       }`}
                     >
                       {/* "Full Day Blocked" Empty State */}
-                      {bookingDate && duration && bookingType && !allSlots.some(slot => isSlotAvailable(slot)) ? (
+                      {bookingDate && duration && bookingType && !allSlots.some(slot => isSlotAvailable(slot) || isHalfOnlySlot(slot)) ? (
                         <div className="py-12 flex flex-col items-center justify-center text-center space-y-3 col-span-full">
                           <span className="text-4xl drop-shadow-[0_0_15px_rgba(239,68,68,0.5)]">🚫</span>
                           <div>
@@ -1173,7 +1191,8 @@ export default function Home() {
 
                           const available = isSlotAvailable(slot);
                           const selected = startTime === slot;
-                          const showBooked = !available && bookingDate && duration && bookingType;
+                          const halfOnly = !available && isHalfOnlySlot(slot);
+                          const showBooked = !available && !halfOnly && bookingDate && duration && bookingType;
 
                           return (
                             <motion.button
@@ -1182,11 +1201,20 @@ export default function Home() {
                               whileHover={available && !selected ? { scale: 1.06 } : {}}
                               whileTap={available ? { scale: 0.94 } : {}}
                               type="button"
-                              disabled={!available || !bookingDate || !duration || !bookingType} 
-                              onClick={() => setStartTime(slot)}
+                              disabled={(!available && !halfOnly) || !bookingDate || !duration || !bookingType} 
+                              onClick={() => {
+                                if (halfOnly) {
+                                  // Ask before switching from Full Court to Half Court
+                                  setPendingHalfSlot(slot);
+                                } else {
+                                  setStartTime(slot);
+                                }
+                              }}
                               className={`relative h-[60px] sm:h-[68px] w-full p-1 flex flex-col items-center justify-center gap-1 text-[11px] sm:text-xs font-mono font-bold uppercase transition-colors border ${
                                 selected
                                   ? "bg-red-600 border-red-500 text-white"
+                                  : halfOnly
+                                  ? "bg-amber-500/10 border-amber-500/40 text-amber-400 hover:bg-amber-500 hover:text-black cursor-pointer"
                                   : available && bookingDate && duration && bookingType
                                   ? "bg-lime-500/10 border-lime-500/30 text-lime-400 hover:bg-lime-500 hover:text-black cursor-pointer"
                                   : "bg-neutral-950 border-neutral-900 text-neutral-600 opacity-60 cursor-not-allowed"
@@ -1201,6 +1229,10 @@ export default function Home() {
                                )}
                               <span className={`relative z-10 ${showBooked ? 'line-through opacity-40' : ''}`}>{slot}</span>
                               
+                              {halfOnly && (
+                                <span className="relative z-10 text-[8px] text-amber-400 font-black tracking-widest bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded-sm leading-none text-center">ONLY HALF</span>
+                              )}
+
                               {showBooked && (
                                 <span className="relative z-10 text-[8px] text-red-500 font-black tracking-widest bg-red-500/10 border border-red-500/20 px-1.5 py-0.5 rounded-sm leading-none">BOOKED</span>
                               )}
@@ -1630,6 +1662,59 @@ export default function Home() {
                 Please do not close or refresh
               </p>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Switch to Half Court Confirmation */}
+      <AnimatePresence>
+        {pendingHalfSlot && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[999998]"
+            onClick={() => setPendingHalfSlot(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.92, y: 16, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.92, y: 16, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-neutral-900 border border-neutral-800 p-6 w-full max-w-sm shadow-2xl relative overflow-hidden space-y-5"
+            >
+              <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-amber-400 to-lime-400" />
+              <div className="space-y-2 pt-1">
+                <h3 className="text-lg font-black uppercase tracking-tight text-white">
+                  Only Half Court Available
+                </h3>
+                <p className="text-xs font-mono text-neutral-400 leading-relaxed">
+                  Full Court is not available at <span className="text-amber-400 font-bold">{pendingHalfSlot}</span> because
+                  one half is already booked. Do you want to change from Full Court to Half Court?
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPendingHalfSlot(null)}
+                  className="py-3 border border-neutral-700 text-neutral-300 hover:bg-neutral-800 font-mono font-black text-xs uppercase tracking-widest transition-colors"
+                >
+                  No, Keep Full
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBookingType("Half Court");
+                    setStartTime("");
+                    setPendingHalfSlot(null);
+                  }}
+                  className="py-3 bg-lime-400 hover:bg-lime-300 text-black font-mono font-black text-xs uppercase tracking-widest transition-colors"
+                >
+                  Yes, Half Court
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -35,6 +35,11 @@ const getTomorrowStr = () => {
   return tomorrowDate.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 };
 
+// Shared styling for coaching form fields (16px on phones so iOS doesn't zoom on focus)
+const coachingInputCls =
+  "w-full p-3.5 min-h-[48px] bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-base sm:text-sm font-medium text-white placeholder:text-neutral-600 transition-colors rounded-none";
+const coachingLabelCls = "text-[11px] font-mono uppercase tracking-widest text-neutral-400";
+
 type BatchTabType = "Morning Batch" | "Evening Batch";
 
 export default function AdminPage() {
@@ -52,6 +57,7 @@ export default function AdminPage() {
   const [academyStudents, setAcademyStudents] = useState<any[]>([]);
   const [academyTab, setAcademyTab] = useState<"new" | "existing">("existing");
   const [rosterTab, setRosterTab] = useState<BatchTabType>("Morning Batch");
+  const [academySearch, setAcademySearch] = useState("");
   const [adminNewStudentName, setAdminNewStudentName] = useState("");
   const [adminNewStudentPhone, setAdminNewStudentPhone] = useState("");
   const [adminNewStudentDOB, setAdminNewStudentDOB] = useState("");
@@ -1534,8 +1540,26 @@ export default function AdminPage() {
     });
 
   const filteredAcademyStudents = useMemo(() => {
-    return academyStudents.filter(s => s.batch === rosterTab);
-  }, [academyStudents, rosterTab]);
+    const q = academySearch.trim().toLowerCase();
+    return academyStudents.filter(s =>
+      s.batch === rosterTab &&
+      (!q || s.name?.toLowerCase().includes(q) || s.phone?.includes(q))
+    );
+  }, [academyStudents, rosterTab, academySearch]);
+
+  // 📊 Per-batch strength (students, fees paid/due, present today)
+  const academyStats = useMemo(() => {
+    const today = getTodayStr();
+    const calc = (batch: BatchTabType) => {
+      const list = academyStudents.filter(s => s.batch === batch);
+      const paid = list.filter(s => s.payment_status === "settled").length;
+      const present = list.filter(s =>
+        s.student_attendance?.some((a: any) => a.date === today && a.status === "Present")
+      ).length;
+      return { total: list.length, paid, due: list.length - paid, present };
+    };
+    return { morning: calc("Morning Batch"), evening: calc("Evening Batch") };
+  }, [academyStudents]);
 
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden selection:bg-lime-400 selection:text-black">
@@ -1686,7 +1710,7 @@ export default function AdminPage() {
           </div>
         </motion.div>
 
-        {/* ---------- Football Coaching Panel ---------- */}
+        {/* ---------- Football Coaching Panel (mobile-first) ---------- */}
         <AnimatePresence>
           {showCoachingPanel && (
             <motion.div
@@ -1696,398 +1720,510 @@ export default function AdminPage() {
               transition={{ duration: 0.35, ease: easeOut }}
               className="overflow-hidden mb-8"
             >
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-5 sm:p-6 border border-neutral-900 bg-neutral-900/30 backdrop-blur">
+              <div className="space-y-3 sm:space-y-4 p-3 sm:p-6 border border-neutral-900 bg-neutral-900/30 backdrop-blur relative">
+                <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-lime-400 to-emerald-500" />
 
-                {/* Form Column */}
-                <div className="lg:col-span-1 border border-neutral-900 bg-neutral-900/50 p-5 space-y-4 h-fit">
-                  <div>
-                    <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block mb-1">
-                      A1 — Coaching Ledger
+                {/* Header */}
+                <div className="flex items-start justify-between gap-3 pt-1">
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">
+                      A1 — Football Academy
                     </span>
-                    <h2 className="text-lg font-black uppercase text-white">Academy Actions</h2>
+                    <h2 className="text-lg sm:text-xl font-black uppercase text-white leading-tight">
+                      Coaching Dashboard
+                    </h2>
+                    <p className="text-[11px] font-mono text-lime-400 mt-0.5">{currentMonthLabel}</p>
                   </div>
-
-                  <LayoutGroup>
-                    <div className="grid grid-cols-2 gap-2 p-1.5 border border-neutral-800 bg-neutral-950">
-                      {[
-                        { id: "existing", label: "🔄 Log Old Fee" },
-                        { id: "new", label: "👶 Enroll" },
-                      ].map((t) => (
-                        <motion.button
-                          key={t.id}
-                          whileTap={{ scale: 0.97 }}
-                          onClick={() => setAcademyTab(t.id as any)}
-                          className={`relative py-2.5 text-[10px] font-mono uppercase tracking-widest transition-colors ${
-                            academyTab === t.id ? "text-black font-black" : "text-neutral-500 hover:text-white"
-                          }`}
-                        >
-                          {academyTab === t.id && (
-                            <motion.span
-                              layoutId="academy-tab-highlight"
-                              className="absolute inset-0 bg-lime-400 -z-0"
-                              transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                            />
-                          )}
-                          <span className="relative z-10">{t.label}</span>
-                        </motion.button>
-                      ))}
-                    </div>
-                  </LayoutGroup>
-
-                  <AnimatePresence mode="wait">
-                    {academyTab === "new" ? (
-                      <motion.form
-                        key="new-form"
-                        initial={{ opacity: 0, x: -8 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 8 }}
-                        onSubmit={handleAdminEnrollStudent}
-                        className="space-y-3"
-                      >
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-mono uppercase text-neutral-400">Student Name</label>
-                          <input
-                            type="text"
-                            placeholder="Enter player name"
-                            value={adminNewStudentName}
-                            onChange={(e) => setAdminNewStudentName(e.target.value)}
-                            className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-mono uppercase text-neutral-400">Phone (10 Digits)</label>
-                          <input
-                            type="text"
-                            placeholder="10-digit number"
-                            value={adminNewStudentPhone}
-                            onChange={(e) => {
-                              const numericValue = e.target.value.replace(/\D/g, "");
-                              if (numericValue.length <= 10) setAdminNewStudentPhone(numericValue);
-                            }}
-                            maxLength={10}
-                            className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono font-medium transition-colors"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-mono uppercase text-neutral-400">Date of Birth</label>
-                          <input
-                            type="date"
-                            value={adminNewStudentDOB}
-                            onChange={(e) => setAdminNewStudentDOB(e.target.value)}
-                            className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors"
-                            style={{ colorScheme: "dark" }}
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-mono uppercase text-neutral-400">Email ID</label>
-                          <input
-                            type="email"
-                            placeholder="example@email.com"
-                            value={adminNewStudentEmail}
-                            onChange={(e) => setAdminNewStudentEmail(e.target.value)}
-                            className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-mono uppercase text-neutral-400">Assign Batch</label>
-                          <select
-                            value={adminNewStudentBatch}
-                            onChange={(e) => setAdminNewStudentBatch(e.target.value as BatchTabType)}
-                            className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors appearance-none"
-                          >
-                            <option value="Morning Batch">Morning Batch</option>
-                            <option value="Evening Batch">Evening Batch</option>
-                          </select>
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-mono uppercase text-neutral-400">Payment Method</label>
-                          <select
-                            value={adminNewStudentMethod}
-                            onChange={(e) => setAdminNewStudentMethod(e.target.value)}
-                            className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors appearance-none"
-                          >
-                            <option value="UPI">UPI</option>
-                            <option value="Cash">Cash</option>
-                          </select>
-                        </div>
-                        <div className="p-3 bg-neutral-950 border border-neutral-800 text-xs font-mono font-black text-lime-400">
-                          Fixed Fee Rate: ₹2,500
-                        </div>
-                        <motion.button
-                          whileHover={{ y: -2, boxShadow: "0 10px 25px rgba(163,230,53,0.3)" }}
-                          whileTap={{ scale: 0.97 }}
-                          type="submit"
-                          className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono font-black py-4 text-xs uppercase tracking-widest transition-colors"
-                        >
-                          Enroll & Mark Paid
-                        </motion.button>
-                      </motion.form>
-                    ) : (
-                      <motion.form
-                        key="existing-form"
-                        initial={{ opacity: 0, x: -8 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 8 }}
-                        onSubmit={handleAdminOldPayment}
-                        className="space-y-3"
-                      >
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-mono uppercase text-neutral-400">Select Due Student</label>
-                          <select
-                            value={adminSelectedStudentId}
-                            onChange={(e) => setAdminSelectedStudentId(e.target.value)}
-                            className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors"
-                          >
-                            <option value="">-- Select Due Student --</option>
-                            {academyStudents.filter(s => s.payment_status !== "settled").map(s => (
-                              <option key={s.id} value={s.id}>{s.name} ({s.phone})</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-mono uppercase text-neutral-400">Payment Method</label>
-                          <select
-                            value={adminExistingMethod}
-                            onChange={(e) => setAdminExistingMethod(e.target.value)}
-                            className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors"
-                          >
-                            <option value="UPI">UPI</option>
-                            <option value="Cash">Cash</option>
-                          </select>
-                        </div>
-                        <div className="p-3 bg-neutral-950 border border-neutral-800 text-xs font-mono font-black text-lime-400">
-                          Enforced Rate: ₹2,500
-                        </div>
-                        <motion.button
-                          whileHover={{ y: -2, boxShadow: "0 10px 25px rgba(217,70,239,0.3)" }}
-                          whileTap={{ scale: 0.97 }}
-                          type="submit"
-                          className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-mono font-black py-4 text-xs uppercase tracking-widest transition-colors"
-                        >
-                          Settle Selected Student
-                        </motion.button>
-                      </motion.form>
-                    )}
-                  </AnimatePresence>
+                  <button
+                    type="button"
+                    onClick={() => setShowCoachingPanel(false)}
+                    aria-label="Close coaching panel"
+                    className="w-10 h-10 shrink-0 flex items-center justify-center border border-neutral-800 bg-neutral-950 text-neutral-400 hover:text-white hover:border-neutral-600 transition-colors text-sm"
+                  >
+                    ✕
+                  </button>
                 </div>
 
-                {/* Roster Column */}
-                <div className="lg:col-span-2 border border-neutral-900 bg-neutral-900/30 overflow-hidden flex flex-col">
-                  <div className="p-4 border-b border-neutral-900 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <div>
-                      <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block">
-                        A2 — Master Roster
-                      </span>
-                      <h2 className="text-sm font-black uppercase text-white mt-0.5">
-                        Academy Coaching Roster · <span className="text-lime-400">{currentMonthLabel}</span>
-                      </h2>
-                    </div>
-                    
-                    <motion.button
-                      whileHover={{ y: -2, boxShadow: "0 8px 25px rgba(239,68,68,0.25)" }}
-                      whileTap={{ scale: 0.97 }}
-                      onClick={sendEmailReminders}
-                      disabled={isSendingEmails}
-                      className={`bg-neutral-900 border border-neutral-800 text-red-400 hover:bg-red-950 hover:border-red-900 hover:text-white font-mono text-[10px] uppercase tracking-widest px-4 py-2.5 font-black transition-colors flex items-center gap-2 ${isSendingEmails ? "opacity-50 cursor-not-allowed" : ""}`}
-                    >
-                      {isSendingEmails ? "⏳ Dispatching..." : "📧 Email Due Reminders"}
-                    </motion.button>
-                  </div>
-
-                  {/* Animated Batch Tabs */}
-                  <LayoutGroup id="admin-roster-tabs">
-                    <div className="grid grid-cols-2 gap-2 p-3 border-b border-neutral-900 bg-neutral-900/50 backdrop-blur">
-                      {[
-                        { id: "Morning Batch", label: "Morning Batch" },
-                        { id: "Evening Batch", label: "Evening Batch" },
-                      ].map((t) => (
-                        <motion.button
-                          key={t.id}
-                          whileTap={{ scale: 0.97 }}
-                          onClick={() => setRosterTab(t.id as BatchTabType)}
-                          className={`relative py-2.5 text-[10px] font-mono uppercase tracking-widest transition-colors ${
-                            rosterTab === t.id
-                              ? "text-black font-black"
-                              : "text-neutral-500 hover:text-white"
-                          }`}
-                        >
-                          {rosterTab === t.id && (
-                            <motion.span
-                              layoutId="admin-roster-tab-highlight"
-                              className="absolute inset-0 bg-lime-400 -z-0"
-                              transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                            />
-                          )}
-                          <span className="relative z-10">{t.label}</span>
-                        </motion.button>
-                      ))}
-                    </div>
-                  </LayoutGroup>
-
-                  {/* Mobile View */}
-                  <div className="block sm:hidden max-h-[380px] overflow-y-auto p-3 space-y-3">
-                    {filteredAcademyStudents.map((s) => {
-                      const isUnpaid = s.payment_status !== "settled";
-                      const todayAtt = s.student_attendance?.find((a: any) => a.date === getTodayStr());
-                      const isPresent = todayAtt?.status === "Present";
-                      const isAbsent = todayAtt?.status === "Absent";
-
-                      return (
-                        <motion.div
-                          key={s.id}
-                          layout
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className={`p-4 border transition-colors space-y-3 ${
-                            isUnpaid ? 'bg-red-500/[0.06] border-red-500/20' : 'bg-lime-400/[0.05] border-neutral-800'
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <h4 className="text-sm font-black text-white">{s.name}</h4>
-                              <p className="text-[10px] font-mono text-neutral-500 mt-0.5">
-                                DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => deleteStudent(s.id, s.name)}
-                              className="px-2.5 py-1 text-[10px] font-mono uppercase bg-neutral-900 hover:bg-red-950 border border-neutral-800 hover:border-red-900 text-red-400 hover:text-white transition-colors shrink-0"
-                            >
-                              🗑️ Delete
-                            </button>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 text-[11px] bg-neutral-950/60 p-2.5 border border-neutral-900 font-mono">
-                            <div>
-                              <span className="block text-[9px] uppercase tracking-widest text-neutral-500 font-black mb-0.5">Contact</span>
-                              <span className="text-neutral-300">{s.phone}</span>
-                            </div>
-                            <div className="truncate">
-                              <span className="block text-[9px] uppercase tracking-widest text-neutral-500 font-black mb-0.5">Email</span>
-                              <span className="text-neutral-300 truncate block">{s.email || "-"}</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-between pt-1 border-t border-neutral-900">
-                            <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest font-black">Month Fee</span>
-                            {isUnpaid ? (
-                              <motion.span
-                                animate={{ opacity: [1, 0.55, 1] }}
-                                transition={{ duration: 2, repeat: Infinity }}
-                                className="px-2.5 py-1 text-[10px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black"
-                              >
-                                ⚠️ Unpaid
-                              </motion.span>
-                            ) : (
-                              <span className="px-2.5 py-1 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 font-black">
-                                ✅ Paid ({s.payment_method})
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center justify-between pt-1 border-t border-neutral-900 mt-2">
-                            <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest font-black">Attendance</span>
-                            <div className="flex items-center gap-2">
-                              <button 
-                                onClick={() => markAttendance(s.id, "Present")}
-                                className={`w-8 h-8 flex items-center justify-center text-sm font-mono font-black transition-all rounded border ${
-                                  isPresent ? 'bg-lime-500 text-black border-lime-500 shadow-[0_0_15px_rgba(132,204,22,0.5)] scale-110' : 'bg-lime-500/10 text-lime-500 border-lime-500/30 hover:bg-lime-500/30'
-                                }`}
-                              >P</button>
-                              <button 
-                                onClick={() => markAttendance(s.id, "Absent")}
-                                className={`w-8 h-8 flex items-center justify-center text-sm font-mono font-black transition-all rounded border ${
-                                  isAbsent ? 'bg-red-600 text-white border-red-600 shadow-[0_0_15px_rgba(220,38,38,0.6)] scale-110' : 'bg-red-500/10 text-red-500 border-red-500/30 hover:bg-red-500/30'
-                                }`}
-                              >A</button>
-                            </div>
-                          </div>
-                        </motion.div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Desktop View */}
-                  <div className="hidden sm:block overflow-x-auto max-h-[420px] overflow-y-auto">
-                    <table className="w-full text-left border-collapse min-w-[520px]">
-                      <thead>
-                        <tr className="border-b border-neutral-900 text-[10px] font-mono uppercase tracking-widest text-neutral-500 bg-neutral-950/40 sticky top-0 backdrop-blur z-20">
-                          <th className="p-4">Student Profile</th>
-                          <th className="p-4">Contact Logs</th>
-                          <th className="p-4 text-center">Status</th>
-                          <th className="p-4 text-center">Attendance</th>
-                        </tr>
-                      </thead>
-                      <motion.tbody
-                        variants={stagger}
-                        initial="hidden"
-                        animate="show"
-                        className="divide-y divide-neutral-900 text-xs font-medium"
+                {/* Batch Strength Cards (tap to open that batch) */}
+                <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+                  {([
+                    { id: "Morning Batch", icon: "🌅", label: "Morning", stats: academyStats.morning },
+                    { id: "Evening Batch", icon: "🌙", label: "Evening", stats: academyStats.evening },
+                  ] as const).map((b) => {
+                    const active = rosterTab === b.id;
+                    return (
+                      <motion.button
+                        key={b.id}
+                        type="button"
+                        whileTap={{ scale: 0.97 }}
+                        onClick={() => setRosterTab(b.id)}
+                        className={`relative text-left p-3.5 sm:p-4 border transition-colors overflow-hidden ${
+                          active
+                            ? "bg-lime-400/10 border-lime-400/60 shadow-[0_0_24px_rgba(163,230,53,0.12)]"
+                            : "bg-neutral-950 border-neutral-800 hover:border-neutral-600"
+                        }`}
                       >
-                        {filteredAcademyStudents.map((s) => {
-                          const isUnpaid = s.payment_status !== "settled";
-                          const todayAtt = s.student_attendance?.find((a: any) => a.date === getTodayStr());
-                          const isPresent = todayAtt?.status === "Present";
-                          const isAbsent = todayAtt?.status === "Absent";
+                        {active && <span className="absolute top-0 inset-x-0 h-0.5 bg-lime-400" />}
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] sm:text-[11px] font-mono uppercase tracking-widest text-neutral-400 font-black">
+                            {b.icon} {b.label}
+                          </span>
+                          {active && <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />}
+                        </div>
+                        <div className="flex items-baseline gap-1.5 mt-2">
+                          <span className={`text-4xl sm:text-5xl font-black leading-none ${active ? "text-lime-400" : "text-white"}`}>
+                            {b.stats.total}
+                          </span>
+                          <span className="text-[10px] font-mono uppercase text-neutral-500">
+                            {b.stats.total === 1 ? "student" : "students"}
+                          </span>
+                        </div>
+                        <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-mono">
+                          <span className="text-lime-400">✅ {b.stats.paid} paid</span>
+                          <span className={b.stats.due > 0 ? "text-red-400" : "text-neutral-600"}>⚠️ {b.stats.due} due</span>
+                        </div>
+                      </motion.button>
+                    );
+                  })}
+                </div>
 
-                          return (
-                            <motion.tr
-                              key={s.id}
-                              variants={rowItem}
-                              layout
-                              className={`transition-colors ${isUnpaid ? 'bg-red-500/[0.04] hover:bg-red-500/[0.08]' : 'hover:bg-lime-400/[0.03]'}`}
+                {/* Overall strip */}
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="p-2.5 bg-neutral-950 border border-neutral-900">
+                    <span className="block text-lg sm:text-xl font-black text-white leading-none">{academyStats.morning.total + academyStats.evening.total}</span>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Total</span>
+                  </div>
+                  <div className="p-2.5 bg-neutral-950 border border-neutral-900">
+                    <span className="block text-lg sm:text-xl font-black text-lime-400 leading-none">{academyStats.morning.paid + academyStats.evening.paid}</span>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Fees Paid</span>
+                  </div>
+                  <div className="p-2.5 bg-neutral-950 border border-neutral-900">
+                    <span className="block text-lg sm:text-xl font-black text-red-400 leading-none">{academyStats.morning.due + academyStats.evening.due}</span>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Fees Due</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
+
+                  {/* ---------- Roster (first on phones) ---------- */}
+                  <div className="order-1 lg:order-2 lg:col-span-2 border border-neutral-900 bg-neutral-900/30 overflow-hidden flex flex-col">
+                    <div className="p-3 sm:p-4 border-b border-neutral-900 space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">A2 — Master Roster</span>
+                          <h3 className="text-sm font-black uppercase text-white truncate">
+                            {rosterTab} · <span className="text-lime-400">{filteredAcademyStudents.length}</span>
+                            <span className="text-neutral-500 font-mono text-[10px] normal-case ml-1.5">
+                              ({rosterTab === "Morning Batch" ? academyStats.morning.present : academyStats.evening.present} present today)
+                            </span>
+                          </h3>
+                        </div>
+                      </div>
+
+                      {/* Batch switch with counts */}
+                      <LayoutGroup id="admin-roster-tabs">
+                        <div className="grid grid-cols-2 gap-1.5 p-1 border border-neutral-800 bg-neutral-950">
+                          {[
+                            { id: "Morning Batch", label: "🌅 Morning", count: academyStats.morning.total },
+                            { id: "Evening Batch", label: "🌙 Evening", count: academyStats.evening.total },
+                          ].map((t) => (
+                            <motion.button
+                              key={t.id}
+                              type="button"
+                              whileTap={{ scale: 0.97 }}
+                              onClick={() => setRosterTab(t.id as BatchTabType)}
+                              className={`relative min-h-[44px] text-[11px] font-mono uppercase tracking-widest transition-colors ${
+                                rosterTab === t.id ? "text-black font-black" : "text-neutral-400 hover:text-white"
+                              }`}
                             >
-                              <td className="p-4">
-                                <div className="font-black text-white flex items-center gap-2">
-                                  <span>{s.name}</span>
-                                  <button
-                                    onClick={() => deleteStudent(s.id, s.name)}
-                                    className="px-2 py-0.5 text-[9px] font-mono uppercase bg-neutral-900 hover:bg-red-600 border border-neutral-800 hover:border-red-500 text-red-400 hover:text-white transition-colors"
-                                  >
-                                    🗑️ Delete
-                                  </button>
-                                </div>
-                                <div className="text-[10px] font-mono text-neutral-500 mt-0.5">
-                                  DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}
-                                </div>
-                              </td>
-                              <td className="p-4 space-y-0.5">
-                                <div className="font-mono text-neutral-300">{s.phone}</div>
-                                <div className="text-[11px] text-neutral-500 truncate max-w-[180px]">{s.email || "-"}</div>
-                              </td>
-                              <td className="p-4 text-center">
-                                {isUnpaid ? (
-                                  <motion.span
-                                    animate={{ opacity: [1, 0.55, 1] }}
-                                    transition={{ duration: 2, repeat: Infinity }}
-                                    className="px-2 py-0.5 text-[10px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black whitespace-nowrap"
-                                  >
-                                    ⚠️ Unpaid
-                                  </motion.span>
-                                ) : (
-                                  <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 font-black whitespace-nowrap">
-                                    ✅ Paid ({s.payment_method})
-                                  </span>
-                                )}
-                              </td>
-                              <td className="p-4 text-center">
-                                <div className="flex items-center justify-center gap-2">
-                                  <button 
-                                    onClick={() => markAttendance(s.id, "Present")}
-                                    className={`w-8 h-8 flex items-center justify-center text-sm font-mono font-black transition-all rounded border ${
-                                      isPresent ? 'bg-lime-500 text-black border-lime-500 shadow-[0_0_15px_rgba(132,204,22,0.5)] scale-110' : 'bg-lime-500/10 text-lime-500 border-lime-500/30 hover:bg-lime-500/30'
-                                    }`}
-                                  >P</button>
-                                  <button 
-                                    onClick={() => markAttendance(s.id, "Absent")}
-                                    className={`w-8 h-8 flex items-center justify-center text-sm font-mono font-black transition-all rounded border ${
-                                      isAbsent ? 'bg-red-600 text-white border-red-600 shadow-[0_0_15px_rgba(220,38,38,0.6)] scale-110' : 'bg-red-500/10 text-red-500 border-red-500/30 hover:bg-red-500/30'
-                                    }`}
-                                  >A</button>
-                                </div>
-                              </td>
-                            </motion.tr>
-                          );
-                        })}
-                      </motion.tbody>
-                    </table>
+                              {rosterTab === t.id && (
+                                <motion.span
+                                  layoutId="admin-roster-tab-highlight"
+                                  className="absolute inset-0 bg-lime-400 -z-0"
+                                  transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                                />
+                              )}
+                              <span className="relative z-10">{t.label} ({t.count})</span>
+                            </motion.button>
+                          ))}
+                        </div>
+                      </LayoutGroup>
+
+                      {/* Search + reminders */}
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          inputMode="search"
+                          placeholder="🔍 Search name or phone"
+                          value={academySearch}
+                          onChange={(e) => setAcademySearch(e.target.value)}
+                          className={`${coachingInputCls} sm:flex-1`}
+                        />
+                        <motion.button
+                          type="button"
+                          whileTap={{ scale: 0.97 }}
+                          onClick={sendEmailReminders}
+                          disabled={isSendingEmails}
+                          className={`min-h-[48px] bg-neutral-900 border border-neutral-800 text-red-400 hover:bg-red-950 hover:border-red-900 hover:text-white font-mono text-[11px] uppercase tracking-widest px-4 font-black transition-colors flex items-center justify-center gap-2 ${isSendingEmails ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                          {isSendingEmails ? "⏳ Dispatching..." : "📧 Email Due Reminders"}
+                        </motion.button>
+                      </div>
+                    </div>
+
+                    {/* Empty state */}
+                    {filteredAcademyStudents.length === 0 && (
+                      <div className="py-10 px-4 text-center space-y-2">
+                        <span className="text-3xl block">⚽</span>
+                        <p className="text-xs font-mono font-black uppercase tracking-widest text-neutral-400">
+                          {academySearch ? "No students match your search" : `No students in ${rosterTab}`}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Phone cards */}
+                    <div className="block sm:hidden max-h-[70vh] overflow-y-auto p-3 space-y-2.5">
+                      {filteredAcademyStudents.map((s) => {
+                        const isUnpaid = s.payment_status !== "settled";
+                        const todayAtt = s.student_attendance?.find((a: any) => a.date === getTodayStr());
+                        const isPresent = todayAtt?.status === "Present";
+                        const isAbsent = todayAtt?.status === "Absent";
+
+                        return (
+                          <motion.div
+                            key={s.id}
+                            layout
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className={`p-3 border space-y-3 ${
+                              isUnpaid ? "bg-red-500/[0.06] border-red-500/25" : "bg-neutral-950/60 border-neutral-800"
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`w-11 h-11 shrink-0 rounded-full flex items-center justify-center font-black text-base border ${
+                                isUnpaid ? "bg-red-500/10 border-red-500/40 text-red-400" : "bg-lime-400/10 border-lime-400/40 text-lime-400"
+                              }`}>
+                                {(s.name || "?").trim().charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <h4 className="text-sm font-black text-white truncate">{s.name}</h4>
+                                <a href={`tel:${s.phone}`} className="text-[12px] font-mono text-lime-400/90 block mt-0.5">
+                                  📞 {s.phone}
+                                </a>
+                              </div>
+                              {isUnpaid ? (
+                                <motion.span
+                                  animate={{ opacity: [1, 0.55, 1] }}
+                                  transition={{ duration: 2, repeat: Infinity }}
+                                  className="px-2 py-1 text-[10px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black shrink-0"
+                                >
+                                  ⚠️ Due
+                                </motion.span>
+                              ) : (
+                                <span className="px-2 py-1 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 font-black shrink-0">
+                                  ✅ {s.payment_method}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-[1fr_1fr_44px] gap-2">
+                              <button
+                                type="button"
+                                onClick={() => markAttendance(s.id, "Present")}
+                                className={`h-11 text-[11px] font-mono font-black uppercase tracking-widest border transition-all ${
+                                  isPresent ? "bg-lime-500 text-black border-lime-500 shadow-[0_0_15px_rgba(132,204,22,0.45)]" : "bg-lime-500/10 text-lime-400 border-lime-500/30 active:bg-lime-500/30"
+                                }`}
+                              >
+                                ✓ Present
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => markAttendance(s.id, "Absent")}
+                                className={`h-11 text-[11px] font-mono font-black uppercase tracking-widest border transition-all ${
+                                  isAbsent ? "bg-red-600 text-white border-red-600 shadow-[0_0_15px_rgba(220,38,38,0.5)]" : "bg-red-500/10 text-red-400 border-red-500/30 active:bg-red-500/30"
+                                }`}
+                              >
+                                ✕ Absent
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteStudent(s.id, s.name)}
+                                aria-label={`Delete ${s.name}`}
+                                className="h-11 flex items-center justify-center bg-neutral-900 border border-neutral-800 text-red-400 active:bg-red-950 text-sm"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+
+                            <p className="text-[10px] font-mono text-neutral-500 truncate">
+                              DOB {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"} · {s.email || "No email"}
+                            </p>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Desktop / tablet table */}
+                    <div className="hidden sm:block overflow-x-auto max-h-[460px] overflow-y-auto">
+                      <table className="w-full text-left border-collapse min-w-[520px]">
+                        <thead>
+                          <tr className="border-b border-neutral-900 text-[10px] font-mono uppercase tracking-widest text-neutral-500 bg-neutral-950/40 sticky top-0 backdrop-blur z-20">
+                            <th className="p-4">Student Profile</th>
+                            <th className="p-4">Contact Logs</th>
+                            <th className="p-4 text-center">Status</th>
+                            <th className="p-4 text-center">Attendance</th>
+                          </tr>
+                        </thead>
+                        <motion.tbody
+                          variants={stagger}
+                          initial="hidden"
+                          animate="show"
+                          className="divide-y divide-neutral-900 text-xs font-medium"
+                        >
+                          {filteredAcademyStudents.map((s) => {
+                            const isUnpaid = s.payment_status !== "settled";
+                            const todayAtt = s.student_attendance?.find((a: any) => a.date === getTodayStr());
+                            const isPresent = todayAtt?.status === "Present";
+                            const isAbsent = todayAtt?.status === "Absent";
+
+                            return (
+                              <motion.tr
+                                key={s.id}
+                                variants={rowItem}
+                                layout
+                                className={`transition-colors ${isUnpaid ? "bg-red-500/[0.04] hover:bg-red-500/[0.08]" : "hover:bg-lime-400/[0.03]"}`}
+                              >
+                                <td className="p-4">
+                                  <div className="font-black text-white flex items-center gap-2">
+                                    <span>{s.name}</span>
+                                    <button
+                                      onClick={() => deleteStudent(s.id, s.name)}
+                                      className="px-2 py-0.5 text-[9px] font-mono uppercase bg-neutral-900 hover:bg-red-600 border border-neutral-800 hover:border-red-500 text-red-400 hover:text-white transition-colors"
+                                    >
+                                      🗑️ Delete
+                                    </button>
+                                  </div>
+                                  <div className="text-[10px] font-mono text-neutral-500 mt-0.5">
+                                    DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}
+                                  </div>
+                                </td>
+                                <td className="p-4 space-y-0.5">
+                                  <div className="font-mono text-neutral-300">{s.phone}</div>
+                                  <div className="text-[11px] text-neutral-500 truncate max-w-[180px]">{s.email || "-"}</div>
+                                </td>
+                                <td className="p-4 text-center">
+                                  {isUnpaid ? (
+                                    <motion.span
+                                      animate={{ opacity: [1, 0.55, 1] }}
+                                      transition={{ duration: 2, repeat: Infinity }}
+                                      className="px-2 py-0.5 text-[10px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black whitespace-nowrap"
+                                    >
+                                      ⚠️ Unpaid
+                                    </motion.span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 font-black whitespace-nowrap">
+                                      ✅ Paid ({s.payment_method})
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="p-4 text-center">
+                                  <div className="flex items-center justify-center gap-2">
+                                    <button
+                                      onClick={() => markAttendance(s.id, "Present")}
+                                      className={`w-8 h-8 flex items-center justify-center text-sm font-mono font-black transition-all rounded border ${
+                                        isPresent ? "bg-lime-500 text-black border-lime-500 shadow-[0_0_15px_rgba(132,204,22,0.5)] scale-110" : "bg-lime-500/10 text-lime-500 border-lime-500/30 hover:bg-lime-500/30"
+                                      }`}
+                                    >P</button>
+                                    <button
+                                      onClick={() => markAttendance(s.id, "Absent")}
+                                      className={`w-8 h-8 flex items-center justify-center text-sm font-mono font-black transition-all rounded border ${
+                                        isAbsent ? "bg-red-600 text-white border-red-600 shadow-[0_0_15px_rgba(220,38,38,0.6)] scale-110" : "bg-red-500/10 text-red-500 border-red-500/30 hover:bg-red-500/30"
+                                      }`}
+                                    >A</button>
+                                  </div>
+                                </td>
+                              </motion.tr>
+                            );
+                          })}
+                        </motion.tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* ---------- Actions (below roster on phones) ---------- */}
+                  <div className="order-2 lg:order-1 lg:col-span-1 border border-neutral-900 bg-neutral-900/50 p-4 space-y-4 h-fit">
+                    <div>
+                      <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block mb-0.5">
+                        A3 — Coaching Ledger
+                      </span>
+                      <h3 className="text-base font-black uppercase text-white">Academy Actions</h3>
+                    </div>
+
+                    <LayoutGroup>
+                      <div className="grid grid-cols-2 gap-1.5 p-1 border border-neutral-800 bg-neutral-950">
+                        {[
+                          { id: "existing", label: "🔄 Log Old Fee" },
+                          { id: "new", label: "👶 Enroll" },
+                        ].map((t) => (
+                          <motion.button
+                            key={t.id}
+                            type="button"
+                            whileTap={{ scale: 0.97 }}
+                            onClick={() => setAcademyTab(t.id as any)}
+                            className={`relative min-h-[44px] text-[11px] font-mono uppercase tracking-widest transition-colors ${
+                              academyTab === t.id ? "text-black font-black" : "text-neutral-400 hover:text-white"
+                            }`}
+                          >
+                            {academyTab === t.id && (
+                              <motion.span
+                                layoutId="academy-tab-highlight"
+                                className="absolute inset-0 bg-lime-400 -z-0"
+                                transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                              />
+                            )}
+                            <span className="relative z-10">{t.label}</span>
+                          </motion.button>
+                        ))}
+                      </div>
+                    </LayoutGroup>
+
+                    <AnimatePresence mode="wait">
+                      {academyTab === "new" ? (
+                        <motion.form
+                          key="new-form"
+                          initial={{ opacity: 0, x: -8 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: 8 }}
+                          onSubmit={handleAdminEnrollStudent}
+                          className="space-y-3"
+                        >
+                          <div className="space-y-1.5">
+                            <label className={coachingLabelCls}>Student Name</label>
+                            <input
+                              type="text"
+                              placeholder="Enter player name"
+                              value={adminNewStudentName}
+                              onChange={(e) => setAdminNewStudentName(e.target.value)}
+                              className={coachingInputCls}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className={coachingLabelCls}>Phone (10 Digits)</label>
+                            <input
+                              type="tel"
+                              inputMode="numeric"
+                              placeholder="10-digit number"
+                              value={adminNewStudentPhone}
+                              onChange={(e) => {
+                                const numericValue = e.target.value.replace(/\D/g, "");
+                                if (numericValue.length <= 10) setAdminNewStudentPhone(numericValue);
+                              }}
+                              maxLength={10}
+                              className={`${coachingInputCls} font-mono`}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className={coachingLabelCls}>Date of Birth</label>
+                            <input
+                              type="date"
+                              value={adminNewStudentDOB}
+                              onChange={(e) => setAdminNewStudentDOB(e.target.value)}
+                              className={coachingInputCls}
+                              style={{ colorScheme: "dark" }}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className={coachingLabelCls}>Email ID</label>
+                            <input
+                              type="email"
+                              inputMode="email"
+                              placeholder="example@email.com"
+                              value={adminNewStudentEmail}
+                              onChange={(e) => setAdminNewStudentEmail(e.target.value)}
+                              className={coachingInputCls}
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1.5">
+                              <label className={coachingLabelCls}>Batch</label>
+                              <select
+                                value={adminNewStudentBatch}
+                                onChange={(e) => setAdminNewStudentBatch(e.target.value as BatchTabType)}
+                                className={coachingInputCls}
+                              >
+                                <option value="Morning Batch">🌅 Morning</option>
+                                <option value="Evening Batch">🌙 Evening</option>
+                              </select>
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className={coachingLabelCls}>Payment</label>
+                              <select
+                                value={adminNewStudentMethod}
+                                onChange={(e) => setAdminNewStudentMethod(e.target.value)}
+                                className={coachingInputCls}
+                              >
+                                <option value="UPI">UPI</option>
+                                <option value="Cash">Cash</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className="p-3 bg-neutral-950 border border-neutral-800 text-xs font-mono font-black text-lime-400">
+                            Fixed Fee Rate: ₹2,500
+                          </div>
+                          <motion.button
+                            whileTap={{ scale: 0.97 }}
+                            type="submit"
+                            className="w-full min-h-[52px] bg-lime-400 hover:bg-lime-300 text-black font-mono font-black text-xs uppercase tracking-widest transition-colors"
+                          >
+                            Enroll & Mark Paid
+                          </motion.button>
+                        </motion.form>
+                      ) : (
+                        <motion.form
+                          key="existing-form"
+                          initial={{ opacity: 0, x: -8 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: 8 }}
+                          onSubmit={handleAdminOldPayment}
+                          className="space-y-3"
+                        >
+                          <div className="space-y-1.5">
+                            <label className={coachingLabelCls}>Select Due Student</label>
+                            <select
+                              value={adminSelectedStudentId}
+                              onChange={(e) => setAdminSelectedStudentId(e.target.value)}
+                              className={coachingInputCls}
+                            >
+                              <option value="">-- Select Due Student --</option>
+                              {academyStudents.filter(s => s.payment_status !== "settled").map(s => (
+                                <option key={s.id} value={s.id}>{s.name} ({s.phone})</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className={coachingLabelCls}>Payment Method</label>
+                            <select
+                              value={adminExistingMethod}
+                              onChange={(e) => setAdminExistingMethod(e.target.value)}
+                              className={coachingInputCls}
+                            >
+                              <option value="UPI">UPI</option>
+                              <option value="Cash">Cash</option>
+                            </select>
+                          </div>
+                          <div className="p-3 bg-neutral-950 border border-neutral-800 text-xs font-mono font-black text-lime-400">
+                            Enforced Rate: ₹2,500
+                          </div>
+                          <motion.button
+                            whileTap={{ scale: 0.97 }}
+                            type="submit"
+                            className="w-full min-h-[52px] bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-mono font-black text-xs uppercase tracking-widest transition-colors"
+                          >
+                            Settle Selected Student
+                          </motion.button>
+                        </motion.form>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </div>
               </div>
