@@ -55,6 +55,9 @@ const istMonthOfTimestamp = (ts?: string) =>
 // A student "owes" a month only if they have no settled payment AND had already joined by then
 const isDue = (s: any) => s.payment_status !== "settled" && s.payment_status !== "not_enrolled";
 
+// New students who join on or after this day of the month can pay half the fee for that first month
+const HALF_FEE_FROM_DAY = 13;
+
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // 30-minute slot labels exactly as the customer page uses them (5:00 AM – 10:30 PM)
 const ALL_SLOT_LABELS: string[] = (() => {
@@ -148,6 +151,11 @@ export default function AdminPage() {
   });
 
   const FIXED_COACHING_FEE = 2500;
+  const HALF_COACHING_FEE = Math.round(FIXED_COACHING_FEE / 2);
+  const [adminNewStudentFeeType, setAdminNewStudentFeeType] = useState<"full" | "half">("full");
+  // Half-fee choice appears only for a NEW student enrolled after the 12th (IST date)
+  const isHalfFeeEligible = Number(getTodayStr().slice(8, 10)) >= HALF_FEE_FROM_DAY;
+  const enrollFee = isHalfFeeEligible && adminNewStudentFeeType === "half" ? HALF_COACHING_FEE : FIXED_COACHING_FEE;
   const currentMonthYear = getTodayStr().slice(0, 7); // ✅ IST month (was UTC, wrong just after midnight on the 1st)
   const currentMonthLabel = monthLabelOf(currentMonthYear);
   const feeMonthLabel = monthLabelOf(feeMonth);
@@ -499,14 +507,15 @@ export default function AdminPage() {
         student_id: student.id,
         month_year: currentMonthYear,
         status: "settled",
-        amount_paid: FIXED_COACHING_FEE,
+        amount_paid: enrollFee,
         payment_method: adminNewStudentMethod
       }]);
 
     if (pmError) { alert(pmError.message); return; }
 
-    alert(`✅ ${adminNewStudentName} Enrolled in ${adminNewStudentBatch} & Marked as Paid via ${adminNewStudentMethod}`);
+    alert(`✅ ${adminNewStudentName} Enrolled in ${adminNewStudentBatch} & Marked as Paid via ${adminNewStudentMethod} — ₹${enrollFee.toLocaleString("en-IN")}${enrollFee < FIXED_COACHING_FEE ? " (half fee for this month)" : ""}`);
     setAdminNewStudentName(""); setAdminNewStudentPhone(""); setAdminNewStudentDOB(""); setAdminNewStudentEmail(""); setAdminNewStudentBatch("Morning Batch");
+    setAdminNewStudentFeeType("full");
     loadAcademyData();
   };
 
@@ -2303,15 +2312,43 @@ export default function AdminPage() {
                               </select>
                             </div>
                           </div>
-                          <div className="p-3 bg-neutral-950 border border-neutral-800 text-xs font-mono font-black text-lime-400">
-                            Fixed Fee Rate: ₹2,500
-                          </div>
+                          {isHalfFeeEligible ? (
+                            <div className="space-y-2.5 p-3 bg-amber-500/10 border border-amber-500/30">
+                              <p className="text-[11px] font-mono text-amber-200 leading-relaxed">
+                                📅 Joining after the 12th: you can collect half the fee for this first month. From next month it is the full fee.
+                              </p>
+                              <div className="grid grid-cols-2 gap-2">
+                                {([
+                                  { id: "full", label: "Full Fee", amt: FIXED_COACHING_FEE },
+                                  { id: "half", label: "Half Fee", amt: HALF_COACHING_FEE },
+                                ] as const).map((o) => (
+                                  <button
+                                    key={o.id}
+                                    type="button"
+                                    onClick={() => setAdminNewStudentFeeType(o.id)}
+                                    className={`min-h-[56px] border font-mono font-black uppercase transition-colors ${
+                                      adminNewStudentFeeType === o.id
+                                        ? "bg-lime-400 text-black border-lime-400"
+                                        : "bg-neutral-950 text-neutral-300 border-neutral-700"
+                                    }`}
+                                  >
+                                    <span className="block text-[10px] tracking-widest">{o.label}</span>
+                                    <span className="block text-base">₹{o.amt.toLocaleString("en-IN")}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="p-3 bg-neutral-950 border border-neutral-800 text-xs font-mono font-black text-lime-400">
+                              Fixed Fee Rate: ₹{FIXED_COACHING_FEE.toLocaleString("en-IN")}
+                            </div>
+                          )}
                           <motion.button
                             whileTap={{ scale: 0.97 }}
                             type="submit"
                             className="w-full min-h-[52px] bg-lime-400 hover:bg-lime-300 text-black font-mono font-black text-xs uppercase tracking-widest transition-colors"
                           >
-                            Enroll & Mark Paid
+                            Enroll & Mark Paid · ₹{enrollFee.toLocaleString("en-IN")}
                           </motion.button>
                         </motion.form>
                       ) : (
@@ -4040,7 +4077,7 @@ export default function AdminPage() {
                         <span className="text-sm font-black text-white">{monthLabelOf(ym)}</span>
                         {paid ? (
                           <span className="px-2 py-1 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 font-black">
-                            ✅ Paid ₹{Number(rec.amount_paid || 0).toLocaleString("en-IN")}
+                            ✅ Paid ₹{Number(rec.amount_paid || 0).toLocaleString("en-IN")}{Number(rec.amount_paid || 0) < FIXED_COACHING_FEE ? " (half)" : ""}
                           </span>
                         ) : (
                           <span className="px-2 py-1 text-[10px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black">
