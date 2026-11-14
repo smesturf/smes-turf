@@ -75,6 +75,51 @@ const ALL_SLOT_LABELS: string[] = (() => {
   return out;
 })();
 
+// ⏱️ Academy hours are picked as "from → to" ranges; they are expanded to the same 30-min slot
+// labels as before when saving, so the customer page and the API need no change.
+const SLOT_STEP = 30;
+const RANGE_MIN = 5 * 60; // 05:00 AM
+const RANGE_MAX = 23 * 60; // 11:00 PM (end of the last 30-min slot, 10:30 PM)
+type TimeRange = { from: number; to: number }; // minutes since midnight
+
+const minsToLabel = (mins: number) => {
+  const h24 = Math.floor(mins / 60);
+  const m = mins % 60;
+  const ap = h24 >= 12 ? "PM" : "AM";
+  const h12 = h24 % 12 || 12;
+  return `${String(h12).padStart(2, "0")}:${m === 0 ? "00" : "30"} ${ap}`;
+};
+const FROM_OPTIONS: number[] = (() => {
+  const out: number[] = [];
+  for (let m = RANGE_MIN; m < RANGE_MAX; m += SLOT_STEP) out.push(m);
+  return out;
+})();
+const TO_OPTIONS: number[] = FROM_OPTIONS.map((m) => m + SLOT_STEP);
+
+const rangesToSlots = (ranges: TimeRange[]): string[] => {
+  const set = new Set<number>();
+  ranges.forEach((r) => {
+    for (let m = r.from; m < r.to; m += SLOT_STEP) set.add(m);
+  });
+  return [...set].sort((a, b) => a - b).map(minsToLabel);
+};
+const slotsToRanges = (slots: string[]): TimeRange[] => {
+  const byLabel = new Map(FROM_OPTIONS.map((m) => [minsToLabel(m), m]));
+  const mins = slots
+    .map((l) => byLabel.get(l))
+    .filter((m): m is number => m !== undefined)
+    .sort((a, b) => a - b);
+  const out: TimeRange[] = [];
+  mins.forEach((m) => {
+    const last = out[out.length - 1];
+    if (last && last.to === m) last.to = m + SLOT_STEP;
+    else if (!last || m >= last.to) out.push({ from: m, to: m + SLOT_STEP });
+  });
+  return out;
+};
+const rangesText = (ranges: TimeRange[]) =>
+  ranges.map((r) => `${minsToLabel(r.from)} – ${minsToLabel(r.to)}`).join(", ");
+
 type BatchTabType = "Morning Batch" | "Evening Batch";
 
 export default function AdminPage() {
@@ -152,6 +197,14 @@ export default function AdminPage() {
     days: [1, 2, 3, 4, 5],
     slots: ["06:00 AM", "06:30 AM", "05:30 PM", "06:00 PM"],
   });
+  // Academy hours as from→to ranges (slots above are always derived from these)
+  const [academyRanges, setAcademyRanges] = useState<TimeRange[]>(() =>
+    slotsToRanges(["06:00 AM", "06:30 AM", "05:30 PM", "06:00 PM"])
+  );
+  const updateAcademyRanges = (next: TimeRange[]) => {
+    setAcademyRanges(next);
+    setAcademyForm((prev) => ({ ...prev, slots: rangesToSlots(next) }));
+  };
 
   const FIXED_COACHING_FEE = 2500;
   const HALF_COACHING_FEE = Math.round(FIXED_COACHING_FEE / 2);
@@ -713,6 +766,7 @@ export default function AdminPage() {
           days: row.value.days || [1, 2, 3, 4, 5],
           slots: row.value.slots || [],
         });
+        setAcademyRanges(slotsToRanges(row.value.slots || []));
       }
     });
   };
@@ -724,7 +778,7 @@ export default function AdminPage() {
       return;
     }
     if (academyForm.enabled && (!academyForm.start_date || academyForm.days.length === 0 || academyForm.slots.length === 0)) {
-      alert("Academy blocking is ON: pick a start date, at least one day and at least one time slot (or switch it OFF).");
+      alert("Academy blocking is ON: pick a start date, at least one day and at least one time range (or switch it OFF).");
       return;
     }
     triggerOtpProtection("update_settings");
@@ -1131,7 +1185,7 @@ export default function AdminPage() {
       rows.push({
         label: "Academy blocking",
         value: academyForm.enabled
-          ? `ON from ${fmtDate(academyForm.start_date)} · ${[...academyForm.days].sort().map((d) => DAY_NAMES[d]).join(", ")} · ${academyForm.slots.length} slots: ${ALL_SLOT_LABELS.filter((l) => academyForm.slots.includes(l)).join(", ")}`
+          ? `ON from ${fmtDate(academyForm.start_date)} · ${[...academyForm.days].sort().map((d) => DAY_NAMES[d]).join(", ")} · ${rangesText(slotsToRanges(academyForm.slots))}`
           : "OFF",
       });
       return rows;
@@ -2986,32 +3040,65 @@ export default function AdminPage() {
                       </div>
                     </div>
 
-                    <div className="space-y-1.5">
-                      <label className={coachingLabelCls}>Blocked time slots (tap to select)</label>
-                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-1.5 max-h-[280px] overflow-y-auto p-1">
-                        {ALL_SLOT_LABELS.map((slot) => {
-                          const on = academyForm.slots.includes(slot);
-                          return (
-                            <button
-                              key={slot}
-                              type="button"
-                              onClick={() =>
-                                setAcademyForm({
-                                  ...academyForm,
-                                  slots: on ? academyForm.slots.filter((x) => x !== slot) : [...academyForm.slots, slot],
-                                })
-                              }
-                              className={`min-h-[44px] text-[10px] font-mono font-black border transition-colors ${
-                                on ? "bg-red-500/20 text-red-300 border-red-500/60" : "bg-neutral-900 text-neutral-400 border-neutral-800"
-                              }`}
+                    <div className="space-y-2">
+                      <label className={coachingLabelCls}>Academy hours (from → to)</label>
+                      {academyRanges.map((r, idx) => (
+                        <div key={idx} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">From</span>
+                            <select
+                              value={r.from}
+                              onChange={(e) => {
+                                const from = Number(e.target.value);
+                                const to = r.to <= from ? Math.min(from + 60, RANGE_MAX) : r.to;
+                                updateAcademyRanges(academyRanges.map((x, i) => (i === idx ? { from, to } : x)));
+                              }}
+                              className={coachingInputCls}
                             >
-                              {slot}
-                            </button>
-                          );
-                        })}
-                      </div>
+                              {FROM_OPTIONS.map((m) => (
+                                <option key={m} value={m}>{minsToLabel(m)}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">To</span>
+                            <select
+                              value={r.to}
+                              onChange={(e) =>
+                                updateAcademyRanges(academyRanges.map((x, i) => (i === idx ? { ...x, to: Number(e.target.value) } : x)))
+                              }
+                              className={coachingInputCls}
+                            >
+                              {TO_OPTIONS.filter((m) => m > r.from).map((m) => (
+                                <option key={m} value={m}>{minsToLabel(m)}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <button
+                            type="button"
+                            aria-label="Remove this time range"
+                            onClick={() => updateAcademyRanges(academyRanges.filter((_, i) => i !== idx))}
+                            className="min-h-[48px] min-w-[48px] border border-red-500/40 text-red-300 font-mono font-black text-sm active:bg-red-500/10"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const last = academyRanges[academyRanges.length - 1];
+                          const from = last ? Math.min(last.to, RANGE_MAX - 60) : 6 * 60;
+                          updateAcademyRanges([...academyRanges, { from, to: from + 60 }]);
+                        }}
+                        className="w-full min-h-[44px] border border-dashed border-neutral-700 text-neutral-300 font-mono font-black text-[11px] uppercase tracking-widest active:bg-neutral-800"
+                      >
+                        + Add another time range
+                      </button>
                       <p className="text-[11px] font-mono text-neutral-400">
-                        {academyForm.slots.length} slot(s) blocked on{" "}
+                        {academyRanges.length
+                          ? `Blocked ${rangesText(academyRanges)} on `
+                          : "No hours set on "}
                         {academyForm.days.length ? [...academyForm.days].sort().map((d) => DAY_NAMES[d]).join(", ") : "no days"}
                       </p>
                     </div>
