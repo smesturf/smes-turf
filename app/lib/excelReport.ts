@@ -95,6 +95,73 @@ function num(v: any) {
   return isFinite(n) ? n : 0;
 }
 
+/** "cricket", "Cricket", " CRICKET " -> "Cricket" so the same sport is never split in two. */
+function normSport(v: any) {
+  const t = String(v ?? "").trim().toLowerCase();
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : "-";
+}
+/**
+ * Payment log -> only the collections that are still standing.
+ * A "booking_reset" cancels the balance collected earlier on that booking, and a
+ * "student_fee_removed" cancels the matching earlier student fee, so neither is
+ * credited to a staff member any more. (The raw log is still shown on the Payment Log sheet.)
+ */
+function netPaymentLog(log: any[]) {
+  const asc = [...log].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  const live: any[] = [];
+  const bookingId = (p: any) => (p.booking_id ?? p.bookingId ?? null) as any;
+  const studentId = (p: any) => String(p.student_id ?? p.studentId ?? "");
+  asc.forEach((p) => {
+    if (p.kind === "booking_reset") {
+      const id = bookingId(p);
+      const resetName = String(p.note || "").replace(/^Payment reset for\s+/i, "").trim();
+      for (let i = live.length - 1; i >= 0; i--) {
+        const q = live[i];
+        if (q.kind !== "booking_balance") continue;
+        const same = id != null && bookingId(q) != null ? String(bookingId(q)) === String(id) : !!resetName && String(q.note || "").startsWith(resetName + " ·");
+        if (same) live.splice(i, 1);
+      }
+      return;
+    }
+    if (p.kind === "student_fee_removed") {
+      const sid = studentId(p);
+      for (let i = live.length - 1; i >= 0; i--) {
+        const q = live[i];
+        if (q.kind !== "student_fee" || q.month_year !== p.month_year || studentId(q) !== sid) continue;
+        if (!sid && num(q.amount) !== num(p.amount)) continue;
+        live.splice(i, 1);
+        break;
+      }
+      return;
+    }
+    live.push(p);
+  });
+  return live;
+}
+
+function staffRowsFromLog(entries: any[]) {
+  const map: Record<string, { role: string; bc: number; ba: number; sc: number; sa: number }> = {};
+  entries.forEach((p) => {
+    const name = p.collected_by || "Unknown";
+    const e = (map[name] = map[name] || { role: p.collected_by_role || "-", bc: 0, ba: 0, sc: 0, sa: 0 });
+    if (p.kind === "booking_advance" || p.kind === "booking_balance") {
+      e.bc++;
+      e.ba += num(p.amount);
+    } else if (p.kind === "student_fee") {
+      e.sc++;
+      e.sa += num(p.amount);
+    }
+  });
+  return staffRowsFromMap(map);
+}
+function staffRowsFromMap(map: Record<string, { role: string; bc: number; ba: number; sc: number; sa: number }>) {
+  const rows = Object.entries(map)
+    .map(([name, e]) => [name, e.role, e.bc, e.ba, e.sc, e.sa, e.ba + e.sa] as any[])
+    .sort((a, b) => b[6] - a[6]);
+  if (rows.length === 0) rows.push(["No staff-recorded collections", "-", 0, 0, 0, 0, 0]);
+  return rows;
+}
+
 function moneyOf(b: any) {
   const total = num(b.total_amount);
   const bal = num(b.balance_amount);
@@ -125,19 +192,20 @@ function setup(ws: any, tab: string, landscape = true) {
   ws.pageSetup = { orientation: landscape ? "landscape" : "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
 }
 
-function titleBar(ws: any, title: string, sub: string, lastCol: number) {
-  ws.mergeCells(1, 1, 1, lastCol);
+function titleBar(ws: any, title: string, sub: string, lastCol: number, mergeTo = lastCol) {
+  const narrow = mergeTo < lastCol;
+  ws.mergeCells(1, 1, 1, mergeTo);
   const t = ws.getCell(1, 1);
   t.value = title;
   t.font = { bold: true, size: 18, color: { argb: C.lime } };
-  t.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+  t.alignment = { vertical: "middle", horizontal: "center" };
   ws.getRow(1).height = 36;
-  ws.mergeCells(2, 1, 2, lastCol);
+  ws.mergeCells(2, 1, 2, mergeTo);
   const s = ws.getCell(2, 1);
   s.value = sub;
   s.font = { size: 10, color: { argb: "FFCBD5E1" } };
-  s.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
-  ws.getRow(2).height = 20;
+  s.alignment = { vertical: "middle", horizontal: "center", wrapText: narrow };
+  ws.getRow(2).height = narrow ? 34 : 20;
   for (let c = 1; c <= lastCol; c++) {
     ws.getCell(1, c).fill = fill(C.ink);
     ws.getCell(2, c).fill = fill(C.head);
@@ -211,6 +279,53 @@ function setWidths(ws: any, widths: number[]) {
   widths.forEach((w, i) => (ws.getColumn(i + 1).width = w));
 }
 
+/** Header + rows of the "collected by staff" table. Returns the next free row. */
+function staffTable(ws: any, r: number, rows: any[][], lastCol: number, note?: string) {
+  headerRow(ws, r, ["Staff Name", "Role", "Booking Payments", "Booking ₹", "Student Fees", "Student ₹", "Total ₹"]);
+  const sf = r + 1;
+  bodyRows(ws, sf, rows, [undefined, undefined, "#,##0", INR, "#,##0", INR, INR], [undefined, "center"]);
+  rows.forEach((_, i) => {
+    ws.getCell(sf + i, 1).font = { bold: true, size: 10 };
+    ws.getCell(sf + i, 7).font = { bold: true, size: 10, color: { argb: C.greenTx } };
+  });
+  r = sf + rows.length;
+  if (note) {
+    ws.mergeCells(r, 1, r, lastCol);
+    ws.getCell(r, 1).value = note;
+    ws.getCell(r, 1).font = { italic: true, size: 9, color: { argb: C.mute } };
+  }
+  return r;
+}
+
+/** Sport-wise table (sport names are merged case-insensitively). Returns the last row used. */
+function sportTable(ws: any, r: number, list: any[], lastCol: number, shareCol: number) {
+  headerRow(ws, r, ["Sport", "Bookings", "Revenue Expected", "Collected", "Pending", "Share of Revenue"]);
+  const all = statsOf(list);
+  const map: Record<string, { n: number; total: number; paid: number; bal: number }> = {};
+  list.forEach((b) => {
+    const k = normSport(b.sport);
+    const m = moneyOf(b);
+    const e = (map[k] = map[k] || { n: 0, total: 0, paid: 0, bal: 0 });
+    e.n++;
+    e.total += m.total;
+    e.paid += m.paid;
+    e.bal += m.bal;
+  });
+  const rows = Object.entries(map)
+    .sort((a, b) => b[1].total - a[1].total)
+    .map(([k, e]) => [k, e.n, e.total, e.paid, e.bal, all.total ? e.total / all.total : 0] as any[]);
+  if (rows.length === 0) rows.push(["-", 0, 0, 0, 0, 0]);
+  const f = r + 1;
+  bodyRows(ws, f, rows, [undefined, "#,##0", INR, INR, INR, PCT]);
+  rows.forEach((_, i) => (ws.getCell(f + i, 1).font = { bold: true, size: 10 }));
+  const letter = ws.getColumn(shareCol).letter;
+  ws.addConditionalFormatting({
+    ref: `${letter}${f}:${letter}${f + rows.length - 1}`,
+    rules: [{ type: "dataBar", cfvo: [{ type: "num", value: 0 }, { type: "num", value: 1 }], color: { argb: C.lime } }],
+  });
+  return f + rows.length - 1;
+}
+
 /* =========================================================================== */
 export async function downloadMasterReport(input: ReportInput) {
   const mod: any = await import("exceljs");
@@ -246,6 +361,15 @@ export async function downloadMasterReport(input: ReportInput) {
     });
   });
   const pendingMonth = Math.max(0, activeStudents.length - settledMonth);
+
+  const sorted = [...activeStudents].sort((a, b) => {
+    const rank = (s: any) => (s.batch === "Morning Batch" ? 0 : s.batch === "Evening Batch" ? 1 : 2);
+    return rank(a) - rank(b) || String(a.name).localeCompare(String(b.name));
+  });
+  const allMonths = Array.from(new Set(sorted.flatMap((s) => (s.student_payments || []).map((p: any) => p.month_year as string)))).filter(Boolean).sort();
+
+  // collections that are still standing (resets / removed fees are netted out)
+  const liveLog = netPaymentLog(paymentLog);
 
   /* ======================= 1. SUMMARY ======================= */
   {
@@ -359,24 +483,15 @@ export async function downloadMasterReport(input: ReportInput) {
     r += 1;
     sectionBand(ws, r, "👤  COLLECTED BY STAFF", 7);
     r++;
-    headerRow(ws, r, ["Staff Name", "Role", "Booking Payments", "Booking ₹", "Student Fees", "Student ₹", "Total ₹"]);
-    const staffMap: Record<string, { role: string; bc: number; ba: number; sc: number; sa: number }> = {};
-    const bump = (name: string, role: string) => (staffMap[name] = staffMap[name] || { role: role || "-", bc: 0, ba: 0, sc: 0, sa: 0 });
+    let staffRows: any[][];
     let source = "";
     if (paymentLog.length > 0) {
-      source = "Source: payment log (every collection recorded separately).";
-      paymentLog.forEach((p) => {
-        const e = bump(p.collected_by || "Unknown", p.collected_by_role);
-        if (p.kind === "booking_advance" || p.kind === "booking_balance") {
-          e.bc++;
-          e.ba += num(p.amount);
-        } else if (p.kind === "student_fee") {
-          e.sc++;
-          e.sa += num(p.amount);
-        }
-      });
+      source = "Source: payment log. Payments that were reset / removed are not counted.";
+      staffRows = staffRowsFromLog(liveLog);
     } else {
       source = "Source: latest collector saved on each booking / student payment.";
+      const staffMap: Record<string, { role: string; bc: number; ba: number; sc: number; sa: number }> = {};
+      const bump = (name: string, role: string) => (staffMap[name] = staffMap[name] || { role: role || "-", bc: 0, ba: 0, sc: 0, sa: 0 });
       bookings.forEach((b) => {
         if (!b.collected_by) return;
         const e = bump(b.collected_by, b.collected_by_role);
@@ -391,48 +506,15 @@ export async function downloadMasterReport(input: ReportInput) {
           e.sa += num(p.amount_paid);
         })
       );
+      staffRows = staffRowsFromMap(staffMap);
     }
-    const staffRows = Object.entries(staffMap)
-      .map(([name, e]) => [name, e.role, e.bc, e.ba, e.sc, e.sa, e.ba + e.sa] as any[])
-      .sort((a, b) => b[6] - a[6]);
-    if (staffRows.length === 0) staffRows.push(["No staff-recorded collections yet", "-", 0, 0, 0, 0, 0]);
-    const sf = r + 1;
-    bodyRows(ws, sf, staffRows, [undefined, undefined, "#,##0", INR, "#,##0", INR, INR], [undefined, "center"]);
-    staffRows.forEach((_, i) => {
-      ws.getCell(sf + i, 1).font = { bold: true, size: 10 };
-      ws.getCell(sf + i, 7).font = { bold: true, size: 10, color: { argb: C.greenTx } };
-    });
-    r = sf + staffRows.length;
-    ws.mergeCells(r, 1, r, 7);
-    ws.getCell(r, 1).value = source;
-    ws.getCell(r, 1).font = { italic: true, size: 9, color: { argb: C.mute } };
+    r = staffTable(ws, r, staffRows, 7, source);
 
     // Sport-wise
     r += 2;
     sectionBand(ws, r, "⚽  SPORT-WISE", 7);
     r++;
-    headerRow(ws, r, ["Sport", "Bookings", "Revenue Expected", "Collected", "Pending", "Share of Revenue"]);
-    const sportMap: Record<string, { n: number; total: number; paid: number; bal: number }> = {};
-    bookings.forEach((b) => {
-      const k = b.sport || "-";
-      const m = moneyOf(b);
-      const e = (sportMap[k] = sportMap[k] || { n: 0, total: 0, paid: 0, bal: 0 });
-      e.n++;
-      e.total += m.total;
-      e.paid += m.paid;
-      e.bal += m.bal;
-    });
-    const sportRows = Object.entries(sportMap)
-      .sort((a, b) => b[1].total - a[1].total)
-      .map(([k, e]) => [k, e.n, e.total, e.paid, e.bal, sAll.total ? e.total / sAll.total : 0] as any[]);
-    if (sportRows.length === 0) sportRows.push(["-", 0, 0, 0, 0, 0]);
-    const spf = r + 1;
-    bodyRows(ws, spf, sportRows, [undefined, "#,##0", INR, INR, INR, PCT]);
-    sportRows.forEach((_, i) => (ws.getCell(spf + i, 1).font = { bold: true, size: 10 }));
-    ws.addConditionalFormatting({
-      ref: `F${spf}:F${spf + sportRows.length - 1}`,
-      rules: [{ type: "dataBar", cfvo: [{ type: "num", value: 0 }, { type: "num", value: 1 }], color: { argb: C.lime } }],
-    });
+    sportTable(ws, r, bookings, 7, 6);
   }
 
   /* ======================= 2. BOOKINGS ======================= */
@@ -441,7 +523,7 @@ export async function downloadMasterReport(input: ReportInput) {
     setup(ws, "FF2563EB");
     const headers = ["S.No.", "Date", "Time", "Customer", "Phone", "Sport", "Type", "Court", "Duration (min)", "Total (₹)", "Advance (₹)", "Balance (₹)", "Cash (₹)", "UPI / Online (₹)", "Payment Method", "Booking Status", "Payment", "Collected By", "Collector Role", "Collected At", "Email", "Reference ID", "Booking ID"];
     setWidths(ws, [7, 13, 11, 24, 15, 13, 13, 9, 11, 13, 13, 13, 13, 15, 16, 16, 12, 16, 14, 22, 28, 18, 12]);
-    titleBar(ws, "BOOKINGS  ·  FULL HISTORY", `${bookings.length} bookings  ·  ${sub}`, headers.length);
+    titleBar(ws, "BOOKINGS  ·  FULL HISTORY", `${bookings.length} bookings  ·  ${sub}`, headers.length, 4);
     const HR = 4;
     headerRow(ws, HR, headers);
     const rows = bookings.map((b, i) => {
@@ -452,7 +534,7 @@ export async function downloadMasterReport(input: ReportInput) {
         b.start_time || "-",
         b.customer_name || "-",
         b.phone || "-",
-        b.sport || "-",
+        normSport(b.sport),
         b.booking_type || "-",
         b.court_number || "-",
         num(b.duration_minutes) || 60,
@@ -489,7 +571,7 @@ export async function downloadMasterReport(input: ReportInput) {
       totalsRow(ws, l + 1, "TOTAL (follows filters)", f, l, [10, 11, 12, 13, 14], { 10: sAll.total, 11: sAll.adv, 12: sAll.bal, 13: sAll.cash, 14: sAll.upi }, INR, headers.length);
       ws.autoFilter = { from: { row: HR, column: 1 }, to: { row: l, column: headers.length } };
     }
-    ws.views = [{ state: "frozen", xSplit: 4, ySplit: HR, showGridLines: false }];
+    ws.views = [{ state: "frozen", xSplit: 4, showGridLines: false }];
   }
 
   /* ======================= 3. DAILY SUMMARY ======================= */
@@ -526,15 +608,10 @@ export async function downloadMasterReport(input: ReportInput) {
         rules: [{ type: "colorScale", cfvo: [{ type: "min" }, { type: "max" }], color: [{ argb: "FFFFFFFF" }, { argb: C.lime }] }],
       });
     }
-    ws.views = [{ state: "frozen", xSplit: 1, ySplit: 4, showGridLines: false }];
+    ws.views = [{ showGridLines: false }];
   }
 
   /* ======================= 4. COACHING ROSTER ======================= */
-  const sorted = [...activeStudents].sort((a, b) => {
-    const rank = (s: any) => (s.batch === "Morning Batch" ? 0 : s.batch === "Evening Batch" ? 1 : 2);
-    return rank(a) - rank(b) || String(a.name).localeCompare(String(b.name));
-  });
-  const allMonths = Array.from(new Set(sorted.flatMap((s) => (s.student_payments || []).map((p: any) => p.month_year as string)))).filter(Boolean).sort();
   {
     const ws = wb.addWorksheet("Coaching Roster");
     setup(ws, "FF7C3AED");
@@ -616,35 +693,10 @@ export async function downloadMasterReport(input: ReportInput) {
       totalsRow(ws, tr, "TOTAL (follows filters)", f, l, [10], { 10: rows.reduce((a, r) => a + r[9], 0) }, INR, 11);
       ws.autoFilter = { from: { row: 5, column: 1 }, to: { row: l, column: lastCol } };
     }
-    ws.views = [{ state: "frozen", xSplit: 2, ySplit: 5, showGridLines: false }];
+    ws.views = [{ showGridLines: false }];
   }
 
-  /* ======================= 5. STUDENT PAYMENTS ======================= */
-  {
-    const ws = wb.addWorksheet("Student Payments");
-    setup(ws, "FF16A34A");
-    const headers = ["#", "Student", "Batch", "Month", "Amount (₹)", "Method", "Status", "Collected By", "Collector Role", "Collected At"];
-    setWidths(ws, [6, 26, 16, 18, 14, 16, 14, 16, 14, 22]);
-    const all: any[] = [];
-    sorted.forEach((s) => (s.student_payments || []).forEach((p: any) => all.push({ s, p })));
-    all.sort((a, b) => String(b.p.month_year).localeCompare(String(a.p.month_year)) || String(a.s.name).localeCompare(String(b.s.name)));
-    titleBar(ws, "STUDENT FEE PAYMENTS", `${all.length} records  ·  ${sub}`, headers.length);
-    headerRow(ws, 4, headers);
-    const rows = all.map(({ s, p }, i) => [i + 1, s.name, s.batch || "-", fmtMonth(p.month_year), p.status === "settled" ? num(p.amount_paid) : 0, p.payment_method || "-", p.status === "settled" ? "Settled" : "Pending", p.collected_by || "-", p.collected_by_role || "-", fmtIST(p.collected_at)] as any[]);
-    const [f, l] = bodyRows(ws, 5, rows, [undefined, undefined, undefined, undefined, INR], ["center", undefined, "center", "center", undefined, "center", "center", "center", "center"]);
-    rows.forEach((row, i) => {
-      tone(ws.getCell(f + i, 7), row[6] === "Settled" ? "good" : "bad");
-      ws.getCell(f + i, 2).font = { bold: true, size: 10 };
-      if (row[7] !== "-") ws.getCell(f + i, 8).font = { bold: true, size: 10, color: { argb: C.blueTx } };
-    });
-    if (rows.length > 0) {
-      totalsRow(ws, l + 1, "TOTAL (follows filters)", f, l, [5], { 5: rows.reduce((a, r) => a + r[4], 0) }, INR, headers.length);
-      ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: l, column: headers.length } };
-    }
-    ws.views = [{ state: "frozen", xSplit: 2, ySplit: 4, showGridLines: false }];
-  }
-
-  /* ======================= 6. ATTENDANCE ======================= */
+  /* ======================= 5. ATTENDANCE ======================= */
   {
     const ws = wb.addWorksheet("Attendance");
     setup(ws, "FFEA580C");
@@ -690,10 +742,10 @@ export async function downloadMasterReport(input: ReportInput) {
       });
     });
     if (rows.length > 0) ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: f + rows.length - 1, column: lastCol } };
-    ws.views = [{ state: "frozen", xSplit: 3, ySplit: 4, showGridLines: false }];
+    ws.views = [{ showGridLines: false }];
   }
 
-  /* ======================= 7. PAYMENT LOG ======================= */
+  /* ======================= 6. PAYMENT LOG ======================= */
   if (paymentLog.length > 0) {
     const ws = wb.addWorksheet("Payment Log");
     setup(ws, "FFDB2777");
@@ -715,7 +767,7 @@ export async function downloadMasterReport(input: ReportInput) {
       ws.getCell(f + i, 2).font = { bold: true, size: 10, color: { argb: C.blueTx } };
     });
     ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: l, column: headers.length } };
-    ws.views = [{ state: "frozen", xSplit: 0, ySplit: 4, showGridLines: false }];
+    ws.views = [{ showGridLines: false }];
   }
 
   /* ---------- download ---------- */
