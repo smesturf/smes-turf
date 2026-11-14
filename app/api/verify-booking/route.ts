@@ -91,9 +91,48 @@ export async function POST(req: Request) {
 
     // ⚡ 5. BULLETPROOF SERVER-SIDE MATH (Overrides old cached tabs)
     const mins = Number(bookingDetails.duration);
-    let basePrice = bookingDetails.bookingType === "Half Court"
-      ? Math.round((mins / 60) * 1100) 
-      : Math.round((mins / 60) * 2200); 
+
+    // Hourly rates come from the admin-controlled settings (falls back to the original rates)
+    let rates = { full_hour: 2200, half_hour: 1100 };
+    try {
+      const { data: priceRow } = await supabase
+        .from("site_settings")
+        .select("value")
+        .eq("key", "pricing")
+        .maybeSingle();
+      if (priceRow?.value) {
+        rates = {
+          full_hour: Number(priceRow.value.full_hour) || rates.full_hour,
+          half_hour: Number(priceRow.value.half_hour) || rates.half_hour,
+        };
+      }
+    } catch {
+      /* keep defaults */
+    }
+
+    const basePrice = Math.round(
+      (mins / 60) * (bookingDetails.bookingType === "Half Court" ? rates.half_hour : rates.full_hour)
+    );
+
+    // 🏷️ Special percentage offer (same rule the booking page uses)
+    let specialApplies = false;
+    let specialDiscount = 0;
+    try {
+      const { data: offerRows } = await supabase
+        .from("customer_discounts")
+        .select("discount_percent, start_date, end_date")
+        .ilike("email", String(bookingDetails.email || "").trim().toLowerCase())
+        .eq("phone", bookingDetails.phone)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const offer = offerRows?.[0];
+      if (offer && bookingDetails.bookingDate >= offer.start_date && bookingDetails.bookingDate <= offer.end_date) {
+        specialApplies = true;
+        specialDiscount = Math.round((basePrice * Number(offer.discount_percent || 0)) / 100);
+      }
+    } catch {
+      /* no offer */
+    }
 
     // ⚡ Check VIP Spend Database safely in the backend
     const { data: vipData } = await supabase
@@ -103,8 +142,9 @@ export async function POST(req: Request) {
       .eq("phone", bookingDetails.phone)
       .limit(1);
 
-    let discount = 0;
-    if (vipData && vipData.length > 0) {
+    // Loyalty ₹1000 only applies when no special offer is active (same as the booking page)
+    let discount = specialDiscount;
+    if (!specialApplies && vipData && vipData.length > 0) {
       const { data: pastBookings } = await supabase
         .from("bookings")
         .select("duration_minutes, booking_type, total_amount")
