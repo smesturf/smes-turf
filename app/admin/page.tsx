@@ -58,6 +58,8 @@ export default function AdminPage() {
   const [academyTab, setAcademyTab] = useState<"new" | "existing">("existing");
   const [rosterTab, setRosterTab] = useState<BatchTabType>("Morning Batch");
   const [academySearch, setAcademySearch] = useState("");
+  // Football Academy (batches + roster) stays collapsed until the admin taps it
+  const [showAcademyRoster, setShowAcademyRoster] = useState(false);
   const [adminNewStudentName, setAdminNewStudentName] = useState("");
   const [adminNewStudentPhone, setAdminNewStudentPhone] = useState("");
   const [adminNewStudentDOB, setAdminNewStudentDOB] = useState("");
@@ -1561,6 +1563,17 @@ export default function AdminPage() {
     return { morning: calc("Morning Batch"), evening: calc("Evening Batch") };
   }, [academyStudents]);
 
+  // 🔢 Serial numbers: 1, 2, 3... separately for Morning and Evening batch
+  const academySerials = useMemo(() => {
+    const map: Record<string, number> = {};
+    (["Morning Batch", "Evening Batch"] as BatchTabType[]).forEach((batch) => {
+      academyStudents
+        .filter((s) => s.batch === batch)
+        .forEach((s, i) => { map[s.id] = i + 1; });
+    });
+    return map;
+  }, [academyStudents]);
+
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden selection:bg-lime-400 selection:text-black">
 
@@ -1693,7 +1706,11 @@ export default function AdminPage() {
               onClick={() => {
                 const nextState = !showCoachingPanel;
                 setShowCoachingPanel(nextState);
-                if (nextState) setAcademyTab("existing");
+                if (nextState) {
+                  setAcademyTab("existing");
+                  setShowAcademyRoster(false);
+                  setAcademySearch("");
+                }
               }}
             >
               ⚽ Football Coaching
@@ -1727,10 +1744,10 @@ export default function AdminPage() {
                 <div className="flex items-start justify-between gap-3 pt-1">
                   <div className="min-w-0">
                     <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">
-                      A1 — Football Academy
+                      A1 — Football Coaching
                     </span>
                     <h2 className="text-lg sm:text-xl font-black uppercase text-white leading-tight">
-                      Coaching Dashboard
+                      Coaching Ledger
                     </h2>
                     <p className="text-[11px] font-mono text-lime-400 mt-0.5">{currentMonthLabel}</p>
                   </div>
@@ -1744,319 +1761,14 @@ export default function AdminPage() {
                   </button>
                 </div>
 
-                {/* Batch Strength Cards (tap to open that batch) */}
-                <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
-                  {([
-                    { id: "Morning Batch", icon: "🌅", label: "Morning", stats: academyStats.morning },
-                    { id: "Evening Batch", icon: "🌙", label: "Evening", stats: academyStats.evening },
-                  ] as const).map((b) => {
-                    const active = rosterTab === b.id;
-                    return (
-                      <motion.button
-                        key={b.id}
-                        type="button"
-                        whileTap={{ scale: 0.97 }}
-                        onClick={() => setRosterTab(b.id)}
-                        className={`relative text-left p-3.5 sm:p-4 border transition-colors overflow-hidden ${
-                          active
-                            ? "bg-lime-400/10 border-lime-400/60 shadow-[0_0_24px_rgba(163,230,53,0.12)]"
-                            : "bg-neutral-950 border-neutral-800 hover:border-neutral-600"
-                        }`}
-                      >
-                        {active && <span className="absolute top-0 inset-x-0 h-0.5 bg-lime-400" />}
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] sm:text-[11px] font-mono uppercase tracking-widest text-neutral-400 font-black">
-                            {b.icon} {b.label}
-                          </span>
-                          {active && <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />}
-                        </div>
-                        <div className="flex items-baseline gap-1.5 mt-2">
-                          <span className={`text-4xl sm:text-5xl font-black leading-none ${active ? "text-lime-400" : "text-white"}`}>
-                            {b.stats.total}
-                          </span>
-                          <span className="text-[10px] font-mono uppercase text-neutral-500">
-                            {b.stats.total === 1 ? "student" : "students"}
-                          </span>
-                        </div>
-                        <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-mono">
-                          <span className="text-lime-400">✅ {b.stats.paid} paid</span>
-                          <span className={b.stats.due > 0 ? "text-red-400" : "text-neutral-600"}>⚠️ {b.stats.due} due</span>
-                        </div>
-                      </motion.button>
-                    );
-                  })}
-                </div>
-
-                {/* Overall strip */}
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="p-2.5 bg-neutral-950 border border-neutral-900">
-                    <span className="block text-lg sm:text-xl font-black text-white leading-none">{academyStats.morning.total + academyStats.evening.total}</span>
-                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Total</span>
-                  </div>
-                  <div className="p-2.5 bg-neutral-950 border border-neutral-900">
-                    <span className="block text-lg sm:text-xl font-black text-lime-400 leading-none">{academyStats.morning.paid + academyStats.evening.paid}</span>
-                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Fees Paid</span>
-                  </div>
-                  <div className="p-2.5 bg-neutral-950 border border-neutral-900">
-                    <span className="block text-lg sm:text-xl font-black text-red-400 leading-none">{academyStats.morning.due + academyStats.evening.due}</span>
-                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Fees Due</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
-
-                  {/* ---------- Roster (first on phones) ---------- */}
-                  <div className="order-1 lg:order-2 lg:col-span-2 border border-neutral-900 bg-neutral-900/30 overflow-hidden flex flex-col">
-                    <div className="p-3 sm:p-4 border-b border-neutral-900 space-y-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">A2 — Master Roster</span>
-                          <h3 className="text-sm font-black uppercase text-white truncate">
-                            {rosterTab} · <span className="text-lime-400">{filteredAcademyStudents.length}</span>
-                            <span className="text-neutral-500 font-mono text-[10px] normal-case ml-1.5">
-                              ({rosterTab === "Morning Batch" ? academyStats.morning.present : academyStats.evening.present} present today)
-                            </span>
-                          </h3>
-                        </div>
-                      </div>
-
-                      {/* Batch switch with counts */}
-                      <LayoutGroup id="admin-roster-tabs">
-                        <div className="grid grid-cols-2 gap-1.5 p-1 border border-neutral-800 bg-neutral-950">
-                          {[
-                            { id: "Morning Batch", label: "🌅 Morning", count: academyStats.morning.total },
-                            { id: "Evening Batch", label: "🌙 Evening", count: academyStats.evening.total },
-                          ].map((t) => (
-                            <motion.button
-                              key={t.id}
-                              type="button"
-                              whileTap={{ scale: 0.97 }}
-                              onClick={() => setRosterTab(t.id as BatchTabType)}
-                              className={`relative min-h-[44px] text-[11px] font-mono uppercase tracking-widest transition-colors ${
-                                rosterTab === t.id ? "text-black font-black" : "text-neutral-400 hover:text-white"
-                              }`}
-                            >
-                              {rosterTab === t.id && (
-                                <motion.span
-                                  layoutId="admin-roster-tab-highlight"
-                                  className="absolute inset-0 bg-lime-400 -z-0"
-                                  transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                                />
-                              )}
-                              <span className="relative z-10">{t.label} ({t.count})</span>
-                            </motion.button>
-                          ))}
-                        </div>
-                      </LayoutGroup>
-
-                      {/* Search + reminders */}
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <input
-                          type="text"
-                          inputMode="search"
-                          placeholder="🔍 Search name or phone"
-                          value={academySearch}
-                          onChange={(e) => setAcademySearch(e.target.value)}
-                          className={`${coachingInputCls} sm:flex-1`}
-                        />
-                        <motion.button
-                          type="button"
-                          whileTap={{ scale: 0.97 }}
-                          onClick={sendEmailReminders}
-                          disabled={isSendingEmails}
-                          className={`min-h-[48px] bg-neutral-900 border border-neutral-800 text-red-400 hover:bg-red-950 hover:border-red-900 hover:text-white font-mono text-[11px] uppercase tracking-widest px-4 font-black transition-colors flex items-center justify-center gap-2 ${isSendingEmails ? "opacity-50 cursor-not-allowed" : ""}`}
-                        >
-                          {isSendingEmails ? "⏳ Dispatching..." : "📧 Email Due Reminders"}
-                        </motion.button>
-                      </div>
-                    </div>
-
-                    {/* Empty state */}
-                    {filteredAcademyStudents.length === 0 && (
-                      <div className="py-10 px-4 text-center space-y-2">
-                        <span className="text-3xl block">⚽</span>
-                        <p className="text-xs font-mono font-black uppercase tracking-widest text-neutral-400">
-                          {academySearch ? "No students match your search" : `No students in ${rosterTab}`}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Phone cards */}
-                    <div className="block sm:hidden max-h-[70vh] overflow-y-auto p-3 space-y-2.5">
-                      {filteredAcademyStudents.map((s) => {
-                        const isUnpaid = s.payment_status !== "settled";
-                        const todayAtt = s.student_attendance?.find((a: any) => a.date === getTodayStr());
-                        const isPresent = todayAtt?.status === "Present";
-                        const isAbsent = todayAtt?.status === "Absent";
-
-                        return (
-                          <motion.div
-                            key={s.id}
-                            layout
-                            initial={{ opacity: 0, y: 8 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className={`p-3 border space-y-3 ${
-                              isUnpaid ? "bg-red-500/[0.06] border-red-500/25" : "bg-neutral-950/60 border-neutral-800"
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className={`w-11 h-11 shrink-0 rounded-full flex items-center justify-center font-black text-base border ${
-                                isUnpaid ? "bg-red-500/10 border-red-500/40 text-red-400" : "bg-lime-400/10 border-lime-400/40 text-lime-400"
-                              }`}>
-                                {(s.name || "?").trim().charAt(0).toUpperCase()}
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <h4 className="text-sm font-black text-white truncate">{s.name}</h4>
-                                <a href={`tel:${s.phone}`} className="text-[12px] font-mono text-lime-400/90 block mt-0.5">
-                                  📞 {s.phone}
-                                </a>
-                              </div>
-                              {isUnpaid ? (
-                                <motion.span
-                                  animate={{ opacity: [1, 0.55, 1] }}
-                                  transition={{ duration: 2, repeat: Infinity }}
-                                  className="px-2 py-1 text-[10px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black shrink-0"
-                                >
-                                  ⚠️ Due
-                                </motion.span>
-                              ) : (
-                                <span className="px-2 py-1 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 font-black shrink-0">
-                                  ✅ {s.payment_method}
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="grid grid-cols-[1fr_1fr_44px] gap-2">
-                              <button
-                                type="button"
-                                onClick={() => markAttendance(s.id, "Present")}
-                                className={`h-11 text-[11px] font-mono font-black uppercase tracking-widest border transition-all ${
-                                  isPresent ? "bg-lime-500 text-black border-lime-500 shadow-[0_0_15px_rgba(132,204,22,0.45)]" : "bg-lime-500/10 text-lime-400 border-lime-500/30 active:bg-lime-500/30"
-                                }`}
-                              >
-                                ✓ Present
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => markAttendance(s.id, "Absent")}
-                                className={`h-11 text-[11px] font-mono font-black uppercase tracking-widest border transition-all ${
-                                  isAbsent ? "bg-red-600 text-white border-red-600 shadow-[0_0_15px_rgba(220,38,38,0.5)]" : "bg-red-500/10 text-red-400 border-red-500/30 active:bg-red-500/30"
-                                }`}
-                              >
-                                ✕ Absent
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => deleteStudent(s.id, s.name)}
-                                aria-label={`Delete ${s.name}`}
-                                className="h-11 flex items-center justify-center bg-neutral-900 border border-neutral-800 text-red-400 active:bg-red-950 text-sm"
-                              >
-                                🗑️
-                              </button>
-                            </div>
-
-                            <p className="text-[10px] font-mono text-neutral-500 truncate">
-                              DOB {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"} · {s.email || "No email"}
-                            </p>
-                          </motion.div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Desktop / tablet table */}
-                    <div className="hidden sm:block overflow-x-auto max-h-[460px] overflow-y-auto">
-                      <table className="w-full text-left border-collapse min-w-[520px]">
-                        <thead>
-                          <tr className="border-b border-neutral-900 text-[10px] font-mono uppercase tracking-widest text-neutral-500 bg-neutral-950/40 sticky top-0 backdrop-blur z-20">
-                            <th className="p-4">Student Profile</th>
-                            <th className="p-4">Contact Logs</th>
-                            <th className="p-4 text-center">Status</th>
-                            <th className="p-4 text-center">Attendance</th>
-                          </tr>
-                        </thead>
-                        <motion.tbody
-                          variants={stagger}
-                          initial="hidden"
-                          animate="show"
-                          className="divide-y divide-neutral-900 text-xs font-medium"
-                        >
-                          {filteredAcademyStudents.map((s) => {
-                            const isUnpaid = s.payment_status !== "settled";
-                            const todayAtt = s.student_attendance?.find((a: any) => a.date === getTodayStr());
-                            const isPresent = todayAtt?.status === "Present";
-                            const isAbsent = todayAtt?.status === "Absent";
-
-                            return (
-                              <motion.tr
-                                key={s.id}
-                                variants={rowItem}
-                                layout
-                                className={`transition-colors ${isUnpaid ? "bg-red-500/[0.04] hover:bg-red-500/[0.08]" : "hover:bg-lime-400/[0.03]"}`}
-                              >
-                                <td className="p-4">
-                                  <div className="font-black text-white flex items-center gap-2">
-                                    <span>{s.name}</span>
-                                    <button
-                                      onClick={() => deleteStudent(s.id, s.name)}
-                                      className="px-2 py-0.5 text-[9px] font-mono uppercase bg-neutral-900 hover:bg-red-600 border border-neutral-800 hover:border-red-500 text-red-400 hover:text-white transition-colors"
-                                    >
-                                      🗑️ Delete
-                                    </button>
-                                  </div>
-                                  <div className="text-[10px] font-mono text-neutral-500 mt-0.5">
-                                    DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}
-                                  </div>
-                                </td>
-                                <td className="p-4 space-y-0.5">
-                                  <div className="font-mono text-neutral-300">{s.phone}</div>
-                                  <div className="text-[11px] text-neutral-500 truncate max-w-[180px]">{s.email || "-"}</div>
-                                </td>
-                                <td className="p-4 text-center">
-                                  {isUnpaid ? (
-                                    <motion.span
-                                      animate={{ opacity: [1, 0.55, 1] }}
-                                      transition={{ duration: 2, repeat: Infinity }}
-                                      className="px-2 py-0.5 text-[10px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black whitespace-nowrap"
-                                    >
-                                      ⚠️ Unpaid
-                                    </motion.span>
-                                  ) : (
-                                    <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 font-black whitespace-nowrap">
-                                      ✅ Paid ({s.payment_method})
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="p-4 text-center">
-                                  <div className="flex items-center justify-center gap-2">
-                                    <button
-                                      onClick={() => markAttendance(s.id, "Present")}
-                                      className={`w-8 h-8 flex items-center justify-center text-sm font-mono font-black transition-all rounded border ${
-                                        isPresent ? "bg-lime-500 text-black border-lime-500 shadow-[0_0_15px_rgba(132,204,22,0.5)] scale-110" : "bg-lime-500/10 text-lime-500 border-lime-500/30 hover:bg-lime-500/30"
-                                      }`}
-                                    >P</button>
-                                    <button
-                                      onClick={() => markAttendance(s.id, "Absent")}
-                                      className={`w-8 h-8 flex items-center justify-center text-sm font-mono font-black transition-all rounded border ${
-                                        isAbsent ? "bg-red-600 text-white border-red-600 shadow-[0_0_15px_rgba(220,38,38,0.6)] scale-110" : "bg-red-500/10 text-red-500 border-red-500/30 hover:bg-red-500/30"
-                                      }`}
-                                    >A</button>
-                                  </div>
-                                </td>
-                              </motion.tr>
-                            );
-                          })}
-                        </motion.tbody>
-                      </table>
-                    </div>
-                  </div>
-
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 items-start">
                   {/* ---------- Actions (below roster on phones) ---------- */}
-                  <div className="order-2 lg:order-1 lg:col-span-1 border border-neutral-900 bg-neutral-900/50 p-4 space-y-4 h-fit">
+                  <div className="lg:col-span-1 border border-neutral-900 bg-neutral-900/50 p-4 space-y-4 h-fit">
                     <div>
                       <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block mb-0.5">
-                        A3 — Coaching Ledger
+                        Ledger Actions
                       </span>
-                      <h3 className="text-base font-black uppercase text-white">Academy Actions</h3>
+                      <h3 className="text-base font-black uppercase text-white">Fees & Enrollment</h3>
                     </div>
 
                     <LayoutGroup>
@@ -2222,6 +1934,375 @@ export default function AdminPage() {
                             Settle Selected Student
                           </motion.button>
                         </motion.form>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                  <div className="lg:col-span-2 space-y-3 sm:space-y-4">
+                    {/* Football Academy — tap to open batches & roster */}
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setShowAcademyRoster((v) => !v)}
+                      aria-expanded={showAcademyRoster}
+                      className={`w-full text-left p-4 border transition-colors relative overflow-hidden ${
+                        showAcademyRoster
+                          ? "bg-lime-400/10 border-lime-400/60 shadow-[0_0_24px_rgba(163,230,53,0.12)]"
+                          : "bg-neutral-950 border-neutral-800 hover:border-lime-400/40"
+                      }`}
+                    >
+                      {showAcademyRoster && <span className="absolute top-0 inset-x-0 h-0.5 bg-lime-400" />}
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 shrink-0 rounded-full bg-lime-400/10 border border-lime-400/40 flex items-center justify-center text-2xl">
+                          ⚽
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">A2 — Academy</span>
+                          <h3 className="text-base font-black uppercase text-white leading-tight">Football Academy</h3>
+                          <p className="text-[11px] font-mono text-neutral-400 mt-0.5">
+                            {showAcademyRoster ? "Tap to close" : "Tap to view batches & roster"}
+                          </p>
+                        </div>
+                        <motion.span
+                          animate={{ rotate: showAcademyRoster ? 180 : 0 }}
+                          className="text-lime-400 text-xl shrink-0 leading-none"
+                        >
+                          ▾
+                        </motion.span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-mono font-black uppercase">
+                        <span className="px-2 py-1 bg-neutral-900 border border-neutral-800 text-neutral-200">🌅 Morning {academyStats.morning.total}</span>
+                        <span className="px-2 py-1 bg-neutral-900 border border-neutral-800 text-neutral-200">🌙 Evening {academyStats.evening.total}</span>
+                        {academyStats.morning.due + academyStats.evening.due > 0 && (
+                          <span className="px-2 py-1 bg-red-500/10 border border-red-500/30 text-red-400">
+                            ⚠️ {academyStats.morning.due + academyStats.evening.due} due
+                          </span>
+                        )}
+                      </div>
+                    </motion.button>
+
+                    <AnimatePresence initial={false}>
+                      {showAcademyRoster && (
+                        <motion.div
+                          key="academy-open"
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.3, ease: easeOut }}
+                          className="overflow-hidden"
+                        >
+                          <div className="space-y-3 sm:space-y-4">
+                {/* Batch Strength Cards (tap to open that batch) */}
+                <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+                  {([
+                    { id: "Morning Batch", icon: "🌅", label: "Morning", stats: academyStats.morning },
+                    { id: "Evening Batch", icon: "🌙", label: "Evening", stats: academyStats.evening },
+                  ] as const).map((b) => {
+                    const active = rosterTab === b.id;
+                    return (
+                      <motion.button
+                        key={b.id}
+                        type="button"
+                        whileTap={{ scale: 0.97 }}
+                        onClick={() => setRosterTab(b.id)}
+                        className={`relative text-left p-3.5 sm:p-4 border transition-colors overflow-hidden ${
+                          active
+                            ? "bg-lime-400/10 border-lime-400/60 shadow-[0_0_24px_rgba(163,230,53,0.12)]"
+                            : "bg-neutral-950 border-neutral-800 hover:border-neutral-600"
+                        }`}
+                      >
+                        {active && <span className="absolute top-0 inset-x-0 h-0.5 bg-lime-400" />}
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] sm:text-[11px] font-mono uppercase tracking-widest text-neutral-400 font-black">
+                            {b.icon} {b.label}
+                          </span>
+                          {active && <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />}
+                        </div>
+                        <div className="flex items-baseline gap-1.5 mt-2">
+                          <span className={`text-4xl sm:text-5xl font-black leading-none ${active ? "text-lime-400" : "text-white"}`}>
+                            {b.stats.total}
+                          </span>
+                          <span className="text-[10px] font-mono uppercase text-neutral-500">
+                            {b.stats.total === 1 ? "student" : "students"}
+                          </span>
+                        </div>
+                        <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-mono">
+                          <span className="text-lime-400">✅ {b.stats.paid} paid</span>
+                          <span className={b.stats.due > 0 ? "text-red-400" : "text-neutral-600"}>⚠️ {b.stats.due} due</span>
+                        </div>
+                      </motion.button>
+                    );
+                  })}
+                </div>
+
+                {/* Overall strip */}
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="p-2.5 bg-neutral-950 border border-neutral-900">
+                    <span className="block text-lg sm:text-xl font-black text-white leading-none">{academyStats.morning.total + academyStats.evening.total}</span>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Total</span>
+                  </div>
+                  <div className="p-2.5 bg-neutral-950 border border-neutral-900">
+                    <span className="block text-lg sm:text-xl font-black text-lime-400 leading-none">{academyStats.morning.paid + academyStats.evening.paid}</span>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Fees Paid</span>
+                  </div>
+                  <div className="p-2.5 bg-neutral-950 border border-neutral-900">
+                    <span className="block text-lg sm:text-xl font-black text-red-400 leading-none">{academyStats.morning.due + academyStats.evening.due}</span>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Fees Due</span>
+                  </div>
+                </div>
+
+                  {/* ---------- Roster (first on phones) ---------- */}
+                  <div className="border border-neutral-900 bg-neutral-900/30 overflow-hidden flex flex-col">
+                    <div className="p-3 sm:p-4 border-b border-neutral-900 space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">A2 — Master Roster</span>
+                          <h3 className="text-sm font-black uppercase text-white truncate">
+                            {rosterTab} · <span className="text-lime-400">{filteredAcademyStudents.length}</span>
+                            <span className="text-neutral-500 font-mono text-[10px] normal-case ml-1.5">
+                              ({rosterTab === "Morning Batch" ? academyStats.morning.present : academyStats.evening.present} present today)
+                            </span>
+                          </h3>
+                        </div>
+                      </div>
+
+                      {/* Batch switch with counts */}
+                      <LayoutGroup id="admin-roster-tabs">
+                        <div className="grid grid-cols-2 gap-1.5 p-1 border border-neutral-800 bg-neutral-950">
+                          {[
+                            { id: "Morning Batch", label: "🌅 Morning", count: academyStats.morning.total },
+                            { id: "Evening Batch", label: "🌙 Evening", count: academyStats.evening.total },
+                          ].map((t) => (
+                            <motion.button
+                              key={t.id}
+                              type="button"
+                              whileTap={{ scale: 0.97 }}
+                              onClick={() => setRosterTab(t.id as BatchTabType)}
+                              className={`relative min-h-[44px] text-[11px] font-mono uppercase tracking-widest transition-colors ${
+                                rosterTab === t.id ? "text-black font-black" : "text-neutral-400 hover:text-white"
+                              }`}
+                            >
+                              {rosterTab === t.id && (
+                                <motion.span
+                                  layoutId="admin-roster-tab-highlight"
+                                  className="absolute inset-0 bg-lime-400 -z-0"
+                                  transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                                />
+                              )}
+                              <span className="relative z-10">{t.label} ({t.count})</span>
+                            </motion.button>
+                          ))}
+                        </div>
+                      </LayoutGroup>
+
+                      {/* Search + reminders */}
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          inputMode="search"
+                          placeholder="🔍 Search name or phone"
+                          value={academySearch}
+                          onChange={(e) => setAcademySearch(e.target.value)}
+                          className={`${coachingInputCls} sm:flex-1`}
+                        />
+                        <motion.button
+                          type="button"
+                          whileTap={{ scale: 0.97 }}
+                          onClick={sendEmailReminders}
+                          disabled={isSendingEmails}
+                          className={`min-h-[48px] bg-neutral-900 border border-neutral-800 text-red-400 hover:bg-red-950 hover:border-red-900 hover:text-white font-mono text-[11px] uppercase tracking-widest px-4 font-black transition-colors flex items-center justify-center gap-2 ${isSendingEmails ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                          {isSendingEmails ? "⏳ Dispatching..." : "📧 Email Due Reminders"}
+                        </motion.button>
+                      </div>
+                    </div>
+
+                    {/* Empty state */}
+                    {filteredAcademyStudents.length === 0 && (
+                      <div className="py-10 px-4 text-center space-y-2">
+                        <span className="text-3xl block">⚽</span>
+                        <p className="text-xs font-mono font-black uppercase tracking-widest text-neutral-400">
+                          {academySearch ? "No students match your search" : `No students in ${rosterTab}`}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Phone cards */}
+                    <div className="block sm:hidden max-h-[70vh] overflow-y-auto p-3 space-y-2.5">
+                      {filteredAcademyStudents.map((s) => {
+                        const isUnpaid = s.payment_status !== "settled";
+                        const todayAtt = s.student_attendance?.find((a: any) => a.date === getTodayStr());
+                        const isPresent = todayAtt?.status === "Present";
+                        const isAbsent = todayAtt?.status === "Absent";
+
+                        return (
+                          <motion.div
+                            key={s.id}
+                            layout
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className={`p-3 border space-y-3 ${
+                              isUnpaid ? "bg-red-500/[0.06] border-red-500/25" : "bg-neutral-950/60 border-neutral-800"
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`w-11 h-11 shrink-0 rounded-full flex items-center justify-center font-black text-lg border ${
+                                isUnpaid ? "bg-red-500/10 border-red-500/40 text-red-400" : "bg-lime-400/10 border-lime-400/40 text-lime-400"
+                              }`}>
+                                {academySerials[s.id] ?? "-"}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <h4 className="text-sm font-black text-white truncate">{s.name}</h4>
+                                <a href={`tel:${s.phone}`} className="text-[12px] font-mono text-lime-400/90 block mt-0.5">
+                                  📞 {s.phone}
+                                </a>
+                              </div>
+                              {isUnpaid ? (
+                                <motion.span
+                                  animate={{ opacity: [1, 0.55, 1] }}
+                                  transition={{ duration: 2, repeat: Infinity }}
+                                  className="px-2 py-1 text-[10px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black shrink-0"
+                                >
+                                  ⚠️ Due
+                                </motion.span>
+                              ) : (
+                                <span className="px-2 py-1 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 font-black shrink-0">
+                                  ✅ {s.payment_method}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-[1fr_1fr_44px] gap-2">
+                              <button
+                                type="button"
+                                onClick={() => markAttendance(s.id, "Present")}
+                                className={`h-11 text-[11px] font-mono font-black uppercase tracking-widest border transition-all ${
+                                  isPresent ? "bg-lime-500 text-black border-lime-500 shadow-[0_0_15px_rgba(132,204,22,0.45)]" : "bg-lime-500/10 text-lime-400 border-lime-500/30 active:bg-lime-500/30"
+                                }`}
+                              >
+                                ✓ Present
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => markAttendance(s.id, "Absent")}
+                                className={`h-11 text-[11px] font-mono font-black uppercase tracking-widest border transition-all ${
+                                  isAbsent ? "bg-red-600 text-white border-red-600 shadow-[0_0_15px_rgba(220,38,38,0.5)]" : "bg-red-500/10 text-red-400 border-red-500/30 active:bg-red-500/30"
+                                }`}
+                              >
+                                ✕ Absent
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteStudent(s.id, s.name)}
+                                aria-label={`Delete ${s.name}`}
+                                className="h-11 flex items-center justify-center bg-neutral-900 border border-neutral-800 text-red-400 active:bg-red-950 text-sm"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+
+                            <p className="text-[10px] font-mono text-neutral-500 truncate">
+                              DOB {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"} · {s.email || "No email"}
+                            </p>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Desktop / tablet table */}
+                    <div className="hidden sm:block overflow-x-auto max-h-[460px] overflow-y-auto">
+                      <table className="w-full text-left border-collapse min-w-[520px]">
+                        <thead>
+                          <tr className="border-b border-neutral-900 text-[10px] font-mono uppercase tracking-widest text-neutral-500 bg-neutral-950/40 sticky top-0 backdrop-blur z-20">
+                            <th className="p-4 w-12 text-center">#</th>
+                            <th className="p-4">Student Profile</th>
+                            <th className="p-4">Contact Logs</th>
+                            <th className="p-4 text-center">Status</th>
+                            <th className="p-4 text-center">Attendance</th>
+                          </tr>
+                        </thead>
+                        <motion.tbody
+                          variants={stagger}
+                          initial="hidden"
+                          animate="show"
+                          className="divide-y divide-neutral-900 text-xs font-medium"
+                        >
+                          {filteredAcademyStudents.map((s) => {
+                            const isUnpaid = s.payment_status !== "settled";
+                            const todayAtt = s.student_attendance?.find((a: any) => a.date === getTodayStr());
+                            const isPresent = todayAtt?.status === "Present";
+                            const isAbsent = todayAtt?.status === "Absent";
+
+                            return (
+                              <motion.tr
+                                key={s.id}
+                                variants={rowItem}
+                                layout
+                                className={`transition-colors ${isUnpaid ? "bg-red-500/[0.04] hover:bg-red-500/[0.08]" : "hover:bg-lime-400/[0.03]"}`}
+                              >
+                                <td className="p-4 text-center">
+                                  <span className="inline-flex w-8 h-8 items-center justify-center rounded-full bg-neutral-950 border border-neutral-800 text-lime-400 font-mono font-black text-xs">
+                                    {academySerials[s.id] ?? "-"}
+                                  </span>
+                                </td>
+                                <td className="p-4">
+                                  <div className="font-black text-white flex items-center gap-2">
+                                    <span>{s.name}</span>
+                                    <button
+                                      onClick={() => deleteStudent(s.id, s.name)}
+                                      className="px-2 py-0.5 text-[9px] font-mono uppercase bg-neutral-900 hover:bg-red-600 border border-neutral-800 hover:border-red-500 text-red-400 hover:text-white transition-colors"
+                                    >
+                                      🗑️ Delete
+                                    </button>
+                                  </div>
+                                  <div className="text-[10px] font-mono text-neutral-500 mt-0.5">
+                                    DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}
+                                  </div>
+                                </td>
+                                <td className="p-4 space-y-0.5">
+                                  <div className="font-mono text-neutral-300">{s.phone}</div>
+                                  <div className="text-[11px] text-neutral-500 truncate max-w-[180px]">{s.email || "-"}</div>
+                                </td>
+                                <td className="p-4 text-center">
+                                  {isUnpaid ? (
+                                    <motion.span
+                                      animate={{ opacity: [1, 0.55, 1] }}
+                                      transition={{ duration: 2, repeat: Infinity }}
+                                      className="px-2 py-0.5 text-[10px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black whitespace-nowrap"
+                                    >
+                                      ⚠️ Unpaid
+                                    </motion.span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 font-black whitespace-nowrap">
+                                      ✅ Paid ({s.payment_method})
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="p-4 text-center">
+                                  <div className="flex items-center justify-center gap-2">
+                                    <button
+                                      onClick={() => markAttendance(s.id, "Present")}
+                                      className={`w-8 h-8 flex items-center justify-center text-sm font-mono font-black transition-all rounded border ${
+                                        isPresent ? "bg-lime-500 text-black border-lime-500 shadow-[0_0_15px_rgba(132,204,22,0.5)] scale-110" : "bg-lime-500/10 text-lime-500 border-lime-500/30 hover:bg-lime-500/30"
+                                      }`}
+                                    >P</button>
+                                    <button
+                                      onClick={() => markAttendance(s.id, "Absent")}
+                                      className={`w-8 h-8 flex items-center justify-center text-sm font-mono font-black transition-all rounded border ${
+                                        isAbsent ? "bg-red-600 text-white border-red-600 shadow-[0_0_15px_rgba(220,38,38,0.6)] scale-110" : "bg-red-500/10 text-red-500 border-red-500/30 hover:bg-red-500/30"
+                                      }`}
+                                    >A</button>
+                                  </div>
+                                </td>
+                              </motion.tr>
+                            );
+                          })}
+                        </motion.tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                          </div>
+                        </motion.div>
                       )}
                     </AnimatePresence>
                   </div>
