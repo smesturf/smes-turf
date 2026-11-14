@@ -110,6 +110,14 @@ export default function Home() {
     return `${startTimeStr} - ${formatString(endTotal)}`;
   };
 
+  // End time only, e.g. "08:30 AM"
+  const getSessionEnd = (startTimeStr: string, durationMins: number | string) =>
+    getTimeRangeLabel(startTimeStr, durationMins).split(" - ")[1] || "";
+
+  // Plain-words range, e.g. "07:30 AM to 08:30 AM"
+  const getSessionRange = (startTimeStr: string, durationMins: number | string) =>
+    startTimeStr && durationMins ? `${startTimeStr} to ${getSessionEnd(startTimeStr, durationMins)}` : startTimeStr;
+
   const formatDurationLabel = (mins: string) => {
     if (mins === "60") return "60 Mins (1 Hour)";
     if (mins === "90") return "90 Mins (1.5 Hours)";
@@ -1336,8 +1344,8 @@ export default function Home() {
                                )}
                               <span className={`relative z-10 ${showBooked ? 'line-through opacity-40' : ''}`}>{slot}</span>
                               {selected && duration && (
-                                <span className="relative z-10 text-[9px] font-black tracking-wider text-white/90 leading-none normal-case">
-                                  → {getTimeRangeLabel(slot, duration).split(" - ")[1]}
+                                <span className="relative z-10 text-[10px] font-black text-white leading-tight text-center whitespace-nowrap">
+                                  to {getSessionEnd(slot, duration)}
                                 </span>
                               )}
                               
@@ -1362,7 +1370,7 @@ export default function Home() {
                     <div className="min-w-0">
                       <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-400 block">Your session</span>
                       <span className="text-base sm:text-lg font-black text-lime-400 font-mono block">
-                        {getTimeRangeLabel(startTime, duration)}
+                        {getSessionRange(startTime, duration)}
                       </span>
                       <span className="text-[11px] font-mono text-neutral-400 block">
                         {duration} minutes · {bookingType}
@@ -1371,7 +1379,7 @@ export default function Home() {
                   </div>
                 ) : bookingDate && duration && bookingType ? (
                   <p className="text-[11px] font-mono text-neutral-500 leading-relaxed">
-                    👆 Tap a start time. You&apos;ll see exactly when your {duration}-minute session ends.
+                    👆 Tap a start time. You&apos;ll see exactly when your {duration}-minute session ends (for example 07:30 AM to 08:30 AM).
                   </p>
                 ) : null}
               </motion.div>
@@ -1440,7 +1448,7 @@ export default function Home() {
                 </div>
                 <div>
                   <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Kickoff</span>
-                  <span className="text-xs sm:text-sm font-bold text-lime-400 uppercase tracking-wider">{startTime ? getTimeRangeLabel(startTime, duration) : "TBD"}</span>
+                  <span className="text-xs sm:text-sm font-bold text-lime-400 uppercase tracking-wider">{startTime ? getSessionRange(startTime, duration) : "TBD"}</span>
                 </div>
                 <div className="col-span-2">
                   <span className="text-[9px] text-neutral-500 font-mono uppercase block mb-1">Timeframe</span>
@@ -1719,7 +1727,7 @@ export default function Home() {
                   </div>
                   <div>
                      <span className="text-[10px] text-neutral-500 font-mono uppercase block mb-1">Kick-off</span>
-                     <span className="text-sm font-bold text-lime-400 uppercase tracking-wider">{getTimeRangeLabel(startTime, duration)}</span>
+                     <span className="text-sm font-bold text-lime-400 uppercase tracking-wider">{getSessionRange(startTime, duration)}</span>
                   </div>
                   <div>
                      <span className="text-[10px] text-neutral-500 font-mono uppercase block mb-1">Timeframe</span>
