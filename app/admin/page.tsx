@@ -52,6 +52,16 @@ const monthLabelOf = (ym: string) => {
 };
 const istMonthOfTimestamp = (ts?: string) =>
   ts ? new Date(ts).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }).slice(0, 7) : "";
+const istDayOfTimestamp = (ts?: string) =>
+  ts ? Number(new Date(ts).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }).slice(8, 10)) : 0;
+// "Added on" stamp shown in the student's history, always in IST
+const fmtAddedOn = (ts?: string) =>
+  ts
+    ? new Date(ts).toLocaleString("en-GB", {
+        timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric",
+        hour: "2-digit", minute: "2-digit", hour12: true,
+      })
+    : "-";
 // A student "owes" a month only if they have no settled payment AND had already joined by then
 const isDue = (s: any) => s.payment_status !== "settled" && s.payment_status !== "not_enrolled";
 
@@ -208,6 +218,14 @@ export default function AdminPage() {
 
   const FIXED_COACHING_FEE = 2500;
   const HALF_COACHING_FEE = Math.round(FIXED_COACHING_FEE / 2);
+  // Half fee can be offered for a student's joining month if they were added on/after the 13th
+  const halfFeeAllowed = (student: any, ym: string) =>
+    !!student?.created_at &&
+    istMonthOfTimestamp(student.created_at) === ym &&
+    istDayOfTimestamp(student.created_at) >= HALF_FEE_FROM_DAY;
+  // Full / half choice when collecting a joining month that started after the 12th
+  const [adminExistingFeeType, setAdminExistingFeeType] = useState<"full" | "half">("full");
+  const [historyFeeChoice, setHistoryFeeChoice] = useState<Record<string, "full" | "half">>({});
   const [adminNewStudentFeeType, setAdminNewStudentFeeType] = useState<"full" | "half">("full");
   // Half-fee choice appears only for a NEW student enrolled after the 12th (IST date)
   const isHalfFeeEligible = Number(getTodayStr().slice(8, 10)) >= HALF_FEE_FROM_DAY;
@@ -599,7 +617,7 @@ export default function AdminPage() {
   };
 
   // 💸 Mark one month as paid (updates the record if it exists, otherwise creates it)
-  const settleStudentMonth = async (studentId: string, ym: string, method: string) => {
+  const settleStudentMonth = async (studentId: string, ym: string, method: string, amount: number = FIXED_COACHING_FEE) => {
     const { data: existing } = await supabase
       .from("student_payments")
       .select("id")
@@ -607,7 +625,7 @@ export default function AdminPage() {
       .eq("month_year", ym)
       .limit(1);
 
-    const payload = { status: "settled", amount_paid: FIXED_COACHING_FEE, payment_method: method };
+    const payload = { status: "settled", amount_paid: amount, payment_method: method };
     const { error } =
       existing && existing.length > 0
         ? await supabase.from("student_payments").update({ ...payload, updated_at: new Date().toISOString() }).eq("id", existing[0].id)
@@ -627,13 +645,15 @@ export default function AdminPage() {
     if (!target) return;
 
     const ym = feeMonth;
-    const ok = await settleStudentMonth(target.id, ym, adminExistingMethod);
+    const amount = halfFeeAllowed(target, ym) && adminExistingFeeType === "half" ? HALF_COACHING_FEE : FIXED_COACHING_FEE;
+    const ok = await settleStudentMonth(target.id, ym, adminExistingMethod, amount);
     if (!ok) return;
 
-    showUndo(`💸 ${target.name} marked paid for ${monthLabelOf(ym)}`, async () => {
+    showUndo(`💸 ${target.name} marked paid for ${monthLabelOf(ym)} · ₹${amount.toLocaleString("en-IN")}${amount < FIXED_COACHING_FEE ? " (half)" : ""}`, async () => {
       await supabase.from("student_payments").delete().eq("student_id", target.id).eq("month_year", ym);
     });
     setAdminSelectedStudentId("");
+    setAdminExistingFeeType("full");
     loadAcademyData();
   };
 
@@ -2426,7 +2446,7 @@ export default function AdminPage() {
                             <label className={coachingLabelCls}>Select Due Student · {feeMonthLabel}</label>
                             <select
                               value={adminSelectedStudentId}
-                              onChange={(e) => setAdminSelectedStudentId(e.target.value)}
+                              onChange={(e) => { setAdminSelectedStudentId(e.target.value); setAdminExistingFeeType("full"); }}
                               className={coachingInputCls}
                             >
                               <option value="">-- Select Due Student --</option>
@@ -2446,9 +2466,43 @@ export default function AdminPage() {
                               <option value="Cash">Cash</option>
                             </select>
                           </div>
-                          <div className="p-3 bg-neutral-950 border border-neutral-800 text-xs font-mono font-black text-lime-400">
-                            Enforced Rate: ₹2,500
-                          </div>
+                          {(() => {
+                            const sel = academyStudents.find((x) => x.id === adminSelectedStudentId);
+                            if (sel && halfFeeAllowed(sel, feeMonth)) {
+                              return (
+                                <div className="space-y-2.5 p-3 bg-amber-500/10 border border-amber-500/30">
+                                  <p className="text-[11px] font-mono text-amber-200 leading-relaxed">
+                                    📅 {sel.name} joined on {fmtAddedOn(sel.created_at)} (after the 12th). Choose full or half fee for this month.
+                                  </p>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {([
+                                      { id: "full", label: "Full Fee", amt: FIXED_COACHING_FEE },
+                                      { id: "half", label: "Half Fee", amt: HALF_COACHING_FEE },
+                                    ] as const).map((o) => (
+                                      <button
+                                        key={o.id}
+                                        type="button"
+                                        onClick={() => setAdminExistingFeeType(o.id)}
+                                        className={`min-h-[56px] border font-mono font-black uppercase transition-colors ${
+                                          adminExistingFeeType === o.id
+                                            ? "bg-lime-400 text-black border-lime-400"
+                                            : "bg-neutral-950 text-neutral-300 border-neutral-700"
+                                        }`}
+                                      >
+                                        <span className="block text-[10px] tracking-widest">{o.label}</span>
+                                        <span className="block text-base">₹{o.amt.toLocaleString("en-IN")}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return (
+                              <div className="p-3 bg-neutral-950 border border-neutral-800 text-xs font-mono font-black text-lime-400">
+                                Enforced Rate: ₹2,500
+                              </div>
+                            );
+                          })()}
                           <motion.button
                             whileTap={{ scale: 0.97 }}
                             type="submit"
@@ -4131,6 +4185,7 @@ export default function AdminPage() {
                     <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">Payment History</span>
                     <h3 className="text-lg font-black text-white truncate">{historyStudent.name}</h3>
                     <p className="text-[11px] font-mono text-neutral-400">{historyStudent.batch} · {historyStudent.phone}</p>
+                    <p className="text-[11px] font-mono text-lime-400 mt-0.5">🗓️ Added on {fmtAddedOn(historyStudent.created_at)}</p>
                   </div>
                   <button
                     type="button"
@@ -4177,6 +4232,7 @@ export default function AdminPage() {
                         ) : (
                           <span className="px-2 py-1 text-[10px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black">
                             ⚠️ Due ₹{FIXED_COACHING_FEE.toLocaleString("en-IN")}
+                            {halfFeeAllowed(historyStudent, ym) ? ` / ₹${HALF_COACHING_FEE.toLocaleString("en-IN")} half` : ""}
                           </span>
                         )}
                       </div>
@@ -4195,15 +4251,46 @@ export default function AdminPage() {
                           </button>
                         </div>
                       ) : (
+                        <div className="space-y-2">
+                          {halfFeeAllowed(historyStudent, ym) && (() => {
+                            const key = `${historyStudent.id}:${ym}`;
+                            const choice = historyFeeChoice[key] || "full";
+                            return (
+                              <div className="space-y-1.5 p-2 bg-amber-500/10 border border-amber-500/30">
+                                <p className="text-[10px] font-mono text-amber-200">Joined after the 12th: pick the fee to collect.</p>
+                                <div className="grid grid-cols-2 gap-2">
+                                  {([
+                                    { id: "full", label: "Full", amt: FIXED_COACHING_FEE },
+                                    { id: "half", label: "Half", amt: HALF_COACHING_FEE },
+                                  ] as const).map((o) => (
+                                    <button
+                                      key={o.id}
+                                      type="button"
+                                      onClick={() => setHistoryFeeChoice((prev) => ({ ...prev, [key]: o.id }))}
+                                      className={`h-10 border font-mono font-black text-[11px] uppercase ${
+                                        choice === o.id ? "bg-lime-400 text-black border-lime-400" : "bg-neutral-950 text-neutral-300 border-neutral-700"
+                                      }`}
+                                    >
+                                      {o.label} · ₹{o.amt.toLocaleString("en-IN")}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })()}
                         <div className="grid grid-cols-2 gap-2">
                           {["UPI", "Cash"].map((method) => (
                             <button
                               key={method}
                               type="button"
                               onClick={async () => {
-                                const ok = await settleStudentMonth(historyStudent.id, ym, method);
+                                const amount =
+                                  halfFeeAllowed(historyStudent, ym) && historyFeeChoice[`${historyStudent.id}:${ym}`] === "half"
+                                    ? HALF_COACHING_FEE
+                                    : FIXED_COACHING_FEE;
+                                const ok = await settleStudentMonth(historyStudent.id, ym, method, amount);
                                 if (!ok) return;
-                                showUndo(`💸 ${historyStudent.name}: ${monthLabelOf(ym)} paid (${method})`, async () => {
+                                showUndo(`💸 ${historyStudent.name}: ${monthLabelOf(ym)} paid ₹${amount.toLocaleString("en-IN")} (${method})`, async () => {
                                   await supabase.from("student_payments").delete().eq("student_id", historyStudent.id).eq("month_year", ym);
                                 });
                                 loadAcademyData();
@@ -4213,6 +4300,7 @@ export default function AdminPage() {
                               Paid · {method}
                             </button>
                           ))}
+                        </div>
                         </div>
                       )}
                     </div>
