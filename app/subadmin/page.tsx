@@ -83,6 +83,7 @@ export default function SubAdminPage() {
   const [rosterTab, setRosterTab] = useState<BatchTabType>("Morning Batch");
   // Football Academy (batches + roster) stays collapsed until the sub-admin taps it
   const [showAcademyRoster, setShowAcademyRoster] = useState(false);
+  const [academySearch, setAcademySearch] = useState("");
   const [adminNewStudentName, setAdminNewStudentName] = useState("");
   const [adminNewStudentPhone, setAdminNewStudentPhone] = useState("");
   const [adminNewStudentDOB, setAdminNewStudentDOB] = useState("");
@@ -1736,8 +1737,15 @@ export default function SubAdminPage() {
     });
 
   const filteredAcademyStudents = useMemo(() => {
-    return academyStudents.filter(s => s.batch === rosterTab);
-  }, [academyStudents, rosterTab]);
+    const q = academySearch.trim().toLowerCase();
+    return academyStudents.filter(s =>
+      s.batch === rosterTab &&
+      (!q ||
+        s.name?.toLowerCase().includes(q) ||
+        s.phone?.includes(q) ||
+        s.email?.toLowerCase().includes(q))
+    );
+  }, [academyStudents, rosterTab, academySearch]);
 
   // 📊 Per-batch strength (students, fees paid/due, ₹ collected, present today) for the selected fee month
   const academyStats = useMemo(() => {
@@ -1754,6 +1762,17 @@ export default function SubAdminPage() {
       return { total: list.length, paid, due: list.filter(isDue).length, present, collected };
     };
     return { morning: calc("Morning Batch"), evening: calc("Evening Batch") };
+  }, [academyStudents]);
+
+  // 🔢 Serial numbers: 1, 2, 3... separately for Morning and Evening batch
+  const academySerials = useMemo(() => {
+    const map: Record<string, number> = {};
+    (["Morning Batch", "Evening Batch"] as BatchTabType[]).forEach((batch) => {
+      academyStudents
+        .filter((st) => st.batch === batch)
+        .forEach((st, i) => { map[st.id] = i + 1; });
+    });
+    return map;
   }, [academyStudents]);
 
   // 🧾 Payment-history sheet data (read-only: payments can only be added, never undone here)
@@ -2393,6 +2412,45 @@ export default function SubAdminPage() {
                     </div>
                   </LayoutGroup>
 
+                  {/* Search students */}
+                  <div className="p-3 border-b border-neutral-900 bg-neutral-900/30">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        inputMode="search"
+                        placeholder="🔍 Search name, phone or email"
+                        value={academySearch}
+                        onChange={(e) => setAcademySearch(e.target.value)}
+                        className="w-full min-h-[48px] bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none px-3 pr-11 text-sm text-white font-mono placeholder:text-neutral-600"
+                      />
+                      {academySearch && (
+                        <button
+                          type="button"
+                          aria-label="Clear search"
+                          onClick={() => setAcademySearch("")}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center text-neutral-400 hover:text-white"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                    {academySearch && (
+                      <p className="text-[10px] font-mono text-neutral-500 mt-1.5">
+                        {filteredAcademyStudents.length} found in {rosterTab}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Empty state */}
+                  {filteredAcademyStudents.length === 0 && (
+                    <div className="py-10 px-4 text-center space-y-2">
+                      <span className="text-3xl block">⚽</span>
+                      <p className="text-xs font-mono font-black uppercase tracking-widest text-neutral-400">
+                        {academySearch ? "No students match your search" : `No students in ${rosterTab}`}
+                      </p>
+                    </div>
+                  )}
+
                   {/* Mobile View */}
                   <div className="block sm:hidden max-h-[380px] overflow-y-auto p-3 space-y-3">
                     {filteredAcademyStudents.map((s) => {
@@ -2412,11 +2470,18 @@ export default function SubAdminPage() {
                           }`}
                         >
                           <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <h4 className="text-sm font-black text-white">{s.name}</h4>
-                              <p className="text-[10px] font-mono text-neutral-500 mt-0.5">
-                                DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}
-                              </p>
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center font-black text-base border ${
+                                isUnpaid ? "bg-red-500/10 border-red-500/40 text-red-400" : "bg-lime-400/10 border-lime-400/40 text-lime-400"
+                              }`}>
+                                {academySerials[s.id] ?? "-"}
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="text-sm font-black text-white truncate">{s.name}</h4>
+                                <p className="text-[10px] font-mono text-neutral-500 mt-0.5">
+                                  DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}
+                                </p>
+                              </div>
                             </div>
                             <button
                               type="button"
@@ -2479,6 +2544,7 @@ export default function SubAdminPage() {
                     <table className="w-full text-left border-collapse min-w-[520px]">
                       <thead>
                         <tr className="border-b border-neutral-900 text-[10px] font-mono uppercase tracking-widest text-neutral-500 bg-neutral-950/40 sticky top-0 backdrop-blur z-20">
+                          <th className="p-4 w-12 text-center">#</th>
                           <th className="p-4">Student Profile</th>
                           <th className="p-4">Contact Logs</th>
                           <th className="p-4 text-center">Status</th>
@@ -2504,6 +2570,11 @@ export default function SubAdminPage() {
                               layout
                               className={`transition-colors ${isUnpaid ? 'bg-red-500/[0.04] hover:bg-red-500/[0.08]' : 'hover:bg-lime-400/[0.03]'}`}
                             >
+                              <td className="p-4 text-center">
+                                <span className="inline-flex w-8 h-8 items-center justify-center rounded-full bg-neutral-950 border border-neutral-800 text-lime-400 font-mono font-black text-xs">
+                                  {academySerials[s.id] ?? "-"}
+                                </span>
+                              </td>
                               <td className="p-4">
                                 <div className="font-black text-white flex items-center gap-2">
                                   <span>{s.name}</span>
