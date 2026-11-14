@@ -978,6 +978,22 @@ export default function AdminPage() {
     ];
   }, [bookings, filterDate]);
 
+  // ---- Reschedule: Full <-> Half conversion helpers ----
+  const isFullCourtValue = (c: string | null | undefined) => c === "Full Court" || c === "Both Courts";
+
+  // Default new total for the reschedule form. If the court type changes (Full<->Half),
+  // price uses the current live hourly rate of the NEW type; otherwise keeps the booking's own per-minute rate.
+  const getRescheduleDefaultTotal = (b: any, newDuration: number, newCourt: string) => {
+    const origCourt = b.court_number || b.booking_type || "Full Court";
+    const origDur = b.duration_minutes || 60;
+    const typeChanged = isFullCourtValue(origCourt) !== isFullCourtValue(newCourt);
+    if (typeChanged) {
+      const hourly = isFullCourtValue(newCourt) ? livePricing.full_hour : livePricing.half_hour;
+      return Math.round((hourly / 60) * newDuration);
+    }
+    return Math.round(((b.total_amount || 0) / origDur) * newDuration);
+  };
+
   const loadRescheduleAvailableSlots = async (
     date: string,
     duration: number = rescheduleDuration,
@@ -1293,6 +1309,17 @@ export default function AdminPage() {
           value: `${dur} min → ${rescheduleDuration} min (${Number(rescheduleDuration) > dur ? "extended" : "reduced"})`,
         });
       }
+      const origCourtLabel = b.court_number || b.booking_type || "Full Court";
+      if (isFullCourtValue(origCourtLabel) !== isFullCourtValue(rescheduleCourt)) {
+        rows.push({
+          label: "Court type change",
+          value: `${isFullCourtValue(origCourtLabel) ? "Full" : "Half"} (${origCourtLabel}) → ${isFullCourtValue(rescheduleCourt) ? "Full" : "Half"} (${rescheduleCourt})`,
+        });
+      }
+      rows.push({
+        label: "New total",
+        value: `₹${overrideAmount !== "" ? overrideAmount : getRescheduleDefaultTotal(b, Number(rescheduleDuration), rescheduleCourt)} (was ₹${b.total_amount || 0})`,
+      });
       if (overrideAmount !== "") rows.push({ label: "Manual amount override", value: `₹${overrideAmount}` });
     }
     return rows;
@@ -1474,17 +1501,23 @@ export default function AdminPage() {
       return;
     }
 
-    const originalDur = selectedManageBooking.duration_minutes || 60;
     const originalTotal = selectedManageBooking.total_amount || 0;
-    const pricePerMin = originalTotal / originalDur;
-    
-    // ⚡ NEW: Use custom override amount if provided, otherwise compute based on duration ratio
-    const calculatedNewTotal = Math.round(pricePerMin * rescheduleDuration);
+
+    // Custom override amount if provided, otherwise default (live rate if Full<->Half changed, else duration ratio)
+    const calculatedNewTotal = getRescheduleDefaultTotal(selectedManageBooking, rescheduleDuration, rescheduleCourt);
     const newTotal = overrideAmount !== "" ? Number(overrideAmount) : calculatedNewTotal;
 
     const priceDiff = newTotal - originalTotal;
     const currentPaid = originalTotal - (selectedManageBooking.balance_amount || 0);
     const newBalance = Math.max(0, newTotal - currentPaid);
+
+    if (currentPaid > newTotal) {
+      const ok = confirm(
+        `⚠️ Customer has already paid ₹${currentPaid}, but the new total is ₹${newTotal}.\n` +
+        `₹${currentPaid - newTotal} would need to be refunded manually (this action does not issue a refund).\n\nContinue?`
+      );
+      if (!ok) return;
+    }
 
     const { error } = await supabase
       .from("bookings")
@@ -1493,6 +1526,7 @@ export default function AdminPage() {
         start_time: rescheduleTime,
         duration_minutes: rescheduleDuration,
         court_number: rescheduleCourt,
+        booking_type: isFullCourtValue(rescheduleCourt) ? "Full Court" : "Half Court",
         total_amount: newTotal,
         balance_amount: newBalance,
       })
@@ -3559,13 +3593,22 @@ export default function AdminPage() {
 
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono uppercase text-neutral-400">Court (Locked)</label>
-                      <input
-                        type="text"
-                        value={selectedManageBooking.court_number || selectedManageBooking.booking_type || "Full Court"}
-                        disabled
-                        className="w-full p-3 bg-neutral-900/50 text-neutral-500 border border-neutral-800 outline-none text-xs font-mono cursor-not-allowed"
-                      />
+                      <label className="text-[10px] font-mono uppercase text-neutral-400">Court (Full ⇄ Half)</label>
+                      <select
+                        value={rescheduleCourt}
+                        onChange={(e) => {
+                          const newCourt = e.target.value;
+                          setRescheduleCourt(newCourt);
+                          setOverrideAmount("");
+                          setRescheduleTime("");
+                          if (rescheduleDate) loadRescheduleAvailableSlots(rescheduleDate, rescheduleDuration, newCourt);
+                        }}
+                        className="w-full p-3 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
+                      >
+                        <option value="Full Court">Full Court</option>
+                        <option value="Court 1">Half Court – Court 1</option>
+                        <option value="Court 2">Half Court – Court 2</option>
+                      </select>
                     </div>
 
                     <div className="space-y-1.5">
@@ -3605,7 +3648,7 @@ export default function AdminPage() {
                     <label className="text-[10px] font-mono uppercase text-neutral-400">Edit / Override Total Amount (₹)</label>
                     <input
                       type="number"
-                      placeholder={`Default: ₹${Math.round((selectedManageBooking.total_amount / (selectedManageBooking.duration_minutes || 60)) * rescheduleDuration)}`}
+                      placeholder={`Default: ₹${getRescheduleDefaultTotal(selectedManageBooking, rescheduleDuration, rescheduleCourt)}`}
                       value={overrideAmount}
                       onChange={(e) => setOverrideAmount(e.target.value)}
                       className="w-full p-3 bg-neutral-900 text-white border border-neutral-800 focus:border-lime-400 outline-none text-xs font-mono transition-colors"
@@ -3615,8 +3658,28 @@ export default function AdminPage() {
                   <div className="p-3 bg-lime-950/30 border border-lime-800/50 text-xs font-mono text-lime-400">
                     Calculated New Price Matrix:<br />
                     <span className="font-bold text-white text-sm">
-                      Total: ₹{overrideAmount !== "" ? overrideAmount : Math.round((selectedManageBooking.total_amount / (selectedManageBooking.duration_minutes || 60)) * rescheduleDuration)} 
-                      {" "}| Pending Due: ₹{Math.max(0, (overrideAmount !== "" ? Number(overrideAmount) : Math.round((selectedManageBooking.total_amount / (selectedManageBooking.duration_minutes || 60)) * rescheduleDuration)) - ((selectedManageBooking.total_amount || 0) - (selectedManageBooking.balance_amount || 0)))}
+                      {(() => {
+                        const b = selectedManageBooking;
+                        const origCourt = b.court_number || b.booking_type || "Full Court";
+                        const newTotal = overrideAmount !== "" ? Number(overrideAmount) : getRescheduleDefaultTotal(b, rescheduleDuration, rescheduleCourt);
+                        const paid = (b.total_amount || 0) - (b.balance_amount || 0);
+                        const typeChanged = isFullCourtValue(origCourt) !== isFullCourtValue(rescheduleCourt);
+                        return (
+                          <>
+                            {typeChanged && (
+                              <span className="block text-[11px] font-normal text-lime-300 mb-1">
+                                {isFullCourtValue(origCourt) ? "Full → Half" : "Half → Full"} @ ₹{isFullCourtValue(rescheduleCourt) ? livePricing.full_hour : livePricing.half_hour}/hr
+                              </span>
+                            )}
+                            Total: ₹{newTotal} | Already Paid: ₹{paid} | Pending Due: ₹{Math.max(0, newTotal - paid)}
+                            {paid > newTotal && (
+                              <span className="block text-[11px] font-normal text-amber-400 mt-1">
+                                ⚠️ Overpaid by ₹{paid - newTotal} — refund manually.
+                              </span>
+                            )}
+                          </>
+                        );
+                      })()}
                     </span>
                   </div>
 
