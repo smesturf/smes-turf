@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
@@ -34,6 +34,34 @@ const getTomorrowStr = () => {
   tomorrowDate.setDate(tomorrowDate.getDate() + 1);
   return tomorrowDate.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 };
+
+// 🇮🇳 Month helpers (always IST, so the month rolls over at IST midnight on the 1st)
+const shiftMonth = (ym: string, delta: number) => {
+  const [y, m] = ym.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+};
+const monthLabelOf = (ym: string) => {
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+};
+const istMonthOfTimestamp = (ts?: string) =>
+  ts ? new Date(ts).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }).slice(0, 7) : "";
+const istDayOfTimestamp = (ts?: string) =>
+  ts ? Number(new Date(ts).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }).slice(8, 10)) : 0;
+const fmtAddedOn = (ts?: string) =>
+  ts
+    ? new Date(ts).toLocaleString("en-GB", {
+        timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric",
+        hour: "2-digit", minute: "2-digit", hour12: true,
+      })
+    : "-";
+// A student "owes" a month only if they have no settled payment AND had already joined by then
+const isDue = (s: any) => s.payment_status !== "settled" && s.payment_status !== "not_enrolled";
+// Coaching started in September 2026 — no earlier months are shown anywhere
+const COACHING_START_MONTH = "2026-09";
+// Students who join on or after this day of the month can pay half the fee for that first month
+const HALF_FEE_FROM_DAY = 13;
 
 type BatchTabType = "Morning Batch" | "Evening Batch";
 
@@ -83,8 +111,34 @@ export default function SubAdminPage() {
   const [pendingAction, setPendingAction] = useState<"reschedule" | "extend" | null>(null);
 
   const FIXED_COACHING_FEE = 2500;
-  const currentMonthYear = new Date().toISOString().slice(0, 7);
-  const currentMonthLabel = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
+  const HALF_COACHING_FEE = Math.round(FIXED_COACHING_FEE / 2);
+  const currentMonthYear = getTodayStr().slice(0, 7); // IST month
+  const currentMonthLabel = monthLabelOf(currentMonthYear);
+
+  // 📅 Fee month being viewed / settled (defaults to the current IST month)
+  const [feeMonth, setFeeMonth] = useState(getTodayStr().slice(0, 7));
+  const feeMonthRef = useRef(feeMonth);
+  feeMonthRef.current = feeMonth;
+  const feeMonthInit = useRef(true);
+  const feeMonthLabel = monthLabelOf(feeMonth);
+  const feeMonthOptions = (() => {
+    const list = Array.from({ length: 36 }, (_, i) => shiftMonth(currentMonthYear, -i)).filter((ym) => ym >= COACHING_START_MONTH);
+    return list.length > 0 ? list : [currentMonthYear];
+  })();
+
+  // 🧾 Read-only payment history sheet + full/half fee choices
+  const [historyStudentId, setHistoryStudentId] = useState<string | null>(null);
+  const [adminNewStudentFeeType, setAdminNewStudentFeeType] = useState<"full" | "half">("full");
+  const [adminExistingFeeType, setAdminExistingFeeType] = useState<"full" | "half">("full");
+  const [historyFeeChoice, setHistoryFeeChoice] = useState<Record<string, "full" | "half">>({});
+  // Half fee for a NEW student is offered when joining on/after the 13th (IST date)
+  const isHalfFeeEligible = Number(getTodayStr().slice(8, 10)) >= HALF_FEE_FROM_DAY;
+  const enrollFee = isHalfFeeEligible && adminNewStudentFeeType === "half" ? HALF_COACHING_FEE : FIXED_COACHING_FEE;
+  // Half fee can be offered for a student's joining month if they were added on/after the 13th
+  const halfFeeAllowed = (student: any, ym: string) =>
+    !!student?.created_at &&
+    istMonthOfTimestamp(student.created_at) === ym &&
+    istDayOfTimestamp(student.created_at) >= HALF_FEE_FROM_DAY;
 
   const convertToMins = (t: string) => {
     if (!t) return 0;
@@ -296,8 +350,8 @@ export default function SubAdminPage() {
   }, [availableAdminSlots, slotTime]);
 
   const sendEmailReminders = async () => {
-    const pendingStudents = academyStudents.filter(s => s.payment_status !== "settled" && s.email);
-    const noEmailStudents = academyStudents.filter(s => s.payment_status !== "settled" && !s.email);
+    const pendingStudents = academyStudents.filter(s => isDue(s) && s.email);
+    const noEmailStudents = academyStudents.filter(s => isDue(s) && !s.email);
 
     if (pendingStudents.length === 0) {
       alert(noEmailStudents.length > 0
@@ -306,7 +360,7 @@ export default function SubAdminPage() {
       return;
     }
 
-    const confirmed = confirm(`Are you sure you want to send official email reminders to ${pendingStudents.length} student(s) for the month of ${currentMonthLabel}?`);
+    const confirmed = confirm(`Are you sure you want to send official email reminders to ${pendingStudents.length} student(s) for the month of ${feeMonthLabel}?`);
     if (!confirmed) return;
 
     setIsSendingEmails(true);
@@ -316,7 +370,7 @@ export default function SubAdminPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           students: pendingStudents,
-          month: currentMonthLabel,
+          month: feeMonthLabel,
           fee: FIXED_COACHING_FEE
         })
       });
@@ -333,24 +387,42 @@ export default function SubAdminPage() {
   };
 
   const loadAcademyData = async () => {
-    const { data: stData } = await supabase
+    const ym = feeMonthRef.current;
+    const selectCols = `*, student_payments(*), student_attendance(*)`;
+
+    // Active students only (students the admin removed are hidden here too)
+    let { data: stData, error: stErr } = await supabase
       .from("students")
-      .select(`*, student_payments(*), student_attendance(*)`)
+      .select(selectCols)
+      .is("deleted_at", null)
       .order("name", { ascending: true });
+
+    // Safety net: if the SQL setup hasn't been run yet, fall back to the old query
+    if (stErr) {
+      const retry = await supabase.from("students").select(selectCols).order("name", { ascending: true });
+      stData = retry.data;
+    }
 
     if (stData) {
       setAcademyStudents(stData.map((student: any) => {
-        const currentMonthRecord = student.student_payments?.find((p: any) => p.month_year === currentMonthYear);
+        const rec = student.student_payments?.find((p: any) => p.month_year === ym);
+        const joinedLater = !rec && istMonthOfTimestamp(student.created_at) > ym;
         return {
           ...student,
-          payment_status: currentMonthRecord ? currentMonthRecord.status : "pending",
-          amount_paid: currentMonthRecord ? currentMonthRecord.amount_paid : 0,
-          payment_method: currentMonthRecord ? currentMonthRecord.payment_method : "-",
-          payment_record_id: currentMonthRecord ? currentMonthRecord.id : null,
+          payment_status: rec ? rec.status : joinedLater ? "not_enrolled" : "pending",
+          amount_paid: rec ? rec.amount_paid : 0,
+          payment_method: rec ? rec.payment_method : "-",
+          payment_record_id: rec ? rec.id : null,
         };
       }));
     }
   };
+
+  // Reload fees when the month changes (skip the very first run; the auth effect loads it)
+  useEffect(() => {
+    if (feeMonthInit.current) { feeMonthInit.current = false; return; }
+    loadAcademyData();
+  }, [feeMonth]);
 
   const markAttendance = async (studentId: string, status: "Present" | "Absent") => {
     const today = getTodayStr();
@@ -401,15 +473,44 @@ export default function SubAdminPage() {
         student_id: student.id,
         month_year: currentMonthYear,
         status: "settled",
-        amount_paid: FIXED_COACHING_FEE,
+        amount_paid: enrollFee,
         payment_method: adminNewStudentMethod
       }]);
 
     if (pmError) { alert(pmError.message); return; }
 
-    alert(`✅ ${adminNewStudentName} Enrolled in ${adminNewStudentBatch} & Marked as Paid via ${adminNewStudentMethod}`);
+    alert(`✅ ${adminNewStudentName} Enrolled in ${adminNewStudentBatch} & Marked as Paid via ${adminNewStudentMethod} — ₹${enrollFee.toLocaleString("en-IN")}${enrollFee < FIXED_COACHING_FEE ? " (half fee for this month)" : ""}`);
     setAdminNewStudentName(""); setAdminNewStudentPhone(""); setAdminNewStudentDOB(""); setAdminNewStudentEmail(""); setAdminNewStudentBatch("Morning Batch");
+    setAdminNewStudentFeeType("full");
     loadAcademyData();
+  };
+
+  // 💸 Add-only: records a payment for one month. A month that is already paid can never be changed here.
+  const settleStudentMonth = async (studentId: string, ym: string, method: string, amount: number = FIXED_COACHING_FEE) => {
+    const { data: existing } = await supabase
+      .from("student_payments")
+      .select("id,status")
+      .eq("student_id", studentId)
+      .eq("month_year", ym)
+      .limit(1);
+
+    if (existing && existing.length > 0 && existing[0].status === "settled") {
+      alert("This month is already marked as paid. Only the admin can change a recorded payment.");
+      loadAcademyData();
+      return false;
+    }
+
+    const payload = { status: "settled", amount_paid: amount, payment_method: method };
+    const { error } =
+      existing && existing.length > 0
+        ? await supabase.from("student_payments").update({ ...payload, updated_at: new Date().toISOString() }).eq("id", existing[0].id)
+        : await supabase.from("student_payments").insert([{ student_id: studentId, month_year: ym, ...payload }]);
+
+    if (error) {
+      alert(`Database Error: ${error.message}`);
+      return false;
+    }
+    return true;
   };
 
   const handleAdminOldPayment = async (e: React.FormEvent) => {
@@ -418,48 +519,15 @@ export default function SubAdminPage() {
     const target = academyStudents.find(s => s.id === adminSelectedStudentId);
     if (!target) return;
 
-    if (target.payment_record_id) {
-      await supabase
-        .from("student_payments")
-        .update({ status: "settled", amount_paid: FIXED_COACHING_FEE, payment_method: adminExistingMethod, updated_at: new Date().toISOString() })
-        .eq("id", target.payment_record_id);
-    } else {
-      await supabase
-        .from("student_payments")
-        .insert([{ student_id: adminSelectedStudentId, month_year: currentMonthYear, status: "settled", amount_paid: FIXED_COACHING_FEE, payment_method: adminExistingMethod }]);
-    }
-    alert("💸 Monthly Payment Logged Successfully");
+    const ym = feeMonth;
+    const amount = halfFeeAllowed(target, ym) && adminExistingFeeType === "half" ? HALF_COACHING_FEE : FIXED_COACHING_FEE;
+    const ok = await settleStudentMonth(target.id, ym, adminExistingMethod, amount);
+    if (!ok) return;
+
+    alert(`💸 ${target.name}: ${monthLabelOf(ym)} marked paid · ₹${amount.toLocaleString("en-IN")}${amount < FIXED_COACHING_FEE ? " (half)" : ""}`);
     setAdminSelectedStudentId("");
+    setAdminExistingFeeType("full");
     loadAcademyData();
-  };
-
-  const deleteStudent = async (studentId: string, studentName: string) => {
-    const confirmDelete = window.confirm(
-      `⚠️ CRITICAL WARNING:\n\nAre you sure you want to completely delete "${studentName}"?\n\nThis will permanently destroy this student's profile and delete their entire multi-month payment history from the master system. This action cannot be undone.`
-    );
-    if (!confirmDelete) return;
-
-    try {
-      const { error: paymentError } = await supabase
-        .from("student_payments")
-        .delete()
-        .eq("student_id", studentId);
-
-      if (paymentError) throw paymentError;
-
-      const { error: studentError } = await supabase
-        .from("students")
-        .delete()
-        .eq("id", studentId);
-
-      if (studentError) throw studentError;
-
-      alert(`✅ ${studentName} and all associated ledger history records have been purged.`);
-      loadAcademyData();
-    } catch (error: any) {
-      console.error("Deletion matrix failure:", error);
-      alert(`Database Error: ${error.message || "Failed to remove student record safely."}`);
-    }
   };
 
   const loadBookings = async () => {
@@ -822,13 +890,70 @@ export default function SubAdminPage() {
   /* 🔒 MASTER OTP SECURITY LOGIC */
   /* ========================================================================= */
 
-  const triggerOtpProtection = async (actionType: "reschedule" | "extend") => {
+  type OtpActionType = "reschedule" | "extend";
+
+  // 📧 Builds the "what is being changed" lines that go into the OTP email
+  const buildOtpDetails = (actionType: OtpActionType): { label: string; value: string }[] => {
+    const rows: { label: string; value: string }[] = [];
+    const fmtDate = (d?: string) =>
+      d ? new Date(d.split("T")[0] + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "-";
+
+    rows.push({ label: "Requested by", value: "Sub-Admin" });
+
+    const b = selectedManageBooking;
+    if (!b) return rows;
+
+    const dur = b.duration_minutes || 60;
+    const court = b.court_number || b.booking_type || "-";
+    const totalPaid = (b.total_amount || 0) - (b.balance_amount || 0);
+
+    rows.push({ label: "Customer", value: `${b.customer_name || "-"}${b.phone ? ` (${b.phone})` : ""}` });
+    if (b.booking_reference) rows.push({ label: "Booking ref", value: String(b.booking_reference) });
+    rows.push({ label: "Current slot", value: `${fmtDate(b.booking_date)} · ${b.start_time} · ${dur} min · ${court}` });
+    rows.push({ label: "Booking total", value: `₹${b.total_amount || 0} (paid ₹${totalPaid}, balance ₹${b.balance_amount || 0})` });
+
+    if (actionType === "extend") {
+      rows.push({ label: "Extension", value: `+${extendMinutes} minutes (new total ${dur + Number(extendMinutes)} min)` });
+      if (extendCourtSize) rows.push({ label: "Court change", value: "Upgraded to Full Court" });
+    } else if (actionType === "reschedule") {
+      rows.push({ label: "Moved to", value: `${fmtDate(rescheduleDate)} · ${rescheduleTime} · ${rescheduleDuration} min · ${rescheduleCourt}` });
+      if (Number(rescheduleDuration) !== dur) {
+        rows.push({
+          label: "Duration change",
+          value: `${dur} min → ${rescheduleDuration} min (${Number(rescheduleDuration) > dur ? "extended" : "reduced"})`,
+        });
+      }
+    }
+    return rows;
+  };
+
+  // 📋 One-tap paste: copy the code in Gmail, then tap this
+  const pasteOtpFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const match = text.match(/\d{6}/);
+      if (match) {
+        setOtpInput(match[0]);
+      } else {
+        alert("No 6-digit code found on your clipboard. Copy the code from the email first.");
+      }
+    } catch {
+      alert("Couldn't read the clipboard. Long-press the box and choose Paste instead.");
+    }
+  };
+
+  const triggerOtpProtection = async (actionType: OtpActionType) => {
     setIsSendingOtp(true);
     try {
       const response = await fetch("/api/admin-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "generate", email: "sports@smesturf.com" })
+        body: JSON.stringify({
+          action: "generate",
+          email: "sports@smesturf.com",
+          actionType,
+          details: buildOtpDetails(actionType),
+        })
       });
       
       if (!response.ok) throw new Error("Failed to trigger OTP");
@@ -1370,15 +1495,6 @@ export default function SubAdminPage() {
     loadBookings();
   };
 
-  const deleteBlockedSlot = async (id: number) => {
-    const confirmed = confirm("Delete this blocked slot?");
-    if (!confirmed) return;
-    const { error } = await supabase.from("blocked_slots").delete().eq("id", id);
-    if (error) { alert(error.message); return; }
-    alert("✅ Blocked slot deleted");
-    loadBookings();
-  };
-
   /* -------- HELPER: AUTO-HIDE PAST COMPLETED BOOKINGS -------- */
   const isBookingCompletedAndPassed = (booking: any) => {
     // Keep pending dues visible always
@@ -1457,6 +1573,25 @@ export default function SubAdminPage() {
   const filteredAcademyStudents = useMemo(() => {
     return academyStudents.filter(s => s.batch === rosterTab);
   }, [academyStudents, rosterTab]);
+
+  // 🧾 Payment-history sheet data (read-only: payments can only be added, never undone here)
+  const historyStudent = historyStudentId ? academyStudents.find((st) => st.id === historyStudentId) : null;
+  const historyRows: { ym: string; rec: any }[] = (() => {
+    if (!historyStudent) return [];
+    const payments: any[] = historyStudent.student_payments || [];
+    const joinYm = istMonthOfTimestamp(historyStudent.created_at) || currentMonthYear;
+    const rawEarliest = [joinYm, ...payments.map((p: any) => p.month_year)].filter(Boolean).sort()[0];
+    const earliest = rawEarliest < COACHING_START_MONTH ? COACHING_START_MONTH : rawEarliest;
+    const rows: { ym: string; rec: any }[] = [];
+    for (let ym = currentMonthYear; ym >= earliest && rows.length < 60; ym = shiftMonth(ym, -1)) {
+      rows.push({ ym, rec: payments.find((p: any) => p.month_year === ym) });
+    }
+    return rows;
+  })();
+  const historyPaidCount = historyRows.filter((r) => r.rec && r.rec.status === "settled").length;
+  const historyTotalPaid = historyRows.reduce(
+    (sum, r) => sum + (r.rec && r.rec.status === "settled" ? Number(r.rec.amount_paid || 0) : 0), 0
+  );
 
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden selection:bg-lime-400 selection:text-black">
@@ -1628,6 +1763,54 @@ export default function SubAdminPage() {
                     <h2 className="text-lg font-black uppercase text-white">Academy Actions</h2>
                   </div>
 
+                  {/* Fee month picker — settle any month (add only) */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">Fee Month</span>
+                    <div className="flex items-stretch gap-2">
+                      <button
+                        type="button"
+                        aria-label="Previous month"
+                        disabled={feeMonth <= COACHING_START_MONTH}
+                        onClick={() => setFeeMonth(shiftMonth(feeMonth, -1))}
+                        className="w-12 min-h-[48px] shrink-0 flex items-center justify-center bg-neutral-950 border border-neutral-800 text-lime-400 text-2xl active:bg-neutral-900 disabled:opacity-30"
+                      >
+                        ‹
+                      </button>
+                      <select
+                        value={feeMonth}
+                        onChange={(e) => setFeeMonth(e.target.value)}
+                        className="flex-1 min-h-[48px] bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-center text-xs font-black uppercase tracking-wide text-white"
+                      >
+                        {feeMonthOptions.map((ym) => (
+                          <option key={ym} value={ym}>
+                            {monthLabelOf(ym)}{ym === currentMonthYear ? " (Current)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        aria-label="Next month"
+                        disabled={feeMonth >= currentMonthYear}
+                        onClick={() => setFeeMonth(shiftMonth(feeMonth, 1))}
+                        className="w-12 min-h-[48px] shrink-0 flex items-center justify-center bg-neutral-950 border border-neutral-800 text-lime-400 text-2xl active:bg-neutral-900 disabled:opacity-30"
+                      >
+                        ›
+                      </button>
+                    </div>
+                    {feeMonth !== currentMonthYear && (
+                      <div className="flex items-center justify-between gap-2 p-2.5 bg-amber-500/10 border border-amber-500/30 text-[11px] font-mono text-amber-300">
+                        <span>📅 Viewing {feeMonthLabel}</span>
+                        <button
+                          type="button"
+                          onClick={() => setFeeMonth(currentMonthYear)}
+                          className="px-2.5 py-1.5 border border-amber-500/40 font-black uppercase shrink-0"
+                        >
+                          Current
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   <LayoutGroup>
                     <div className="grid grid-cols-2 gap-2 p-1.5 border border-neutral-800 bg-neutral-950">
                       {[
@@ -1731,16 +1914,44 @@ export default function SubAdminPage() {
                             <option value="Cash">Cash</option>
                           </select>
                         </div>
-                        <div className="p-3 bg-neutral-950 border border-neutral-800 text-xs font-mono font-black text-lime-400">
-                          Fixed Fee Rate: ₹2,500
-                        </div>
+                        {isHalfFeeEligible ? (
+                          <div className="space-y-2.5 p-3 bg-amber-500/10 border border-amber-500/30">
+                            <p className="text-[11px] font-mono text-amber-200 leading-relaxed">
+                              📅 Joining after the 12th: you can collect half the fee for this first month. From next month it is the full fee.
+                            </p>
+                            <div className="grid grid-cols-2 gap-2">
+                              {([
+                                { id: "full", label: "Full Fee", amt: FIXED_COACHING_FEE },
+                                { id: "half", label: "Half Fee", amt: HALF_COACHING_FEE },
+                              ] as const).map((o) => (
+                                <button
+                                  key={o.id}
+                                  type="button"
+                                  onClick={() => setAdminNewStudentFeeType(o.id)}
+                                  className={`min-h-[56px] border font-mono font-black uppercase transition-colors ${
+                                    adminNewStudentFeeType === o.id
+                                      ? "bg-lime-400 text-black border-lime-400"
+                                      : "bg-neutral-950 text-neutral-300 border-neutral-700"
+                                  }`}
+                                >
+                                  <span className="block text-[10px] tracking-widest">{o.label}</span>
+                                  <span className="block text-base">₹{o.amt.toLocaleString("en-IN")}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-3 bg-neutral-950 border border-neutral-800 text-xs font-mono font-black text-lime-400">
+                            Fixed Fee Rate: ₹2,500
+                          </div>
+                        )}
                         <motion.button
                           whileHover={{ y: -2, boxShadow: "0 10px 25px rgba(163,230,53,0.3)" }}
                           whileTap={{ scale: 0.97 }}
                           type="submit"
                           className="w-full bg-lime-400 hover:bg-lime-300 text-black font-mono font-black py-4 text-xs uppercase tracking-widest transition-colors"
                         >
-                          Enroll & Mark Paid
+                          Enroll & Mark Paid · ₹{enrollFee.toLocaleString("en-IN")}
                         </motion.button>
                       </motion.form>
                     ) : (
@@ -1753,14 +1964,14 @@ export default function SubAdminPage() {
                         className="space-y-3"
                       >
                         <div className="space-y-1.5">
-                          <label className="text-[10px] font-mono uppercase text-neutral-400">Select Due Student</label>
+                          <label className="text-[10px] font-mono uppercase text-neutral-400">Select Due Student · {feeMonthLabel}</label>
                           <select
                             value={adminSelectedStudentId}
-                            onChange={(e) => setAdminSelectedStudentId(e.target.value)}
+                            onChange={(e) => { setAdminSelectedStudentId(e.target.value); setAdminExistingFeeType("full"); }}
                             className="w-full p-3.5 bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-xs font-medium transition-colors text-white"
                           >
                             <option value="">-- Select Due Student --</option>
-                            {academyStudents.filter(s => s.payment_status !== "settled").map(s => (
+                            {academyStudents.filter(isDue).map(s => (
                               <option key={s.id} value={s.id}>{s.name} ({s.phone})</option>
                             ))}
                           </select>
@@ -1776,16 +1987,50 @@ export default function SubAdminPage() {
                             <option value="Cash">Cash</option>
                           </select>
                         </div>
-                        <div className="p-3 bg-neutral-950 border border-neutral-800 text-xs font-mono font-black text-lime-400">
-                          Enforced Rate: ₹2,500
-                        </div>
+                        {(() => {
+                          const sel = academyStudents.find((x) => x.id === adminSelectedStudentId);
+                          if (sel && halfFeeAllowed(sel, feeMonth)) {
+                            return (
+                              <div className="space-y-2.5 p-3 bg-amber-500/10 border border-amber-500/30">
+                                <p className="text-[11px] font-mono text-amber-200 leading-relaxed">
+                                  📅 {sel.name} joined on {fmtAddedOn(sel.created_at)} (after the 12th). Choose full or half fee for this month.
+                                </p>
+                                <div className="grid grid-cols-2 gap-2">
+                                  {([
+                                    { id: "full", label: "Full Fee", amt: FIXED_COACHING_FEE },
+                                    { id: "half", label: "Half Fee", amt: HALF_COACHING_FEE },
+                                  ] as const).map((o) => (
+                                    <button
+                                      key={o.id}
+                                      type="button"
+                                      onClick={() => setAdminExistingFeeType(o.id)}
+                                      className={`min-h-[56px] border font-mono font-black uppercase transition-colors ${
+                                        adminExistingFeeType === o.id
+                                          ? "bg-lime-400 text-black border-lime-400"
+                                          : "bg-neutral-950 text-neutral-300 border-neutral-700"
+                                      }`}
+                                    >
+                                      <span className="block text-[10px] tracking-widest">{o.label}</span>
+                                      <span className="block text-base">₹{o.amt.toLocaleString("en-IN")}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="p-3 bg-neutral-950 border border-neutral-800 text-xs font-mono font-black text-lime-400">
+                              Enforced Rate: ₹2,500
+                            </div>
+                          );
+                        })()}
                         <motion.button
                           whileHover={{ y: -2, boxShadow: "0 10px 25px rgba(217,70,239,0.3)" }}
                           whileTap={{ scale: 0.97 }}
                           type="submit"
                           className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-mono font-black py-4 text-xs uppercase tracking-widest transition-colors"
                         >
-                          Settle Selected Student
+                          Settle {feeMonthLabel}
                         </motion.button>
                       </motion.form>
                     )}
@@ -1800,7 +2045,7 @@ export default function SubAdminPage() {
                         A2 — Master Roster
                       </span>
                       <h2 className="text-sm font-black uppercase text-white mt-0.5">
-                        Academy Coaching Roster · <span className="text-lime-400">{currentMonthLabel}</span>
+                        Academy Coaching Roster · <span className="text-lime-400">{feeMonthLabel}</span>
                       </h2>
                     </div>
                     
@@ -1848,7 +2093,7 @@ export default function SubAdminPage() {
                   {/* Mobile View */}
                   <div className="block sm:hidden max-h-[380px] overflow-y-auto p-3 space-y-3">
                     {filteredAcademyStudents.map((s) => {
-                      const isUnpaid = s.payment_status !== "settled";
+                      const isUnpaid = isDue(s);
                       const todayAtt = s.student_attendance?.find((a: any) => a.date === getTodayStr());
                       const isPresent = todayAtt?.status === "Present";
                       const isAbsent = todayAtt?.status === "Absent";
@@ -1871,10 +2116,11 @@ export default function SubAdminPage() {
                               </p>
                             </div>
                             <button
-                              onClick={() => deleteStudent(s.id, s.name)}
-                              className="px-2.5 py-1 text-[10px] font-mono uppercase bg-neutral-900 hover:bg-red-950 border border-neutral-800 hover:border-red-900 text-red-400 hover:text-white transition-colors shrink-0"
+                              type="button"
+                              onClick={() => setHistoryStudentId(s.id)}
+                              className="px-2.5 py-1 text-[10px] font-mono uppercase bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-lime-400 transition-colors shrink-0"
                             >
-                              🗑️️ Delete
+                              🧾 History
                             </button>
                           </div>
                           <div className="grid grid-cols-2 gap-2 text-[11px] bg-neutral-950/60 p-2.5 border border-neutral-900 font-mono">
@@ -1899,7 +2145,7 @@ export default function SubAdminPage() {
                               </motion.span>
                             ) : (
                               <span className="px-2.5 py-1 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 font-black">
-                                ✅ Paid ({s.payment_method})
+                                {s.payment_status === "not_enrolled" ? "Joined later" : `✅ Paid ₹${Number(s.amount_paid || 0).toLocaleString("en-IN")}${Number(s.amount_paid || 0) < FIXED_COACHING_FEE ? " (half)" : ""} · ${s.payment_method}`}
                               </span>
                             )}
                           </div>
@@ -1943,7 +2189,7 @@ export default function SubAdminPage() {
                         className="divide-y divide-neutral-900 text-xs font-medium"
                       >
                         {filteredAcademyStudents.map((s) => {
-                          const isUnpaid = s.payment_status !== "settled";
+                          const isUnpaid = isDue(s);
                           const todayAtt = s.student_attendance?.find((a: any) => a.date === getTodayStr());
                           const isPresent = todayAtt?.status === "Present";
                           const isAbsent = todayAtt?.status === "Absent";
@@ -1959,10 +2205,11 @@ export default function SubAdminPage() {
                                 <div className="font-black text-white flex items-center gap-2">
                                   <span>{s.name}</span>
                                   <button
-                                    onClick={() => deleteStudent(s.id, s.name)}
-                                    className="px-2 py-0.5 text-[9px] font-mono uppercase bg-neutral-900 hover:bg-red-600 border border-neutral-800 hover:border-red-500 text-red-400 hover:text-white transition-colors"
+                                    type="button"
+                                    onClick={() => setHistoryStudentId(s.id)}
+                                    className="px-2 py-0.5 text-[9px] font-mono uppercase bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-lime-400 transition-colors"
                                   >
-                                    🗑️ Delete
+                                    🧾 History
                                   </button>
                                 </div>
                                 <div className="text-[10px] font-mono text-neutral-500 mt-0.5">
@@ -1984,7 +2231,7 @@ export default function SubAdminPage() {
                                   </motion.span>
                                 ) : (
                                   <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 font-black whitespace-nowrap">
-                                    ✅ Paid ({s.payment_method})
+                                    {s.payment_status === "not_enrolled" ? "Joined later" : `✅ Paid ₹${Number(s.amount_paid || 0).toLocaleString("en-IN")}${Number(s.amount_paid || 0) < FIXED_COACHING_FEE ? " (half)" : ""} · ${s.payment_method}`}
                                   </span>
                                 )}
                               </td>
@@ -2252,7 +2499,7 @@ export default function SubAdminPage() {
             </h2>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[720px]">
+            <table className="w-full text-left border-collapse min-w-[600px]">
               <thead>
                 <tr className="border-b border-neutral-900 bg-neutral-950/40 text-[10px] font-mono uppercase tracking-widest text-neutral-500">
                   <th className="p-4">Target Date</th>
@@ -2260,7 +2507,6 @@ export default function SubAdminPage() {
                   <th className="p-4">Duration</th>
                   <th className="p-4">Court Section</th>
                   <th className="p-4">Block Reason</th>
-                  <th className="p-4 text-center">Operations</th>
                 </tr>
               </thead>
               <motion.tbody
@@ -2286,16 +2532,6 @@ export default function SubAdminPage() {
                       <td className="p-4 text-xs font-mono">{formatDurationLabel(slot.duration_minutes)}</td>
                       <td className="p-4 font-mono text-xs font-black text-cyan-400">{slot.court_number}</td>
                       <td className="p-4 font-mono text-xs text-neutral-400 uppercase tracking-widest">{slot.reason}</td>
-                      <td className="p-4 text-center whitespace-nowrap">
-                        <motion.button
-                          whileHover={{ y: -1 }}
-                          whileTap={{ scale: 0.96 }}
-                          onClick={() => deleteBlockedSlot(slot.id)}
-                          className="bg-neutral-900 hover:bg-red-950 border border-neutral-800 hover:border-red-900 text-red-400 hover:text-white text-xs font-mono uppercase font-black px-3 py-1.5 transition-colors"
-                        >
-                          🗑️ Release
-                        </motion.button>
-                      </td>
                     </motion.tr>
                   ))}
                 </AnimatePresence>
@@ -2955,6 +3191,142 @@ export default function SubAdminPage() {
         )}
       </AnimatePresence>
 
+      {/* ---------- PAYMENT HISTORY (read-only + add payment) ---------- */}
+      <AnimatePresence>
+        {historyStudent && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9990] flex items-end sm:items-center justify-center"
+            onClick={() => setHistoryStudentId(null)}
+          >
+            <motion.div
+              initial={{ y: 60, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 60, opacity: 0 }}
+              transition={{ duration: 0.3, ease: easeOut }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-md max-h-[88vh] flex flex-col relative overflow-hidden"
+            >
+              <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-lime-400 to-emerald-500" />
+              <div className="p-4 pt-5 border-b border-neutral-900 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">Payment History</span>
+                    <h3 className="text-lg font-black text-white truncate">{historyStudent.name}</h3>
+                    <p className="text-[11px] font-mono text-neutral-400">{historyStudent.batch} · {historyStudent.phone}</p>
+                    <p className="text-[11px] font-mono text-lime-400 mt-0.5">🗓️ Added on {fmtAddedOn(historyStudent.created_at)}</p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Close"
+                    onClick={() => setHistoryStudentId(null)}
+                    className="w-10 h-10 shrink-0 flex items-center justify-center border border-neutral-800 bg-neutral-900 text-neutral-400 text-sm"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="p-2 bg-neutral-900 border border-neutral-800">
+                    <span className="block text-lg font-black text-lime-400 leading-none">{historyPaidCount}</span>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Months Paid</span>
+                  </div>
+                  <div className="p-2 bg-neutral-900 border border-neutral-800">
+                    <span className="block text-lg font-black text-white leading-none">₹{historyTotalPaid.toLocaleString("en-IN")}</span>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Total Paid</span>
+                  </div>
+                  <div className="p-2 bg-neutral-900 border border-neutral-800">
+                    <span className={`block text-lg font-black leading-none ${historyRows.length - historyPaidCount > 0 ? "text-red-400" : "text-neutral-500"}`}>
+                      {historyRows.length - historyPaidCount}
+                    </span>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Months Due</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-y-auto p-3 space-y-2">
+                {historyRows.map(({ ym, rec }) => {
+                  const paid = rec && rec.status === "settled";
+                  const when = rec ? (rec.updated_at || rec.created_at) : null;
+                  const key = `${historyStudent.id}:${ym}`;
+                  const canHalf = halfFeeAllowed(historyStudent, ym);
+                  const choice = historyFeeChoice[key] || "full";
+                  return (
+                    <div
+                      key={ym}
+                      className={`p-3 border space-y-2.5 ${paid ? "bg-lime-400/[0.04] border-lime-400/20" : "bg-red-500/[0.05] border-red-500/25"}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-black text-white">{monthLabelOf(ym)}</span>
+                        {paid ? (
+                          <span className="px-2 py-1 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 font-black">
+                            ✅ Paid ₹{Number(rec.amount_paid || 0).toLocaleString("en-IN")}{Number(rec.amount_paid || 0) < FIXED_COACHING_FEE ? " (half)" : ""}
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 text-[10px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black">
+                            ⚠️ Due ₹{FIXED_COACHING_FEE.toLocaleString("en-IN")}
+                            {canHalf ? ` / ₹${HALF_COACHING_FEE.toLocaleString("en-IN")} half` : ""}
+                          </span>
+                        )}
+                      </div>
+                      {paid ? (
+                        <span className="block text-[10px] font-mono text-neutral-400">
+                          {rec.payment_method}
+                          {when ? ` · ${new Date(when).toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata" })}` : ""}
+                        </span>
+                      ) : (
+                        <div className="space-y-2">
+                          {canHalf && (
+                            <div className="space-y-1.5 p-2 bg-amber-500/10 border border-amber-500/30">
+                              <p className="text-[10px] font-mono text-amber-200">Joined after the 12th: pick the fee to collect.</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                {([
+                                  { id: "full", label: "Full", amt: FIXED_COACHING_FEE },
+                                  { id: "half", label: "Half", amt: HALF_COACHING_FEE },
+                                ] as const).map((o) => (
+                                  <button
+                                    key={o.id}
+                                    type="button"
+                                    onClick={() => setHistoryFeeChoice((prev) => ({ ...prev, [key]: o.id }))}
+                                    className={`h-10 border font-mono font-black text-[11px] uppercase ${
+                                      choice === o.id ? "bg-lime-400 text-black border-lime-400" : "bg-neutral-950 text-neutral-300 border-neutral-700"
+                                    }`}
+                                  >
+                                    {o.label} · ₹{o.amt.toLocaleString("en-IN")}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          <div className="grid grid-cols-2 gap-2">
+                            {["UPI", "Cash"].map((method) => (
+                              <button
+                                key={method}
+                                type="button"
+                                onClick={async () => {
+                                  const amount = canHalf && choice === "half" ? HALF_COACHING_FEE : FIXED_COACHING_FEE;
+                                  const ok = await settleStudentMonth(historyStudent.id, ym, method, amount);
+                                  if (!ok) return;
+                                  loadAcademyData();
+                                }}
+                                className="h-11 bg-lime-400 text-black font-mono font-black text-[11px] uppercase tracking-widest active:bg-lime-300"
+                              >
+                                Paid · {method}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ---------- 🔒 SECURITY OTP MODAL ---------- */}
       <AnimatePresence>
         {showOtpModal && (
@@ -2999,6 +3371,14 @@ export default function SubAdminPage() {
                     className="w-full bg-neutral-900 border border-neutral-800 focus:border-red-500 outline-none p-4 text-center text-2xl font-mono text-white tracking-[0.5em] transition-colors"
                   />
                 </div>
+
+                <button
+                  type="button"
+                  onClick={pasteOtpFromClipboard}
+                  className="w-full min-h-[44px] border border-neutral-700 bg-neutral-900 hover:bg-neutral-800 text-neutral-200 font-mono text-[11px] uppercase tracking-widest font-black transition-colors"
+                >
+                  📋 Paste code from clipboard
+                </button>
 
                 {isSendingOtp ? (
                   <div className="w-full bg-neutral-900 border border-neutral-800 text-neutral-500 font-mono text-xs uppercase tracking-widest py-3.5 text-center font-black">
