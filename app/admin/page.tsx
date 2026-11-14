@@ -3251,7 +3251,7 @@ export default function AdminPage() {
               <thead>
                 <tr className="border-b border-neutral-900 bg-neutral-950/40 text-[10px] font-mono uppercase tracking-widest text-neutral-500">
                   <th className="p-4 sticky left-0 z-30 bg-neutral-950 shadow-[2px_0_0_0_rgba(38,38,38,1)] sm:static sm:z-auto sm:bg-transparent sm:shadow-none">Order & Client</th>
-                  <th className="p-4">Schedule Info</th>
+                  <th className="p-4 hidden sm:table-cell">Schedule Info</th>
                   <th className="p-4">Arena Details</th>
                   <th className="p-4">Financials</th>
                   <th className="p-4 text-center">Operations</th>
@@ -3280,24 +3280,48 @@ export default function AdminPage() {
                         layout
                         className={`${rowColor} hover:bg-white/[0.03] transition-colors`}
                       >
-                        <td className={`p-4 align-top sticky left-0 z-20 ${stickyBg} shadow-[2px_0_0_0_rgba(38,38,38,1)] max-w-[170px] sm:max-w-none sm:static sm:z-auto sm:bg-transparent sm:shadow-none`}>
+                        <td className={`p-3 sm:p-4 align-top sticky left-0 z-20 ${stickyBg} shadow-[2px_0_0_0_rgba(38,38,38,1)] max-w-[170px] sm:max-w-none sm:static sm:z-auto sm:bg-transparent sm:shadow-none`}>
                           <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-black text-white text-sm whitespace-nowrap">{booking.customer_name}</span>
                               <span className="px-1.5 py-0.5 bg-neutral-900 border border-neutral-800 text-[9px] font-mono text-neutral-400 uppercase whitespace-nowrap">
-                                #{booking.id} {booking.booking_reference ? `| REF: ${booking.booking_reference}` : ""}
+                                #{booking.id}<span className="hidden sm:inline">{booking.booking_reference ? ` | REF: ${booking.booking_reference}` : ""}</span>
                               </span>
                             </div>
-                            <span className="font-mono text-[11px] text-neutral-400 truncate max-w-[200px]">
+                            <span className="hidden sm:block font-mono text-[11px] text-neutral-400 truncate max-w-[200px]">
                               {booking.email || "No Email Provided"}
                             </span>
                             <span className="font-mono text-xs text-neutral-500 whitespace-nowrap">
                               {booking.phone}
                             </span>
+                            {/* Mobile only: schedule + court type stay frozen */}
+                            <div className="sm:hidden flex flex-col gap-1 mt-1 pt-1.5 border-t border-neutral-800">
+                              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                <span className="text-neutral-200 font-mono text-[11px]">
+                                  {new Date(bookingDate).toLocaleDateString("en-GB")}
+                                </span>
+                                {bookingDate === getTodayStr() && (
+                                  <span className="px-1.5 py-0.5 bg-lime-400/10 border border-lime-400/30 text-lime-400 text-[8px] font-black uppercase">Today</span>
+                                )}
+                                {bookingDate === getTomorrowStr() && (
+                                  <span className="px-1.5 py-0.5 bg-amber-400/10 border border-amber-400/30 text-amber-400 text-[8px] font-black uppercase">Tmrw</span>
+                                )}
+                              </div>
+                              <span className="font-mono text-[11px] text-white whitespace-nowrap">
+                                {getTimeRangeLabel(booking.start_time, booking.duration_minutes || 60)}
+                              </span>
+                              <span className={`self-start px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-widest ${
+                                booking.booking_type === "Half Court"
+                                  ? "bg-cyan-500/10 border border-cyan-500/30 text-cyan-400"
+                                  : "bg-fuchsia-500/10 border border-fuchsia-500/30 text-fuchsia-400"
+                              }`}>
+                                {booking.booking_type || "Full Court"}
+                              </span>
+                            </div>
                           </div>
                         </td>
 
-                        <td className="p-4 align-top">
+                        <td className="p-4 align-top hidden sm:table-cell">
                           <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-2 whitespace-nowrap">
                               <span className="text-neutral-200 font-mono text-xs">
