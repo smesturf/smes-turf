@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import StudentApplications from "../components/StudentApplications";
+import { getCurrentStaff, requireStaff, logPayment, ROLE_LABEL, type StaffInfo } from "../lib/staff";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 
 /* ------------------------------------------------------------------ */
@@ -135,6 +136,19 @@ type BatchTabType = "Morning Batch" | "Evening Batch";
 
 export default function AdminPage() {
   const router = useRouter();
+
+  // 👤 Who is logged in (shown on every payment they collect)
+  const [staff, setStaff] = useState<StaffInfo | null>(null);
+  useEffect(() => {
+    getCurrentStaff().then((s) => {
+      if (!s) return;
+      if (s.role !== "admin") {
+        supabase.auth.signOut({ scope: "local" }).then(() => router.replace("/staff"));
+        return;
+      }
+      setStaff(s);
+    });
+  }, [router]);
 
   const [bookings, setBookings] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -534,6 +548,7 @@ export default function AdminPage() {
           payment_status: rec ? rec.status : joinedLater ? "not_enrolled" : "pending",
           amount_paid: rec ? rec.amount_paid : 0,
           payment_method: rec ? rec.payment_method : "-",
+          collected_by: rec ? rec.collected_by ?? null : null,
           payment_record_id: rec ? rec.id : null,
         };
       }));
@@ -582,6 +597,8 @@ export default function AdminPage() {
     e.preventDefault();
     if (!adminNewStudentName || !adminNewStudentPhone) { alert("Please complete name and phone fields"); return; }
     if (adminNewStudentPhone.length !== 10) { alert("Phone number must be exactly 10 digits"); return; }
+    const who = await requireStaff();
+    if (!who) return;
 
     const { data: student, error: stError } = await supabase
       .from("students")
@@ -604,10 +621,12 @@ export default function AdminPage() {
         month_year: currentMonthYear,
         status: "settled",
         amount_paid: enrollFee,
-        payment_method: adminNewStudentMethod
+        payment_method: adminNewStudentMethod,
+        collected_by: who.name, collected_by_role: who.role, collected_at: new Date().toISOString()
       }]);
 
     if (pmError) { alert(pmError.message); return; }
+    await logPayment({ staff: who, kind: "student_fee", amount: enrollFee, method: adminNewStudentMethod, studentId: String(student.id), monthYear: currentMonthYear, note: `Enrolled ${adminNewStudentName}` });
 
     alert(`✅ ${adminNewStudentName} Enrolled in ${adminNewStudentBatch} & Marked as Paid via ${adminNewStudentMethod} — ₹${enrollFee.toLocaleString("en-IN")}${enrollFee < FIXED_COACHING_FEE ? " (half fee for this month)" : ""}`);
     setAdminNewStudentName(""); setAdminNewStudentPhone(""); setAdminNewStudentDOB(""); setAdminNewStudentEmail(""); setAdminNewStudentBatch("Morning Batch");
@@ -644,7 +663,9 @@ export default function AdminPage() {
       .eq("month_year", ym)
       .limit(1);
 
-    const payload = { status: "settled", amount_paid: amount, payment_method: method };
+    const who = await requireStaff();
+    if (!who) return false;
+    const payload = { status: "settled", amount_paid: amount, payment_method: method, collected_by: who.name, collected_by_role: who.role, collected_at: new Date().toISOString() };
     const { error } =
       existing && existing.length > 0
         ? await supabase.from("student_payments").update({ ...payload, updated_at: new Date().toISOString() }).eq("id", existing[0].id)
@@ -654,6 +675,7 @@ export default function AdminPage() {
       alert(`Database Error: ${error.message}`);
       return false;
     }
+    await logPayment({ staff: who, kind: "student_fee", amount, method, studentId: studentId, monthYear: ym });
     return true;
   };
 
@@ -684,6 +706,8 @@ export default function AdminPage() {
 
     const { error } = await supabase.from("student_payments").delete().eq("id", rec.id);
     if (error) { alert(`Database Error: ${error.message}`); return; }
+    const remover = await getCurrentStaff();
+    if (remover) await logPayment({ staff: remover, kind: "student_fee_removed", amount: Number(rec.amount_paid || 0), method: rec.payment_method, studentId: String(student.id), monthYear: ym, note: `Removed payment originally collected by ${rec.collected_by || "unknown"}` });
 
     showUndo(`↩️ ${monthLabelOf(ym)} payment removed for ${student.name}`, async () => {
       await supabase.from("student_payments").insert([{
@@ -692,6 +716,9 @@ export default function AdminPage() {
         status: rec.status,
         amount_paid: rec.amount_paid,
         payment_method: rec.payment_method,
+        collected_by: rec.collected_by ?? null,
+        collected_by_role: rec.collected_by_role ?? null,
+        collected_at: rec.collected_at ?? null,
       }]);
     });
     loadAcademyData();
@@ -1054,6 +1081,8 @@ export default function AdminPage() {
       if (totalCost <= 0) { alert("Enter Total Amount for the Turf"); return; }
       if (advancePaid < 0) { alert("Advance cannot be negative"); return; }
       if (advancePaid > totalCost) { alert("Advance cannot be greater than Total Amount"); return; }
+      const who = await requireStaff();
+      if (!who) return;
 
       const balanceDue = totalCost - advancePaid;
 
@@ -1075,11 +1104,15 @@ export default function AdminPage() {
         cash_received: cashReceived,
         upi_received: upiReceived,
         payment_completed: balanceDue <= 0,
+        collected_by: advancePaid > 0 ? who.name : null,
+        collected_by_role: advancePaid > 0 ? who.role : null,
+        collected_at: advancePaid > 0 ? new Date().toISOString() : null,
         payment_date: getTodayStr(), 
       }]);
       
       if (error) { alert(error.message); return; }
 
+      if (advancePaid > 0) await logPayment({ staff: who, kind: "booking_advance", amount: advancePaid, method: offlinePaymentMethod, note: `Offline booking ${slotDate} ${slotTime} (${offlineName.trim() || "Offline Booking"})` });
       alert("✅ Offline Booking Saved");
       await loadBookings();
       setSlotDate(""); setSlotTime(""); setSlotDuration(60); setSlotEndTime("");
@@ -1710,6 +1743,7 @@ export default function AdminPage() {
       "Cash Received (₹)": booking.cash_received || 0,
       "UPI Received (₹)": booking.upi_received || 0,
       "Payment Status": booking.payment_completed ? "Paid" : "Pending",
+      "Collected By": booking.collected_by || "-",
     }));
 
     // --- 2. Coaching Data Processing ---
@@ -1747,6 +1781,7 @@ export default function AdminPage() {
               formattedMonth = `${monthNames[parseInt(monthStr, 10) - 1]} ${yearStr}`;
             }
             rRow[`Fee Status ${formattedMonth}`] = payment.status === "settled" ? "✅ SETTLED" : "❌ PENDING";
+            rRow[`Collected By ${formattedMonth}`] = payment.collected_by || "-";
           });
         }
         rosterData.push(rRow);
@@ -1809,8 +1844,8 @@ export default function AdminPage() {
       [], [],
     ]);
     XLSX.utils.sheet_add_json(worksheet, exportData, { origin: "A13" });
-    worksheet["!autofilter"] = { ref: `A13:T${13 + exportData.length}` };
-    worksheet["!cols"] = [ { wch: 8 }, { wch: 12 }, { wch: 18 }, { wch: 22 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 15 } ];
+    worksheet["!autofilter"] = { ref: `A13:U${13 + exportData.length}` };
+    worksheet["!cols"] = [ { wch: 8 }, { wch: 12 }, { wch: 18 }, { wch: 22 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 15 }, { wch: 16 } ];
     XLSX.utils.book_append_sheet(workbook, worksheet, "Bookings");
 
     // B. Today Sheet
@@ -1940,6 +1975,8 @@ export default function AdminPage() {
 
   const savePayment = async () => {
     if (!selectedBooking) return;
+    const who = await requireStaff();
+    if (!who) return;
     const balance = Number(selectedBooking.balance_amount || 0);
     
     let addCash = 0;
@@ -1973,12 +2010,14 @@ export default function AdminPage() {
         payment_method: finalMethod,
         payment_completed: true,
         balance_amount: 0,
+        collected_by: who.name, collected_by_role: who.role, collected_at: new Date().toISOString(),
         payment_date: getTodayStr(), 
       })
       .eq("id", selectedBooking.id);
       
     if (error) { alert(error.message); return; }
 
+    await logPayment({ staff: who, kind: "booking_balance", amount: balance, method: finalMethod, bookingId: selectedBooking.id, note: `${selectedBooking.customer_name} · ${selectedBooking.booking_date?.split("T")[0]}` });
     alert("✅ Payment Collected & Saved Successfully");
     setShowPaymentModal(false);
     setCashAmount("");
@@ -1989,6 +2028,8 @@ export default function AdminPage() {
   const resetPayment = async (booking: any) => {
     const confirmed = confirm("Reset this payment? The advance will remain untouched, but the remaining balance will be marked as DUE again.");
     if (!confirmed) return;
+    const who = await requireStaff();
+    if (!who) return;
     
     const originalBalance = (booking.total_amount || 0) - (booking.advance_amount || 0);
     
@@ -2001,11 +2042,15 @@ export default function AdminPage() {
         payment_completed: false,
         balance_amount: originalBalance, 
         payment_date: null,
+        collected_by: null,
+        collected_by_role: null,
+        collected_at: null,
       })
       .eq("id", booking.id);
       
     if (error) { alert(error.message); return; }
 
+    await logPayment({ staff: who, kind: "booking_reset", amount: Number(booking.total_amount || 0) - Number(booking.balance_amount || 0) - Number(booking.advance_amount || 0), bookingId: booking.id, note: `Payment reset for ${booking.customer_name}` });
     alert("✅ Payment Reset Successfully");
     loadBookings();
   };
@@ -2189,6 +2234,11 @@ export default function AdminPage() {
             <p className="text-neutral-400 text-sm mt-2 font-mono">
               Live control · Real-time sync · <span className="text-lime-400">{currentMonthLabel}</span>
             </p>
+            {staff && (
+              <p className="text-[11px] font-mono text-neutral-500 mt-1">
+                👤 Signed in as <span className="text-white font-bold">{staff.name}</span> · {ROLE_LABEL[staff.role]}
+              </p>
+            )}
           </motion.div>
 
           <motion.button
@@ -2905,7 +2955,7 @@ export default function AdminPage() {
                                 </motion.span>
                               ) : (
                                 <span className="px-2 py-1 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 font-black shrink-0">
-                                  ✅ {s.payment_method}
+                                  ✅ {s.payment_method}{s.collected_by ? ` · ${s.collected_by}` : ""}
                                 </span>
                               )}
                             </div>
@@ -3045,7 +3095,7 @@ export default function AdminPage() {
                                     </motion.span>
                                   ) : (
                                     <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 font-black whitespace-nowrap">
-                                      ✅ Paid ({s.payment_method})
+                                      ✅ Paid ({s.payment_method}{s.collected_by ? ` · ${s.collected_by}` : ""})
                                     </span>
                                   )}
                                 </td>
@@ -3450,6 +3500,12 @@ export default function AdminPage() {
                                 <span className="text-lime-400 font-black">₹0</span>
                               )}
                             </div>
+                            {booking.collected_by && (
+                              <div className="flex justify-between border-t border-neutral-800 pt-1 mt-0.5">
+                                <span className="text-neutral-500">By:</span>
+                                <span className="text-fuchsia-400 font-black">👤 {booking.collected_by}</span>
+                              </div>
+                            )}
                           </div>
                         </td>
 
@@ -4484,7 +4540,7 @@ export default function AdminPage() {
                       {paid ? (
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-[10px] font-mono text-neutral-400">
-                            {rec.payment_method}
+                            {rec.payment_method}{rec.collected_by ? ` · by ${rec.collected_by}` : ""}
                             {when ? ` · ${new Date(when).toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata" })}` : ""}
                           </span>
                           <button

@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import StudentApplications from "../components/StudentApplications";
+import { getCurrentStaff, ROLE_LABEL, type StaffInfo } from "../lib/staff";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 
@@ -15,6 +16,7 @@ interface Payment {
   status: string;
   amount_paid: number;
   payment_method: string | null;
+  collected_by?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -39,6 +41,7 @@ interface Student {
   payment_status?: string;
   amount_paid?: number;
   payment_method?: string | null;
+  collected_by?: string | null;
   payment_record_id?: string | null;
 }
 
@@ -111,7 +114,20 @@ const rowItem = {
 /* ------------------------------------------------------------------ */
 export default function CoachPage() {
   const router = useRouter();
-  
+
+  // 👤 Who is logged in
+  const [staff, setStaff] = useState<StaffInfo | null>(null);
+  useEffect(() => {
+    getCurrentStaff().then((s) => {
+      if (!s) return;
+      if (s.role !== "coach") {
+        supabase.auth.signOut({ scope: "local" }).then(() => router.replace("/staff"));
+        return;
+      }
+      setStaff(s);
+    });
+  }, [router]);
+
   // State
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -243,6 +259,7 @@ export default function CoachPage() {
           payment_status: currentMonthRecord ? currentMonthRecord.status : "pending",
           amount_paid: currentMonthRecord ? currentMonthRecord.amount_paid : 0,
           payment_method: currentMonthRecord ? currentMonthRecord.payment_method : "-",
+          collected_by: currentMonthRecord ? currentMonthRecord.collected_by ?? null : null,
           payment_record_id: currentMonthRecord ? currentMonthRecord.id : null,
         };
       });
@@ -381,6 +398,7 @@ export default function CoachPage() {
               formattedMonth = `${monthName} ${yearStr}`;
             }
             rRow[`Fee Status ${formattedMonth}`] = payment.status === "settled" ? "✅ SETTLED" : "❌ PENDING";
+            rRow[`Collected By ${formattedMonth}`] = payment.collected_by || "-";
           });
         }
         rosterData.push(rRow);
@@ -605,6 +623,11 @@ export default function CoachPage() {
             <p className="text-neutral-400 text-sm mt-2 font-mono">
               Live roster · Real-time sync · <span className="text-lime-400">{currentMonthLabel}</span>
             </p>
+            {staff && (
+              <p className="text-[11px] font-mono text-neutral-500 mt-1">
+                👤 Signed in as <span className="text-white font-bold">{staff.name}</span> · {ROLE_LABEL[staff.role]}
+              </p>
+            )}
           </motion.div>
 
           <div className="flex items-center gap-3 flex-wrap justify-end">
@@ -941,7 +964,7 @@ export default function CoachPage() {
                                 </div>
                                 {student.payment_status === "settled" && (
                                   <div className="text-[10px] font-mono text-neutral-400">
-                                    ₹{Number(student.amount_paid || 0).toLocaleString("en-IN")} · {student.payment_method || "-"}
+                                    ₹{Number(student.amount_paid || 0).toLocaleString("en-IN")} · {student.payment_method || "-"}{student.collected_by ? ` · by ${student.collected_by}` : ""}
                                   </div>
                                 )}
                                 <button
@@ -1211,7 +1234,7 @@ export default function CoachPage() {
                       </div>
                       {paid && (
                         <span className="block text-[10px] font-mono text-neutral-400">
-                          {rec!.payment_method || "-"}{when ? ` · paid on ${fmtDay(when)}` : ""}
+                          {rec!.payment_method || "-"}{rec!.collected_by ? ` · by ${rec!.collected_by}` : ""}{when ? ` · paid on ${fmtDay(when)}` : ""}
                         </span>
                       )}
                     </div>
