@@ -86,6 +86,10 @@ const fmtAddedOn = (ts?: string) =>
         hour: "2-digit", minute: "2-digit", hour12: true,
       })
     : "-";
+const istDayOfTimestamp = (ts?: string | null) =>
+  ts ? Number(new Date(ts).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }).slice(8, 10)) : 0;
+// Students who join on/after this day of the month pay half fee for that first month
+const HALF_FEE_FROM_DAY = 13;
 const fmtDay = (ts?: string | null) =>
   ts ? new Date(ts).toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" }) : "-";
 
@@ -150,8 +154,13 @@ export default function CoachPage() {
 
   // Constants
   const FIXED_COACHING_FEE = 2500;
+  const HALF_COACHING_FEE = Math.round(FIXED_COACHING_FEE / 2);
   const currentMonthYear = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }).slice(0, 7); // YYYY-MM (IST)
   const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  // Fee actually payable for the current month: half for a student who joined this month on/after the 13th
+  const isHalfFeeStudent = (s: Student) =>
+    istMonthOfTimestamp(s.created_at) === currentMonthYear && istDayOfTimestamp(s.created_at) >= HALF_FEE_FROM_DAY;
+  const feeDueFor = (s: Student) => (isHalfFeeStudent(s) ? HALF_COACHING_FEE : (s.monthly_fee || FIXED_COACHING_FEE));
   const currentMonthLabel = new Date().toLocaleString("en-US", {
     month: "long",
     year: "numeric",
@@ -354,8 +363,6 @@ export default function CoachPage() {
   /* -------- DYNAMIC EXCEL EXPORT (UPDATED STRUCTURE & WIDTHS) -------- */
   const exportCoachExcel = async () => {
     const XLSX = await import("xlsx");
-    const currentMonthNum = new Date().getMonth();
-    const currentYearNum = new Date().getFullYear();
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
     // 1. Sort students alphabetically and split by batch
@@ -374,8 +381,7 @@ export default function CoachPage() {
     // Helper function to process a batch and populate arrays
     const processBatch = (batchStudents: Student[]) => {
       batchStudents.forEach((s) => {
-        const joinDate = new Date(s.created_at);
-        const isNew = joinDate.getMonth() === currentMonthNum && joinDate.getFullYear() === currentYearNum;
+        const isNew = istMonthOfTimestamp(s.created_at) === currentMonthYear;
 
         // Build Roster Row
         const rRow: any = {
@@ -385,7 +391,9 @@ export default function CoachPage() {
           "Phone Number": s.phone,
           "Date of Birth": s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-",
           "Email ID": s.email || "-",
+          "Joined On": fmtDay(s.created_at),
           "Monthly Fee (₹)": s.monthly_fee || FIXED_COACHING_FEE,
+          "Fee Due This Month (₹)": feeDueFor(s),
           "Type": isNew ? "NEW STUDENT" : "EXISTING",
         };
 
@@ -398,6 +406,8 @@ export default function CoachPage() {
               formattedMonth = `${monthName} ${yearStr}`;
             }
             rRow[`Fee Status ${formattedMonth}`] = payment.status === "settled" ? "✅ SETTLED" : "❌ PENDING";
+            rRow[`Amount Paid ${formattedMonth} (₹)`] = payment.status === "settled" ? Number(payment.amount_paid || 0) : 0;
+            rRow[`Method ${formattedMonth}`] = payment.payment_method || "-";
             rRow[`Collected By ${formattedMonth}`] = payment.collected_by || "-";
           });
         }
@@ -446,11 +456,13 @@ export default function CoachPage() {
       { wch: 15 },  // Phone
       { wch: 15 },  // DOB
       { wch: 30 },  // Email
+      { wch: 14 },  // Joined On
       { wch: 15 },  // Monthly Fee
+      { wch: 22 },  // Fee Due This Month
       { wch: 15 },  // Type
     ];
     // Add extra wide columns for dynamic payment statuses
-    for (let i = 0; i < 24; i++) rosterCols.push({ wch: 22 });
+    for (let i = 0; i < 48; i++) rosterCols.push({ wch: 22 });
     rosterWorksheet["!cols"] = rosterCols;
 
     const attCols = [
@@ -487,21 +499,30 @@ export default function CoachPage() {
 
     setIsSendingEmails(true);
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
       const response = await fetch("/api/send-reminders", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({
-          students: pendingStudents,
+          // only what the email needs (no phone / DOB / payment history leaves the browser)
+          students: pendingStudents.map((s) => ({ name: s.name, email: s.email, fee: feeDueFor(s) })),
           month: currentMonthLabel,
-          fee: FIXED_COACHING_FEE
-        })
+          fee: FIXED_COACHING_FEE,
+        }),
       });
 
-      if (!response.ok) throw new Error("Failed to send emails");
-      alert(`✅ Successfully dispatched ${pendingStudents.length} email reminders!`);
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result?.error || "Failed to send emails");
+      const failed: number = result?.failed ?? 0;
+      alert(
+        failed > 0
+          ? `⚠️ Sent ${result.sent} reminder(s), ${failed} failed: ${(result.failedEmails || []).join(", ")}`
+          : `✅ Successfully dispatched ${result.sent ?? pendingStudents.length} email reminders!`
+      );
     } catch (error) {
       console.error(error);
-      alert("❌ Failed to send emails. Please check your internet connection.");
+      alert(`❌ ${error instanceof Error ? error.message : "Failed to send emails."}`);
     } finally {
       setIsSendingEmails(false);
     }
@@ -944,8 +965,11 @@ export default function CoachPage() {
                               </td>
                               
                               <td className="block md:table-cell order-4 md:order-none py-1 md:p-4 space-y-1">
-                                <div className="font-mono text-white text-xs md:text-sm">
-                                  ₹{student.monthly_fee || FIXED_COACHING_FEE}
+                                <div className="font-mono text-white text-xs md:text-sm flex items-center gap-1.5">
+                                  ₹{feeDueFor(student).toLocaleString("en-IN")}
+                                  {isHalfFeeStudent(student) && (
+                                    <span className="px-1.5 py-0.5 text-[8px] bg-amber-400/10 border border-amber-400/30 text-amber-300 tracking-wider font-black uppercase">Half fee</span>
+                                  )}
                                 </div>
                                 <div>
                                   {student.payment_status === "settled" ? (
@@ -965,6 +989,11 @@ export default function CoachPage() {
                                 {student.payment_status === "settled" && (
                                   <div className="text-[10px] font-mono text-neutral-400">
                                     ₹{Number(student.amount_paid || 0).toLocaleString("en-IN")} · {student.payment_method || "-"}{student.collected_by ? ` · by ${student.collected_by}` : ""}
+                                  </div>
+                                )}
+                                {student.payment_status === "settled" && Number(student.amount_paid || 0) < feeDueFor(student) && (
+                                  <div className="text-[10px] font-mono text-amber-300">
+                                    ⚠️ Short by ₹{(feeDueFor(student) - Number(student.amount_paid || 0)).toLocaleString("en-IN")}
                                   </div>
                                 )}
                                 <button

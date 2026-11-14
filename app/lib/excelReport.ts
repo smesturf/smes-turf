@@ -12,6 +12,8 @@ export interface ReportInput {
   exportedByRole: string;
   fixedFee: number;
   isNewStudent: (s: any) => boolean;
+  /** Last-90-days rows of audit_log (admin only). Omit it and no Audit sheet is added. */
+  auditLog?: any[];
 }
 
 /* ---------- look & feel ---------- */
@@ -368,7 +370,7 @@ export async function downloadMasterReport(input: ReportInput) {
   wb.creator = "SMES Turf";
   wb.created = new Date();
 
-  const { bookings, students, paymentLog, todayStr, exportedBy, exportedByRole, fixedFee, isNewStudent } = input;
+  const { bookings, students, paymentLog, todayStr, exportedBy, exportedByRole, fixedFee, isNewStudent, auditLog } = input;
   const ym = todayStr.slice(0, 7);
   const monthLabel = fmtMonth(ym);
   const sub = `Exported ${fmtIST(new Date().toISOString())}  ·  by ${exportedBy} (${exportedByRole})`;
@@ -864,6 +866,63 @@ export async function downloadMasterReport(input: ReportInput) {
     if (rows.length > 0) ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: f + rows.length - 1, column: lastCol } };
     ws.views = [{ state: "frozen", xSplit: 2, showGridLines: false }];
     finishPrint(ws, Math.max(lastCol, 9), { titleRows: "4:4", pagesWide: 1, sideMargin: 0.25 });
+  }
+
+  /* ======================= 6. AUDIT LOG (admin only, last 90 days) ======================= */
+  // Its own sheet on purpose: the Coaching Roster / Attendance sheets stay student-only.
+  if (auditLog) {
+    const ws = wb.addWorksheet("Audit Log (90 days)");
+    setup(ws, "FFDC2626");
+    const ACTION: Record<string, string> = {
+      booking_cancel_refund: "Cancelled · refund",
+      booking_cancel_no_refund: "Cancelled · no refund",
+      booking_reschedule: "Rescheduled",
+      booking_extend: "Extended",
+      booking_upgrade_full: "Upgraded to full court",
+      booking_offline_created: "Offline booking",
+      booking_payment_reset: "Payment reset",
+      slot_blocked: "Slot blocked",
+      slot_unblocked: "Block removed",
+      student_removed: "Student removed",
+      student_restored: "Student restored",
+      student_purged: "Student deleted",
+      student_edited: "Student edited",
+      reminders_sent: "Reminders sent",
+    };
+    const headers = ["Date & Time (IST)", "Staff", "Role", "Action", "Details"];
+    setWidths(ws, [20, 18, 12, 24, 95]);
+    titleBar(ws, "AUDIT LOG  ·  LAST 90 DAYS", `${auditLog.length} action${auditLog.length === 1 ? "" : "s"}  ·  newest first  ·  ${sub}`, headers.length, headers.length);
+    headerRow(ws, 4, headers);
+    const rows = auditLog.map((a: any) => [
+      fmtIST(a.created_at),
+      a.actor_name || "unknown",
+      a.actor_role || "-",
+      ACTION[a.action] || a.action,
+      a.summary || "",
+    ]);
+    if (rows.length === 0) {
+      ws.mergeCells(5, 1, 5, headers.length);
+      const c = ws.getCell(5, 1);
+      c.value = "No audit entries in the last 90 days.";
+      c.font = { italic: true, size: 10, color: { argb: C.mute } };
+      c.alignment = { horizontal: "center", vertical: "middle" };
+    } else {
+      const [f] = bodyRows(ws, 5, rows, [], ["center", undefined, "center", undefined, undefined]);
+      auditLog.forEach((a: any, i: number) => {
+        const act = String(a.action || "");
+        tone(
+          ws.getCell(f + i, 4),
+          act.startsWith("booking_cancel") || act === "student_purged" ? "bad"
+            : act === "booking_reschedule" || act === "booking_extend" || act === "booking_upgrade_full" || act === "booking_payment_reset" ? "warn"
+            : act === "reminders_sent" ? "info" : "grey"
+        );
+        ws.getCell(f + i, 5).alignment = { vertical: "middle", horizontal: "left", wrapText: true, shrinkToFit: false };
+        ws.getRow(f + i).height = Math.max(20, Math.ceil(String(a.summary || "").length / 95) * 15 + 5);
+      });
+      ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: f + rows.length - 1, column: headers.length } };
+    }
+    ws.views = [{ state: "frozen", ySplit: 4, showGridLines: false }];
+    finishPrint(ws, headers.length, { titleRows: "4:4", pagesWide: 1, sideMargin: 0.25 });
   }
 
   /* ---------- download ---------- */

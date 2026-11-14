@@ -6,6 +6,8 @@ import { supabase } from "../lib/supabase";
 import StudentApplications from "../components/StudentApplications";
 import { getCurrentStaff, requireStaff, logPayment, ROLE_LABEL, type StaffInfo } from "../lib/staff";
 import { downloadMasterReport } from "../lib/excelReport";
+import { logAudit } from "../lib/audit";
+import AuditLogPanel from "../components/AuditLogPanel";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 
 /* ------------------------------------------------------------------ */
@@ -514,6 +516,7 @@ export default function AdminPage() {
 
       if (!response.ok) throw new Error("Failed to send emails");
       
+      await logAudit(await getCurrentStaff(), { action: "reminders_sent", entityType: "reminder", summary: `Fee reminders emailed to ${pendingStudents.length} student(s) for ${feeMonthLabel}`, after: { month: feeMonthLabel, recipients: pendingStudents.map((s: any) => s.name) } });
       alert(`✅ Successfully dispatched ${pendingStudents.length} email reminders!`);
     } catch (error) {
       console.error(error);
@@ -732,6 +735,7 @@ export default function AdminPage() {
       alert(`Database Error: ${error.message}\n\nMake sure the SQL setup (deleted_at column) has been run in Supabase.`);
       return;
     }
+    await logAudit(await getCurrentStaff(), { action: "student_removed", entityType: "student", entityId: studentId, summary: `Removed student ${studentName} (can be restored)` });
     showUndo(`🗑️ ${studentName} removed`, async () => {
       await supabase.from("students").update({ deleted_at: null }).eq("id", studentId);
     });
@@ -741,6 +745,7 @@ export default function AdminPage() {
   const restoreStudent = async (studentId: string, studentName: string) => {
     const { error } = await supabase.from("students").update({ deleted_at: null }).eq("id", studentId);
     if (error) { alert(`Database Error: ${error.message}`); return; }
+    await logAudit(await getCurrentStaff(), { action: "student_restored", entityType: "student", entityId: studentId, summary: `Restored student ${studentName}` });
     alert(`✅ ${studentName} has been restored.`);
     loadAcademyData();
   };
@@ -750,12 +755,14 @@ export default function AdminPage() {
       `⚠️ DELETE FOREVER?\n\n"${studentName}" and their entire payment & attendance history will be permanently destroyed. This cannot be undone.`
     );
     if (!ok) return;
+    const purgeSnapshot = academyStudents.find((s: any) => s.id === studentId) ?? null;
     try {
       await supabase.from("student_attendance").delete().eq("student_id", studentId);
       const { error: paymentError } = await supabase.from("student_payments").delete().eq("student_id", studentId);
       if (paymentError) throw paymentError;
       const { error: studentError } = await supabase.from("students").delete().eq("id", studentId);
       if (studentError) throw studentError;
+      await logAudit(await getCurrentStaff(), { action: "student_purged", entityType: "student", entityId: studentId, summary: `PERMANENTLY deleted student ${studentName} with all payment & attendance history`, before: purgeSnapshot });
       alert(`✅ ${studentName} permanently deleted.`);
       loadAcademyData();
     } catch (error: any) {
@@ -803,6 +810,7 @@ export default function AdminPage() {
     if (error) { alert(`Database Error: ${error.message}`); return; }
 
     setEditStudentId(null);
+    await logAudit(await getCurrentStaff(), { action: "student_edited", entityType: "student", entityId: original.id, summary: `Edited student ${previous.name}`, before: previous, after: updates });
     showUndo(`✏️ ${name} updated`, async () => {
       await supabase.from("students").update(previous).eq("id", original.id);
     });
@@ -1125,6 +1133,11 @@ export default function AdminPage() {
       if (error) { alert(error.message); return; }
 
       if (advancePaid > 0) await logPayment({ staff: who, kind: "booking_advance", amount: advancePaid, method: offlinePaymentMethod, note: `Offline booking ${slotDate} ${slotTime} (${offlineName.trim() || "Offline Booking"})` });
+      await logAudit(who, {
+        action: "booking_offline_created", entityType: "booking",
+        summary: `Offline booking ${offlineName.trim() || "Offline Booking"} · ${slotDate} ${slotTime} · ${slotCourt} · total ₹${totalCost}, advance ₹${advancePaid}`,
+        after: { booking_date: slotDate, start_time: slotTime, court_number: slotCourt, total_amount: totalCost, advance_amount: advancePaid },
+      });
       alert("✅ Offline Booking Saved");
       await loadBookings();
       setSlotDate(""); setSlotTime(""); setSlotDuration(60); setSlotEndTime("");
@@ -1153,6 +1166,11 @@ export default function AdminPage() {
 
     if (error) { alert(error.message); return; }
 
+    await logAudit(await getCurrentStaff(), {
+      action: "slot_blocked", entityType: "blocked_slot",
+      summary: `Blocked ${slotDate} ${slotTime} · ${actualCalculatedDuration} min · ${slotCourt} · ${finalReason}`,
+      after: { booking_date: slotDate, start_time: slotTime, duration_minutes: actualCalculatedDuration, court_number: slotCourt, reason: finalReason },
+    });
     alert("✅ Field Block Saved Successfully");
     await loadBookings();
 
@@ -1438,6 +1456,10 @@ export default function AdminPage() {
     }
   };
 
+  // Short, readable description of a booking for the audit log
+  const bookingLabel = (b: any) =>
+    `${b?.customer_name || "Customer"} · ${String(b?.booking_date || "").split("T")[0]} ${b?.start_time || ""} · ${b?.duration_minutes || 60} min · ${b?.court_number || ""}`;
+
   // 1. Cancel With Refund
   const handleCancelWithRefund = async (otpVerified = false) => {
     if (!selectedManageBooking) return;
@@ -1457,6 +1479,11 @@ export default function AdminPage() {
     const { error } = await supabase.from("bookings").delete().eq("id", selectedManageBooking.id);
     if (error) { alert(error.message); return; }
 
+    await logAudit(await getCurrentStaff(), {
+      action: "booking_cancel_refund", entityType: "booking", entityId: selectedManageBooking.id,
+      summary: `Cancelled ${bookingLabel(selectedManageBooking)} · refund ₹${totalPaid} to be returned`,
+      before: selectedManageBooking, after: { refund_amount: totalPaid },
+    });
     alert(`✅ Booking Cancelled. Refund of ₹${totalPaid} marked to be returned.`);
     setShowManageModal(false);
     setSelectedManageBooking(null);
@@ -1534,6 +1561,21 @@ export default function AdminPage() {
 
     if (error) { alert(error.message); return; }
 
+    await logAudit(await getCurrentStaff(), {
+      action: "booking_reschedule", entityType: "booking", entityId: selectedManageBooking.id,
+      summary: `Rescheduled ${selectedManageBooking.customer_name}: ${String(selectedManageBooking.booking_date || "").split("T")[0]} ${selectedManageBooking.start_time} → ${rescheduleDate} ${rescheduleTime} (${rescheduleDuration} min, ${rescheduleCourt})` +
+        (newTotal !== originalTotal ? ` · amount ₹${originalTotal} → ₹${newTotal}` : ""),
+      before: {
+        booking_date: selectedManageBooking.booking_date, start_time: selectedManageBooking.start_time,
+        duration_minutes: selectedManageBooking.duration_minutes, court_number: selectedManageBooking.court_number,
+        total_amount: originalTotal, balance_amount: selectedManageBooking.balance_amount,
+      },
+      after: {
+        booking_date: rescheduleDate, start_time: rescheduleTime, duration_minutes: rescheduleDuration,
+        court_number: rescheduleCourt, total_amount: newTotal, balance_amount: newBalance,
+        manual_amount_override: overrideAmount !== "",
+      },
+    });
     alert("✅ Booking Modified Successfully!");
     setShowManageModal(false);
     setSelectedManageBooking(null);
@@ -1558,6 +1600,11 @@ export default function AdminPage() {
     const { error } = await supabase.from("bookings").delete().eq("id", selectedManageBooking.id);
     if (error) { alert(error.message); return; }
 
+    await logAudit(await getCurrentStaff(), {
+      action: "booking_cancel_no_refund", entityType: "booking", entityId: selectedManageBooking.id,
+      summary: `Cancelled ${bookingLabel(selectedManageBooking)} · NO refund issued`,
+      before: selectedManageBooking, after: null,
+    });
     alert("✅ Booking Cancelled (No Refund Issued).");
     setShowManageModal(false);
     setSelectedManageBooking(null);
@@ -1638,6 +1685,12 @@ export default function AdminPage() {
 
     if (error) { alert(error.message); return; }
 
+    await logAudit(await getCurrentStaff(), {
+      action: "booking_extend", entityType: "booking", entityId: selectedManageBooking.id,
+      summary: `Extended ${bookingLabel(selectedManageBooking)} to ${newDuration} min · total ₹${currentTotal} → ₹${newTotal}`,
+      before: { duration_minutes: currentDur, total_amount: currentTotal, balance_amount: currentBalance, court_number: selectedManageBooking.court_number },
+      after: { duration_minutes: newDuration, total_amount: newTotal, balance_amount: newBalance, court_number: newCourtNumber },
+    });
     alert(`✅ Slot Extended! Duration: ${newDuration} mins, New Price: ₹${newTotal}.`);
     setShowManageModal(false);
     setSelectedManageBooking(null);
@@ -1723,6 +1776,12 @@ export default function AdminPage() {
 
     if (error) { alert(error.message); return; }
 
+    await logAudit(await getCurrentStaff(), {
+      action: "booking_upgrade_full", entityType: "booking", entityId: b.id,
+      summary: `Upgraded ${bookingLabel(b)} to Full Court · extra ₹${amount} · total ₹${b.total_amount || 0} → ₹${newTotal}`,
+      before: { duration_minutes: b.duration_minutes, total_amount: b.total_amount, balance_amount: b.balance_amount, court_number: b.court_number },
+      after: { duration_minutes: newDur, total_amount: newTotal, balance_amount: newBalance, court_number: "Full Court" },
+    });
     alert(`✅ Upgraded to Full Court. Extra ₹${amount} added — collect it with "Collect Payment". New total: ₹${newTotal}.`);
     setShowManageModal(false);
     setSelectedManageBooking(null);
@@ -1757,6 +1816,20 @@ export default function AdminPage() {
     const { data: dbLog } = await supabase.from("payment_log").select("*").order("created_at", { ascending: false }).limit(5000);
     const who = await getCurrentStaff();
 
+    // Audit log: only the last 90 days, only for admins (the table's RLS also decides who can read it)
+    let auditRows: any[] | undefined;
+    if (who?.role === "admin") {
+      const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: dbAudit, error: auditErr } = await supabase
+        .from("audit_log")
+        .select("created_at, actor_name, actor_role, action, summary")
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(5000);
+      if (!auditErr) auditRows = dbAudit || [];
+      else console.warn("Audit sheet skipped:", auditErr.message);
+    }
+
     try {
       await downloadMasterReport({
         bookings: fullBookings,
@@ -1767,6 +1840,7 @@ export default function AdminPage() {
         exportedByRole: who ? ROLE_LABEL[who.role] : "-",
         fixedFee: FIXED_COACHING_FEE,
         isNewStudent: (s: any) => istMonthOfTimestamp(s.created_at) === currentMonthYear,
+        auditLog: auditRows,
       });
     } catch (err: any) {
       console.log("Excel export failed:", err);
@@ -1859,6 +1933,12 @@ export default function AdminPage() {
     if (error) { alert(error.message); return; }
 
     await logPayment({ staff: who, kind: "booking_reset", amount: Number(booking.total_amount || 0) - Number(booking.balance_amount || 0) - Number(booking.advance_amount || 0), bookingId: booking.id, note: `Payment reset for ${booking.customer_name}` });
+    await logAudit(who, {
+      action: "booking_payment_reset", entityType: "booking", entityId: booking.id,
+      summary: `Payment reset for ${bookingLabel(booking)} · balance back to ₹${originalBalance}`,
+      before: { balance_amount: booking.balance_amount, cash_received: booking.cash_received, upi_received: booking.upi_received, collected_by: booking.collected_by },
+      after: { balance_amount: originalBalance },
+    });
     alert("✅ Payment Reset Successfully");
     loadBookings();
   };
@@ -1866,8 +1946,14 @@ export default function AdminPage() {
   const deleteBlockedSlot = async (id: number) => {
     const confirmed = confirm("Delete this blocked slot?");
     if (!confirmed) return;
+    const { data: blockRow } = await supabase.from("blocked_slots").select("*").eq("id", id).maybeSingle();
     const { error } = await supabase.from("blocked_slots").delete().eq("id", id);
     if (error) { alert(error.message); return; }
+    await logAudit(await getCurrentStaff(), {
+      action: "slot_unblocked", entityType: "blocked_slot", entityId: id,
+      summary: `Removed block ${String(blockRow?.booking_date || "").split("T")[0]} ${blockRow?.start_time || ""} · ${blockRow?.court_number || ""} · ${blockRow?.reason || ""}`,
+      before: blockRow ?? null,
+    });
     alert("✅ Blocked slot deleted");
     loadBookings();
   };
@@ -2047,6 +2133,7 @@ export default function AdminPage() {
                 👤 Signed in as <span className="text-white font-bold">{staff.name}</span> · {ROLE_LABEL[staff.role]}
               </p>
             )}
+            <AuditLogPanel />
           </motion.div>
 
           <motion.button
