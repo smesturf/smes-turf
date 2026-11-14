@@ -2512,6 +2512,7 @@ export default function SubAdminPage() {
               <thead>
                 <tr className="border-b border-neutral-900 bg-neutral-950/40 text-[10px] font-mono uppercase tracking-widest text-neutral-500">
                   <th className="p-4 sticky left-0 z-30 bg-neutral-950 shadow-[2px_0_0_0_rgba(38,38,38,1)] sm:static sm:z-auto sm:bg-transparent sm:shadow-none">Order & Client</th>
+                  <th className="p-4 sm:hidden">Contact</th>
                   <th className="p-4 hidden sm:table-cell">Schedule Info</th>
                   <th className="p-4">Arena Details</th>
                   <th className="p-4">Financials</th>
@@ -2552,7 +2553,7 @@ export default function SubAdminPage() {
                             <span className="hidden sm:block font-mono text-[11px] text-neutral-400 truncate max-w-[200px]">
                               {booking.email || "No Email Provided"}
                             </span>
-                            <span className="font-mono text-xs text-neutral-500 whitespace-nowrap">
+                            <span className="hidden sm:block font-mono text-xs text-neutral-500 whitespace-nowrap">
                               {booking.phone}
                             </span>
                             {/* Mobile only: schedule + court type stay frozen */}
@@ -2578,7 +2579,27 @@ export default function SubAdminPage() {
                               }`}>
                                 {booking.booking_type || "Full Court"}
                               </span>
+                              <div className="flex items-center gap-1.5 font-mono text-[11px] whitespace-nowrap">
+                                <span className="text-neutral-500">₹{booking.total_amount}</span>
+                                {Number(booking.balance_amount || 0) > 0 ? (
+                                  <span className="text-red-400 font-black">Due ₹{booking.balance_amount}</span>
+                                ) : (
+                                  <span className="text-lime-400 font-black">Paid ✓</span>
+                                )}
+                              </div>
                             </div>
+                          </div>
+                        </td>
+
+                        <td className="p-4 align-top sm:hidden">
+                          <div className="flex flex-col gap-1">
+                            <span className="font-mono text-xs text-white whitespace-nowrap">{booking.phone}</span>
+                            <span className="font-mono text-[11px] text-neutral-400 whitespace-nowrap">
+                              {booking.email || "No Email Provided"}
+                            </span>
+                            {booking.booking_reference && (
+                              <span className="font-mono text-[10px] text-neutral-500 whitespace-nowrap">REF: {booking.booking_reference}</span>
+                            )}
                           </div>
                         </td>
 
