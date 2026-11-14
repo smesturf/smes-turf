@@ -712,12 +712,6 @@ export async function downloadMasterReport(input: ReportInput) {
         rules: [{ type: "colorScale", cfvo: [{ type: "min" }, { type: "max" }], color: [{ argb: "FFFFFFFF" }, { argb: C.lime }] }],
       });
     }
-    // overall staff summary (all days): who collected how much, split into bookings / student fees
-    {
-      const start = rows.length > 0 ? l + 3 : 6;
-      sectionBand(ws, start, "👤  COLLECTED BY STAFF (ALL DAYS)", 7);
-      staffTable(ws, start + 1, staffRowsFromLog(collectionEntries), 7, paymentLog.length > 0 ? "Source: payment log. Reset / removed payments are not counted." : "Source: latest collector saved on each booking / student payment.");
-    }
     ws.views = [{ state: "frozen", xSplit: 1, showGridLines: false }];
     finishPrint(ws, headers.length, { titleRows: "4:4", pagesWide: 1, sideMargin: 0.25 });
   }
