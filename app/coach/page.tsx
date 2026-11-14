@@ -15,6 +15,8 @@ interface Payment {
   status: string;
   amount_paid: number;
   payment_method: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface Attendance {
@@ -61,6 +63,29 @@ interface BlockedSlot {
 type TabType = "bookings" | "blocks";
 type BatchTabType = "Morning Batch" | "Evening Batch";
 
+// 🇮🇳 Month helpers (always IST, so the month rolls over at IST midnight on the 1st)
+const COACHING_START_MONTH = "2026-09"; // coaching started in September 2026
+const shiftMonth = (ym: string, delta: number) => {
+  const [y, m] = ym.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+};
+const monthLabelOf = (ym: string) => {
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+};
+const istMonthOfTimestamp = (ts?: string) =>
+  ts ? new Date(ts).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }).slice(0, 7) : "";
+const fmtAddedOn = (ts?: string) =>
+  ts
+    ? new Date(ts).toLocaleString("en-GB", {
+        timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric",
+        hour: "2-digit", minute: "2-digit", hour12: true,
+      })
+    : "-";
+const fmtDay = (ts?: string | null) =>
+  ts ? new Date(ts).toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" }) : "-";
+
 /* ------------------------------------------------------------------ */
 /*  Motion Presets                                                    */
 /* ------------------------------------------------------------------ */
@@ -103,16 +128,18 @@ export default function CoachPage() {
   // UI state
   const [tab, setTab] = useState<TabType>("bookings");
   const [rosterTab, setRosterTab] = useState<BatchTabType>("Morning Batch");
+  const [historyStudentId, setHistoryStudentId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [isSendingEmails, setIsSendingEmails] = useState(false);
 
   // Constants
   const FIXED_COACHING_FEE = 2500;
-  const currentMonthYear = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const currentMonthYear = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }).slice(0, 7); // YYYY-MM (IST)
   const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
   const currentMonthLabel = new Date().toLocaleString("en-US", {
     month: "long",
     year: "numeric",
+    timeZone: "Asia/Kolkata",
   });
 
   /* -------- 1. SECURE ROUTE GUARD (SUPABASE AUTH) -------- */
@@ -195,7 +222,18 @@ export default function CoachPage() {
     const { data: blData } = await supabase.from("blocked_slots").select("*").gte("booking_date", localTodayStr).order("booking_date", { ascending: true }).order("start_time", { ascending: true });
     if (blData) setBlockedSlots(blData as BlockedSlot[]);
 
-    const { data: stData } = await supabase.from("students").select(`*, student_payments(*), student_attendance(*)`).order("name", { ascending: true });
+    // Active students only (students the admin removed are hidden here too)
+    let { data: stData, error: stErr } = await supabase
+      .from("students")
+      .select(`*, student_payments(*), student_attendance(*)`)
+      .is("deleted_at", null)
+      .order("name", { ascending: true });
+
+    // Safety net: if the SQL setup hasn't been run yet, fall back to the old query
+    if (stErr) {
+      const retry = await supabase.from("students").select(`*, student_payments(*), student_attendance(*)`).order("name", { ascending: true });
+      stData = retry.data;
+    }
 
     if (stData) {
       const processedStudents = stData.map((student: Student) => {
@@ -468,14 +506,9 @@ export default function CoachPage() {
     const total = students.length;
     const paid = students.filter((s) => s.payment_status === "settled").length;
     const pending = total - paid;
-    const currentMonthNum = new Date().getMonth();
-    const currentYearNum = new Date().getFullYear();
-    const newThisMonth = students.filter((s) => {
-      const d = new Date(s.created_at);
-      return d.getMonth() === currentMonthNum && d.getFullYear() === currentYearNum;
-    }).length;
+    const newThisMonth = students.filter((s) => istMonthOfTimestamp(s.created_at) === currentMonthYear).length;
     return { total, paid, pending, newThisMonth };
-  }, [students]);
+  }, [students, currentMonthYear]);
 
   const filteredStudents = useMemo(() => {
     let activeStudents = students.filter(s => s.batch === rosterTab);
@@ -490,6 +523,28 @@ export default function CoachPage() {
         s.email?.toLowerCase().includes(q)
     );
   }, [students, search, rosterTab]);
+
+  /* -------- STUDENT HISTORY (read-only) -------- */
+  const historyStudent = historyStudentId ? students.find((st) => st.id === historyStudentId) : null;
+  const historyRows: { ym: string; rec?: Payment }[] = (() => {
+    if (!historyStudent) return [];
+    const payments: Payment[] = historyStudent.student_payments || [];
+    const joinYm = istMonthOfTimestamp(historyStudent.created_at) || currentMonthYear;
+    const rawEarliest = [joinYm, ...payments.map((p) => p.month_year)].filter(Boolean).sort()[0];
+    const earliest = rawEarliest < COACHING_START_MONTH ? COACHING_START_MONTH : rawEarliest;
+    const rows: { ym: string; rec?: Payment }[] = [];
+    for (let ym = currentMonthYear; ym >= earliest && rows.length < 60; ym = shiftMonth(ym, -1)) {
+      rows.push({ ym, rec: payments.find((p) => p.month_year === ym) });
+    }
+    return rows;
+  })();
+  const historyPaidCount = historyRows.filter((r) => r.rec && r.rec.status === "settled").length;
+  const historyTotalPaid = historyRows.reduce(
+    (sum, r) => sum + (r.rec && r.rec.status === "settled" ? Number(r.rec.amount_paid || 0) : 0), 0
+  );
+  const historyAtt = (historyStudent?.student_attendance || []).filter((a) => a.date?.slice(0, 7) === currentMonthYear);
+  const historyPresent = historyAtt.filter((a) => a.status === "Present").length;
+  const historyAbsent = historyAtt.filter((a) => a.status === "Absent").length;
 
   /* -------- 4. SECURE LOADER INTERCEPTOR -------- */
   if (!isAuthorized) {
@@ -813,10 +868,7 @@ export default function CoachPage() {
                         </motion.tr>
                       ) : (
                         filteredStudents.map((student) => {
-                          const joinDate = new Date(student.created_at);
-                          const isNew =
-                            joinDate.getMonth() === new Date().getMonth() &&
-                            joinDate.getFullYear() === new Date().getFullYear();
+                          const isNew = istMonthOfTimestamp(student.created_at) === currentMonthYear;
                           const isUnpaid = student.payment_status !== "settled";
 
                           // Attendance logic for today
@@ -854,6 +906,9 @@ export default function CoachPage() {
                                 <div className="text-[10px] text-neutral-500 font-mono mt-0.5">
                                   DOB: {student.dob ? new Date(student.dob).toLocaleDateString("en-GB") : "-"}
                                 </div>
+                                <div className="text-[10px] text-lime-400/80 font-mono mt-0.5">
+                                  🗓️ Joined {fmtDay(student.created_at)}
+                                </div>
                               </td>
                               
                               <td className="block md:table-cell order-3 md:order-none py-1 md:p-4 space-y-0.5">
@@ -884,6 +939,18 @@ export default function CoachPage() {
                                     </motion.span>
                                   )}
                                 </div>
+                                {student.payment_status === "settled" && (
+                                  <div className="text-[10px] font-mono text-neutral-400">
+                                    ₹{Number(student.amount_paid || 0).toLocaleString("en-IN")} · {student.payment_method || "-"}
+                                  </div>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setHistoryStudentId(student.id)}
+                                  className="px-2 py-1 text-[10px] font-mono uppercase tracking-widest border border-neutral-700 text-neutral-300 hover:text-white hover:border-lime-400 transition-colors"
+                                >
+                                  🧾 History
+                                </button>
                               </td>
                               
                               <td className="flex justify-end md:justify-center items-center md:table-cell order-2 md:order-none py-1 md:p-4">
@@ -1064,6 +1131,97 @@ export default function CoachPage() {
           </div>
         </div>
       </div>
+      {/* ---------- 🧾 STUDENT HISTORY SHEET (read-only) ---------- */}
+      <AnimatePresence>
+        {historyStudent && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9990] flex items-end sm:items-center justify-center"
+            onClick={() => setHistoryStudentId(null)}
+          >
+            <motion.div
+              initial={{ y: 60, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 60, opacity: 0 }}
+              transition={{ duration: 0.3, ease: easeOut }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-md max-h-[88vh] flex flex-col relative overflow-hidden"
+            >
+              <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-lime-400 to-emerald-500" />
+              <div className="p-4 pt-5 border-b border-neutral-900 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">Student History</span>
+                    <h3 className="text-lg font-black text-white truncate">{historyStudent.name}</h3>
+                    <p className="text-[11px] font-mono text-neutral-400">{historyStudent.batch} · {historyStudent.phone}</p>
+                    <p className="text-[11px] font-mono text-lime-400 mt-0.5">🗓️ Joined on {fmtAddedOn(historyStudent.created_at)}</p>
+                    <p className="text-[11px] font-mono text-neutral-500 mt-0.5">
+                      This month: {historyPresent} present · {historyAbsent} absent
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Close"
+                    onClick={() => setHistoryStudentId(null)}
+                    className="w-10 h-10 shrink-0 flex items-center justify-center border border-neutral-800 bg-neutral-900 text-neutral-400 text-sm"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="p-2 bg-neutral-900 border border-neutral-800">
+                    <span className="block text-lg font-black text-lime-400 leading-none">{historyPaidCount}</span>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Months Paid</span>
+                  </div>
+                  <div className="p-2 bg-neutral-900 border border-neutral-800">
+                    <span className="block text-lg font-black text-white leading-none">₹{historyTotalPaid.toLocaleString("en-IN")}</span>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Total Paid</span>
+                  </div>
+                  <div className="p-2 bg-neutral-900 border border-neutral-800">
+                    <span className={`block text-lg font-black leading-none ${historyRows.length - historyPaidCount > 0 ? "text-red-400" : "text-neutral-500"}`}>
+                      {historyRows.length - historyPaidCount}
+                    </span>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Months Due</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-y-auto p-3 space-y-2">
+                {historyRows.map(({ ym, rec }) => {
+                  const paid = !!rec && rec.status === "settled";
+                  const when = rec ? (rec.updated_at || rec.created_at) : null;
+                  return (
+                    <div
+                      key={ym}
+                      className={`p-3 border space-y-1.5 ${paid ? "bg-lime-400/[0.04] border-lime-400/20" : "bg-red-500/[0.05] border-red-500/25"}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-black text-white">{monthLabelOf(ym)}</span>
+                        {paid ? (
+                          <span className="px-2 py-1 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 font-black">
+                            ✅ Paid ₹{Number(rec!.amount_paid || 0).toLocaleString("en-IN")}{Number(rec!.amount_paid || 0) < FIXED_COACHING_FEE ? " (half)" : ""}
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 text-[10px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black">
+                            ⚠️ Due ₹{FIXED_COACHING_FEE.toLocaleString("en-IN")}
+                          </span>
+                        )}
+                      </div>
+                      {paid && (
+                        <span className="block text-[10px] font-mono text-neutral-400">
+                          {rec!.payment_method || "-"}{when ? ` · paid on ${fmtDay(when)}` : ""}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }

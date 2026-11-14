@@ -2103,7 +2103,10 @@ export default function AdminPage() {
       const present = list.filter(s =>
         s.student_attendance?.some((a: any) => a.date === today && a.status === "Present")
       ).length;
-      return { total: list.length, paid, due: list.filter(isDue).length, present };
+      const collected = list.reduce(
+        (sum: number, s: any) => sum + (s.payment_status === "settled" ? Number(s.amount_paid || 0) : 0), 0
+      );
+      return { total: list.length, paid, due: list.filter(isDue).length, present, collected };
     };
     return { morning: calc("Morning Batch"), evening: calc("Evening Batch") };
   }, [academyStudents]);
@@ -2764,7 +2767,7 @@ export default function AdminPage() {
                 </div>
 
                 {/* Overall strip */}
-                <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                   <div className="p-2.5 bg-neutral-950 border border-neutral-900">
                     <span className="block text-lg sm:text-xl font-black text-white leading-none">{academyStats.morning.total + academyStats.evening.total}</span>
                     <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Total</span>
@@ -2776,6 +2779,10 @@ export default function AdminPage() {
                   <div className="p-2.5 bg-neutral-950 border border-neutral-900">
                     <span className="block text-lg sm:text-xl font-black text-red-400 leading-none">{academyStats.morning.due + academyStats.evening.due}</span>
                     <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Fees Due</span>
+                  </div>
+                  <div className="p-2.5 bg-neutral-950 border border-neutral-900">
+                    <span className="block text-lg sm:text-xl font-black text-emerald-400 leading-none">₹{(academyStats.morning.collected + academyStats.evening.collected).toLocaleString("en-IN")}</span>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Collected</span>
                   </div>
                 </div>
 

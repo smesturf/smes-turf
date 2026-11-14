@@ -81,6 +81,8 @@ export default function SubAdminPage() {
   const [academyStudents, setAcademyStudents] = useState<any[]>([]);
   const [academyTab, setAcademyTab] = useState<"new" | "existing">("existing");
   const [rosterTab, setRosterTab] = useState<BatchTabType>("Morning Batch");
+  // Football Academy (batches + roster) stays collapsed until the sub-admin taps it
+  const [showAcademyRoster, setShowAcademyRoster] = useState(false);
   const [adminNewStudentName, setAdminNewStudentName] = useState("");
   const [adminNewStudentPhone, setAdminNewStudentPhone] = useState("");
   const [adminNewStudentDOB, setAdminNewStudentDOB] = useState("");
@@ -1737,6 +1739,23 @@ export default function SubAdminPage() {
     return academyStudents.filter(s => s.batch === rosterTab);
   }, [academyStudents, rosterTab]);
 
+  // 📊 Per-batch strength (students, fees paid/due, ₹ collected, present today) for the selected fee month
+  const academyStats = useMemo(() => {
+    const today = getTodayStr();
+    const calc = (batch: BatchTabType) => {
+      const list = academyStudents.filter(s => s.batch === batch);
+      const paid = list.filter(s => s.payment_status === "settled").length;
+      const present = list.filter(s =>
+        s.student_attendance?.some((a: any) => a.date === today && a.status === "Present")
+      ).length;
+      const collected = list.reduce(
+        (sum: number, s: any) => sum + (s.payment_status === "settled" ? Number(s.amount_paid || 0) : 0), 0
+      );
+      return { total: list.length, paid, due: list.filter(isDue).length, present, collected };
+    };
+    return { morning: calc("Morning Batch"), evening: calc("Evening Batch") };
+  }, [academyStudents]);
+
   // 🧾 Payment-history sheet data (read-only: payments can only be added, never undone here)
   const historyStudent = historyStudentId ? academyStudents.find((st) => st.id === historyStudentId) : null;
   const historyRows: { ym: string; rec: any }[] = (() => {
@@ -1915,7 +1934,7 @@ export default function SubAdminPage() {
               transition={{ duration: 0.35, ease: easeOut }}
               className="overflow-hidden mb-8"
             >
-              <div className="p-5 sm:p-6 pb-0 border border-b-0 border-neutral-900 bg-neutral-900/30 backdrop-blur">
+              <div className="px-5 sm:px-6 pt-4 pb-0 border border-b-0 border-neutral-900 bg-neutral-900/30 backdrop-blur">
                 {/* New student requests (from the public registration link) */}
                 <StudentApplications role="subadmin" onAccepted={loadAcademyData} />
               </div>
@@ -2204,8 +2223,125 @@ export default function SubAdminPage() {
                   </AnimatePresence>
                 </div>
 
-                {/* Roster Column */}
-                <div className="lg:col-span-2 border border-neutral-900 bg-neutral-900/30 overflow-hidden flex flex-col">
+                {/* Roster Column — Football Academy (tap to open batches & roster) */}
+                <div className="lg:col-span-2 space-y-3 sm:space-y-4">
+                  <motion.button
+                    type="button"
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setShowAcademyRoster((v) => !v)}
+                    aria-expanded={showAcademyRoster}
+                    className={`w-full text-left p-4 border transition-colors relative overflow-hidden ${
+                      showAcademyRoster
+                        ? "bg-lime-400/10 border-lime-400/60 shadow-[0_0_24px_rgba(163,230,53,0.12)]"
+                        : "bg-neutral-950 border-neutral-800 hover:border-lime-400/40"
+                    }`}
+                  >
+                    {showAcademyRoster && <span className="absolute top-0 inset-x-0 h-0.5 bg-lime-400" />}
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 shrink-0 rounded-full bg-lime-400/10 border border-lime-400/40 flex items-center justify-center text-2xl">
+                        ⚽
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">A2 — Academy</span>
+                        <h3 className="text-base font-black uppercase text-white leading-tight">Football Academy</h3>
+                        <p className="text-[11px] font-mono text-neutral-400 mt-0.5">
+                          {showAcademyRoster ? "Tap to close" : "Tap to view batches & roster"}
+                        </p>
+                      </div>
+                      <motion.span
+                        animate={{ rotate: showAcademyRoster ? 180 : 0 }}
+                        className="text-lime-400 text-xl shrink-0 leading-none"
+                      >
+                        ▾
+                      </motion.span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-mono font-black uppercase">
+                      <span className="px-2 py-1 bg-neutral-900 border border-neutral-800 text-neutral-200">🌅 Morning {academyStats.morning.total}</span>
+                      <span className="px-2 py-1 bg-neutral-900 border border-neutral-800 text-neutral-200">🌙 Evening {academyStats.evening.total}</span>
+                      {academyStats.morning.due + academyStats.evening.due > 0 && (
+                        <span className="px-2 py-1 bg-red-500/10 border border-red-500/30 text-red-400">
+                          ⚠️ {academyStats.morning.due + academyStats.evening.due} due
+                        </span>
+                      )}
+                    </div>
+                  </motion.button>
+
+                  <AnimatePresence initial={false}>
+                    {showAcademyRoster && (
+                      <motion.div
+                        key="academy-open"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.3, ease: easeOut }}
+                        className="overflow-hidden"
+                      >
+                        <div className="space-y-3 sm:space-y-4">
+                          {/* Batch Strength Cards (tap to open that batch) */}
+                          <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+                            {([
+                              { id: "Morning Batch", icon: "🌅", label: "Morning", stats: academyStats.morning },
+                              { id: "Evening Batch", icon: "🌙", label: "Evening", stats: academyStats.evening },
+                            ] as const).map((b) => {
+                              const active = rosterTab === b.id;
+                              return (
+                                <motion.button
+                                  key={b.id}
+                                  type="button"
+                                  whileTap={{ scale: 0.97 }}
+                                  onClick={() => setRosterTab(b.id)}
+                                  className={`relative text-left p-3.5 sm:p-4 border transition-colors overflow-hidden ${
+                                    active
+                                      ? "bg-lime-400/10 border-lime-400/60 shadow-[0_0_24px_rgba(163,230,53,0.12)]"
+                                      : "bg-neutral-950 border-neutral-800 hover:border-neutral-600"
+                                  }`}
+                                >
+                                  {active && <span className="absolute top-0 inset-x-0 h-0.5 bg-lime-400" />}
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] sm:text-[11px] font-mono uppercase tracking-widest text-neutral-400 font-black">
+                                      {b.icon} {b.label}
+                                    </span>
+                                    {active && <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />}
+                                  </div>
+                                  <div className="flex items-baseline gap-1.5 mt-2">
+                                    <span className={`text-4xl sm:text-5xl font-black leading-none ${active ? "text-lime-400" : "text-white"}`}>
+                                      {b.stats.total}
+                                    </span>
+                                    <span className="text-[10px] font-mono uppercase text-neutral-500">
+                                      {b.stats.total === 1 ? "student" : "students"}
+                                    </span>
+                                  </div>
+                                  <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-mono">
+                                    <span className="text-lime-400">✅ {b.stats.paid} paid</span>
+                                    <span className={b.stats.due > 0 ? "text-red-400" : "text-neutral-600"}>⚠️ {b.stats.due} due</span>
+                                  </div>
+                                </motion.button>
+                              );
+                            })}
+                          </div>
+
+                          {/* Overall strip */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                            <div className="p-2.5 bg-neutral-950 border border-neutral-900">
+                              <span className="block text-lg sm:text-xl font-black text-white leading-none">{academyStats.morning.total + academyStats.evening.total}</span>
+                              <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Total</span>
+                            </div>
+                            <div className="p-2.5 bg-neutral-950 border border-neutral-900">
+                              <span className="block text-lg sm:text-xl font-black text-lime-400 leading-none">{academyStats.morning.paid + academyStats.evening.paid}</span>
+                              <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Fees Paid</span>
+                            </div>
+                            <div className="p-2.5 bg-neutral-950 border border-neutral-900">
+                              <span className="block text-lg sm:text-xl font-black text-red-400 leading-none">{academyStats.morning.due + academyStats.evening.due}</span>
+                              <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Fees Due</span>
+                            </div>
+                            <div className="p-2.5 bg-neutral-950 border border-neutral-900">
+                              <span className="block text-lg sm:text-xl font-black text-emerald-400 leading-none">₹{(academyStats.morning.collected + academyStats.evening.collected).toLocaleString("en-IN")}</span>
+                              <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Collected</span>
+                            </div>
+                          </div>
+
+                {/* Roster */}
+                <div className="border border-neutral-900 bg-neutral-900/30 overflow-hidden flex flex-col">
                   <div className="p-4 border-b border-neutral-900 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                     <div>
                       <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-500 block">
@@ -2424,6 +2560,11 @@ export default function SubAdminPage() {
                       </motion.tbody>
                     </table>
                   </div>
+                </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </div>
             </motion.div>

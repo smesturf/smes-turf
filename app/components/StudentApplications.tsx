@@ -41,7 +41,7 @@ export default function StudentApplications({
   const [apps, setApps] = useState<Application[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false); // closed until the staff member taps the button
   const channelId = useRef(`student-apps-${role}-${Math.random().toString(36).slice(2, 8)}`);
 
   const load = async () => {
@@ -159,88 +159,71 @@ export default function StudentApplications({
   };
 
   return (
-    <div className="border border-neutral-800 bg-neutral-950/80 mb-6 relative">
-      <div className="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-sky-400 to-lime-400" />
-
+    <div className="mb-3">
+      {/* Small toggle button — requests stay hidden until tapped */}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between gap-3 p-4 text-left"
+        className={`inline-flex items-center gap-2 px-3 py-2 border text-[10px] font-mono font-black uppercase tracking-widest transition-colors ${
+          open
+            ? "bg-sky-500/15 border-sky-500/50 text-sky-300"
+            : "bg-neutral-900 border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-600"
+        }`}
       >
-        <div className="min-w-0">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">
-            New Student Requests
+        <span>📥 New Student Requests</span>
+        {apps.length > 0 && (
+          <span className="min-w-[20px] h-[20px] px-1.5 flex items-center justify-center rounded-full bg-sky-500 text-black text-[10px] font-black">
+            {apps.length}
           </span>
-          <span className="text-sm font-black uppercase text-white">
-            {apps.length > 0 ? `${apps.length} waiting for approval` : "No pending requests"}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {apps.length > 0 && (
-            <span className="min-w-[26px] h-[26px] px-2 flex items-center justify-center rounded-full bg-sky-500 text-black text-xs font-black">
-              {apps.length}
-            </span>
-          )}
-          <span className="text-neutral-500 text-xs">{open ? "▲" : "▼"}</span>
-        </div>
+        )}
+        <span className="text-neutral-500">{open ? "▲" : "▼"}</span>
       </button>
 
       {open && (
-        <div className="px-4 pb-4 space-y-4">
-          {/* Registration link */}
-          <div className="p-3 border border-neutral-800 bg-neutral-900/60 space-y-2">
-            <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">
-              Registration link — send to new students
-            </span>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <input
-                readOnly
-                value={link}
-                onFocus={(e) => e.currentTarget.select()}
-                className="flex-1 min-h-[44px] bg-neutral-950 border border-neutral-800 px-3 text-xs font-mono text-lime-400 outline-none"
-              />
-              <button
-                type="button"
-                onClick={copyLink}
-                className="min-h-[44px] px-4 bg-lime-400 text-black text-[11px] font-mono font-black uppercase tracking-widest"
-              >
-                {copied ? "✓ Copied" : "Copy"}
-              </button>
-              <a
-                href={whatsappHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="min-h-[44px] px-4 flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-mono font-black uppercase tracking-widest"
-              >
-                WhatsApp
-              </a>
-            </div>
+        <div className="mt-2 border border-neutral-800 bg-neutral-950/90 p-3 space-y-3">
+          {/* Registration link — small buttons */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">Student link:</span>
+            <button
+              type="button"
+              onClick={copyLink}
+              className="px-2.5 py-1.5 bg-lime-400 text-black text-[10px] font-mono font-black uppercase tracking-widest"
+            >
+              {copied ? "✓ Copied" : "Copy"}
+            </button>
+            <a
+              href={whatsappHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-mono font-black uppercase tracking-widest"
+            >
+              WhatsApp
+            </a>
           </div>
 
-          {/* Pending requests */}
-          {apps.length > 0 && (
-            <ul className="space-y-3">
+          {apps.length === 0 ? (
+            <p className="text-[11px] font-mono text-neutral-500">No pending requests.</p>
+          ) : (
+            <ul className="space-y-2">
               {apps.map((a) => (
-                <li key={a.id} className="p-3 border border-neutral-800 bg-neutral-900/60 space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-black uppercase text-white truncate">{a.name}</p>
-                      <p className="text-[11px] font-mono text-neutral-400 mt-0.5">
-                        📞 {a.phone}
-                        {a.email ? ` · ✉️ ${a.email}` : ""}
-                      </p>
-                      <p className="text-[11px] font-mono text-neutral-500 mt-0.5">
-                        {a.dob ? `DOB ${a.dob} · ` : ""}
-                        {a.batch} · sent {fmtWhen(a.created_at)}
-                      </p>
-                    </div>
+                <li key={a.id} className="p-2.5 border border-neutral-800 bg-neutral-900/60 space-y-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-black uppercase text-white truncate">{a.name}</p>
+                    <p className="text-[11px] font-mono text-neutral-400 mt-0.5">
+                      📞 {a.phone}
+                      {a.email ? ` · ✉️ ${a.email}` : ""}
+                    </p>
+                    <p className="text-[11px] font-mono text-neutral-500 mt-0.5">
+                      {a.dob ? `DOB ${a.dob} · ` : ""}
+                      {a.batch} · sent {fmtWhen(a.created_at)}
+                    </p>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       disabled={busyId === a.id}
                       onClick={() => accept(a)}
-                      className="min-h-[44px] bg-lime-400 hover:bg-lime-300 disabled:opacity-50 text-black text-[11px] font-mono font-black uppercase tracking-widest"
+                      className="min-h-[38px] bg-lime-400 hover:bg-lime-300 disabled:opacity-50 text-black text-[11px] font-mono font-black uppercase tracking-widest"
                     >
                       {busyId === a.id ? "Please wait…" : "✓ Accept"}
                     </button>
@@ -248,7 +231,7 @@ export default function StudentApplications({
                       type="button"
                       disabled={busyId === a.id}
                       onClick={() => reject(a)}
-                      className="min-h-[44px] bg-neutral-950 border border-red-900 text-red-400 hover:bg-red-950 disabled:opacity-50 text-[11px] font-mono font-black uppercase tracking-widest"
+                      className="min-h-[38px] bg-neutral-950 border border-red-900 text-red-400 hover:bg-red-950 disabled:opacity-50 text-[11px] font-mono font-black uppercase tracking-widest"
                     >
                       ✕ Reject
                     </button>
