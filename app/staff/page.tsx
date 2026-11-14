@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabase";
-import { setStoredStaff, ROLE_EMAIL, usernameSlug, type StaffRole } from "../lib/staff";
+import { setActiveRole, STAFF_ACCOUNTS, type StaffRole } from "../lib/staff";
 import { motion, LayoutGroup } from "framer-motion";
 
 const ROLES: { label: string; role: StaffRole; path: string }[] = [
@@ -15,54 +15,55 @@ const ROLES: { label: string; role: StaffRole; path: string }[] = [
 export default function StaffPortal() {
   const router = useRouter();
   const [staffRole, setStaffRole] = useState("Admin");
-  const [staffName, setStaffName] = useState("");
   const [staffPassword, setStaffPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Remember the last role + name used on this device (so nobody has to re-pick their role every time)
+  // Remember the last role used on this device
   useEffect(() => {
     try {
       const savedRole = localStorage.getItem("smes_staff_role");
       if (savedRole && ROLES.some((r) => r.label === savedRole)) setStaffRole(savedRole);
-      const savedName = localStorage.getItem("smes_staff_name");
-      if (savedName) setStaffName(savedName);
     } catch {}
   }, []);
 
   const handleStaffLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!usernameSlug(staffName)) {
-      alert("⚠️ Please enter your name.");
-      return;
-    }
     setIsLoading(true);
 
     const selected = ROLES.find((r) => r.label === staffRole)!;
 
-    // 1. Sign in with the shared role password
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: ROLE_EMAIL[selected.role],
-      password: staffPassword,
-    });
+    // Everyone who may use this role. The password belongs to one person, so whichever
+    // account accepts it tells us who is logging in - nobody types a name.
+    const candidates = STAFF_ACCOUNTS.filter((a) => a.roles.includes(selected.role));
 
-    if (error || !data.session) {
+    let signedIn = false;
+    for (const account of candidates) {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: account.email,
+        password: staffPassword,
+      });
+      if (!error && data.session) {
+        signedIn = true;
+        break;
+      }
+    }
+
+    if (!signedIn) {
       alert("❌ Authorization Refused: wrong password.");
       setIsLoading(false);
       return;
     }
 
-    // 2. Remember the name typed, so it is stamped on every payment collected
-    setStoredStaff(staffName);
+    // role chosen on the tab (matters for people who have both admin and sub-admin)
+    setActiveRole(selected.role);
     try { localStorage.setItem("smes_staff_role", selected.label); } catch {}
 
-    // 3. Route the user. Supabase has already saved the secure session token!
     router.push(selected.path);
   };
 
   return (
     <main className="min-h-screen bg-neutral-950 flex items-center justify-center p-4 relative overflow-hidden">
-
       {/* Subtle Background Glow */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0 flex items-center justify-center">
         <motion.div
@@ -79,18 +80,13 @@ export default function StaffPortal() {
         className="bg-neutral-900 border border-neutral-800 p-6 sm:p-8 rounded-2xl w-full max-w-sm shadow-2xl space-y-5 relative z-10"
       >
         <div className="text-center">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-lime-400">
-            // Secure Node Terminal
-          </span>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-lime-400">// Secure Node Terminal</span>
           <h3 className="text-xl font-black uppercase text-white mt-1">System Gateway</h3>
         </div>
 
-        {/* name + autoComplete attributes let Google / the browser save and autofill the login */}
         <form onSubmit={handleStaffLogin} className="space-y-5" autoComplete="on" method="post">
           <div className="space-y-2">
-            <label className="block text-[10px] font-mono uppercase tracking-wider text-neutral-400">
-              Target Role
-            </label>
+            <label className="block text-[10px] font-mono uppercase tracking-wider text-neutral-400">Target Role</label>
             <LayoutGroup>
               <div className="grid grid-cols-3 gap-2">
                 {ROLES.map(({ label }) => (
@@ -120,31 +116,7 @@ export default function StaffPortal() {
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="staff-username" className="block text-[10px] font-mono uppercase tracking-wider text-neutral-400">
-              Your Name
-            </label>
-            <input
-              id="staff-username"
-              name="username"
-              type="text"
-              inputMode="text"
-              autoComplete="username"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              placeholder="Enter your name"
-              value={staffName}
-              onChange={(e) => setStaffName(e.target.value)}
-              className="w-full p-3.5 rounded-xl bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-base sm:text-sm font-medium transition-colors"
-              autoFocus
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="staff-password" className="block text-[10px] font-mono uppercase tracking-wider text-slate-400">
-              Access Keycode
-            </label>
+            <label htmlFor="staff-password" className="block text-[10px] font-mono uppercase tracking-wider text-slate-400">Access Keycode</label>
             <div className="relative">
               <input
                 id="staff-password"
@@ -155,23 +127,16 @@ export default function StaffPortal() {
                 value={staffPassword}
                 onChange={(e) => setStaffPassword(e.target.value)}
                 className="w-full p-3.5 pr-12 rounded-xl bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-base sm:text-sm font-medium transition-colors"
+                autoFocus
                 required
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-4 flex items-center text-neutral-500 hover:text-lime-400 transition-colors focus:outline-none"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                className="absolute inset-y-0 right-0 pr-4 flex items-center text-neutral-500 hover:text-lime-400 transition-colors focus:outline-none text-xs font-mono"
               >
-                {showPassword ? (
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
-                  </svg>
-                ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                )}
+                {showPassword ? "HIDE" : "SHOW"}
               </button>
             </div>
           </div>
@@ -186,23 +151,18 @@ export default function StaffPortal() {
             >
               Cancel
             </motion.button>
-
             <motion.button
               whileHover={{ y: -1 }}
               whileTap={{ scale: 0.97 }}
               type="submit"
-              disabled={isLoading || !staffPassword || !staffName.trim()}
+              disabled={isLoading || !staffPassword}
               className={`w-full font-mono text-xs uppercase tracking-wider py-3.5 font-black transition-all rounded-xl flex items-center justify-center min-h-[44px] ${
-                isLoading || !staffPassword || !staffName.trim()
+                isLoading || !staffPassword
                   ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
                   : "bg-gradient-to-r from-lime-400 to-lime-300 text-neutral-950 shadow-[0_0_15px_rgba(163,230,53,0.2)]"
               }`}
             >
-              {isLoading ? (
-                <span className="w-4 h-4 border-2 border-neutral-500 border-t-transparent rounded-full animate-spin"></span>
-              ) : (
-                "Authorize"
-              )}
+              {isLoading ? <span className="w-4 h-4 border-2 border-neutral-500 border-t-transparent rounded-full animate-spin"></span> : "Authorize"}
             </motion.button>
           </div>
         </form>
