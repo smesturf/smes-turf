@@ -67,6 +67,17 @@ export default function Home() {
   const [minDate, setMinDate] = useState("");
 
   const [weather, setWeather] = useState<{ temp: number; condition: string } | null>(null);
+  // 🌧️ Hourly rain chance, keyed like "2026-11-14T17:00" (Mysuru / IST)
+  const [rainForecast, setRainForecast] = useState<Record<string, number>>({});
+
+  // 💰 Admin-controlled settings (fall back to these defaults if the database has none)
+  const [pricing, setPricing] = useState({ full_hour: 2200, full_regular: 2400, half_hour: 1100, half_regular: 1500 });
+  const [academyHours, setAcademyHours] = useState({
+    enabled: true,
+    start_date: "2026-09-15",
+    days: [1, 2, 3, 4, 5],
+    slots: ["06:00 AM", "06:30 AM", "05:30 PM", "06:00 PM"],
+  });
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isPaymentLoading, setIsPaymentLoading] = useState(false);
   const [isProcessingBooking, setIsProcessingBooking] = useState(false);
@@ -164,6 +175,48 @@ export default function Home() {
       }
     };
     fetchWeather();
+  }, []);
+
+  /* -------- Hourly Rain Forecast (next 16 days) -------- */
+  useEffect(() => {
+    const fetchRain = async () => {
+      try {
+        const res = await fetch(
+          "https://api.open-meteo.com/v1/forecast?latitude=12.3400&longitude=76.6100&hourly=precipitation_probability&timezone=Asia%2FKolkata&forecast_days=16"
+        );
+        const data = await res.json();
+        const times: string[] = data?.hourly?.time || [];
+        const probs: (number | null)[] = data?.hourly?.precipitation_probability || [];
+        const map: Record<string, number> = {};
+        times.forEach((t, i) => {
+          if (typeof probs[i] === "number") map[t] = probs[i] as number;
+        });
+        setRainForecast(map);
+      } catch (e) {
+        console.log("Rain forecast unavailable.");
+      }
+    };
+    fetchRain();
+  }, []);
+
+  /* -------- Live Pricing & Academy Hours (set by admin) -------- */
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const { data } = await supabase.from("site_settings").select("key,value");
+        (data || []).forEach((row: any) => {
+          if (row.key === "pricing" && row.value) {
+            setPricing((prev) => ({ ...prev, ...row.value }));
+          }
+          if (row.key === "academy_hours" && row.value) {
+            setAcademyHours((prev) => ({ ...prev, ...row.value }));
+          }
+        });
+      } catch (e) {
+        console.log("Using default pricing.");
+      }
+    };
+    loadSettings();
   }, []);
 
   /* -------- VIP Database Scanner & Special Percentage Offer Scanner -------- */
@@ -280,18 +333,50 @@ export default function Home() {
 
   useEffect(() => {
     if (bookingDate && bookingType) loadBookedSlots(bookingDate);
-  }, [bookingDate, bookingType, liveTick]);
+  }, [bookingDate, bookingType, liveTick, academyHours]);
 
   // ⚡ DYNAMIC PRICE CALCULATION, SPECIAL OFFER & VIP MATH
   const { baseAmount, regularAmount } = useMemo(() => {
     if (!bookingType || !duration) return { baseAmount: 0, regularAmount: 0 };
     const mins = Number(duration);
     if (bookingType === "Half Court") {
-      return { baseAmount: Math.round((mins / 60) * 1100), regularAmount: Math.round((mins / 60) * 1500) };
+      return { baseAmount: Math.round((mins / 60) * pricing.half_hour), regularAmount: Math.round((mins / 60) * pricing.half_regular) };
     } else {
-      return { baseAmount: Math.round((mins / 60) * 2200), regularAmount: Math.round((mins / 60) * 2400) };
+      return { baseAmount: Math.round((mins / 60) * pricing.full_hour), regularAmount: Math.round((mins / 60) * pricing.full_regular) };
     }
-  }, [duration, bookingType]);
+  }, [duration, bookingType, pricing]);
+
+  // Price label for the session-length dropdown
+  const sessionPrice = (mins: number) =>
+    Math.round((mins / 60) * (bookingType === "Half Court" ? pricing.half_hour : pricing.full_hour));
+
+  // 🌧️ Rain chance for the chosen slot (or the whole day until a slot is picked)
+  const rainInfo = useMemo(() => {
+    if (!bookingDate) return null;
+    let fromH = 5;
+    let toH = 22;
+    const slotSpecific = Boolean(startTime && duration);
+    if (slotSpecific) {
+      const [t, ap] = startTime.split(" ");
+      let [h, m] = t.split(":").map(Number);
+      if (ap === "PM" && h !== 12) h += 12;
+      if (ap === "AM" && h === 12) h = 0;
+      const startMin = h * 60 + m;
+      const endMin = startMin + Number(duration);
+      fromH = Math.floor(startMin / 60);
+      toH = Math.max(fromH, Math.ceil(endMin / 60) - 1);
+    }
+    let max = 0;
+    let found = false;
+    for (let h = fromH; h <= toH; h++) {
+      const p = rainForecast[`${bookingDate}T${String(h).padStart(2, "0")}:00`];
+      if (typeof p === "number") {
+        found = true;
+        if (p > max) max = p;
+      }
+    }
+    return found ? { prob: max, slotSpecific } : null;
+  }, [bookingDate, startTime, duration, rainForecast]);
 
   const checkComparisonDate = bookingDate || minDate;
   const isSpecialOfferValid = Boolean(
@@ -468,11 +553,9 @@ export default function Home() {
     });
 
     const dayOfWeek = new Date(`${dateStr}T00:00:00+05:30`).getDay();
-    const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
 
-    if (dateStr >= "2026-09-15" && isWeekday) {
-      const academyBlocks = ["06:00 AM", "06:30 AM", "05:30 PM", "06:00 PM"];
-      academyBlocks.forEach(slot => {
+    if (academyHours.enabled && dateStr >= academyHours.start_date && academyHours.days.includes(dayOfWeek)) {
+      academyHours.slots.forEach(slot => {
         if (!blocked.includes(slot)) blocked.push(slot);
         if (!halfBlocked.includes(slot)) halfBlocked.push(slot);
       });
@@ -801,7 +884,7 @@ export default function Home() {
             <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500" />
           </span>
           <p className="text-[11px] sm:text-xs font-mono uppercase tracking-wide text-neutral-300">
-            ⚡ Turf Rate: <span className="text-neutral-500 line-through mr-1 font-medium">₹2400</span> <span className="text-lime-400 font-bold">₹2200 / Hr</span>
+            ⚡ Turf Rate: <span className="text-neutral-500 line-through mr-1 font-medium">₹{pricing.full_regular}</span> <span className="text-lime-400 font-bold">₹{pricing.full_hour} / Hr</span>
            </p>
         </motion.div>
       </motion.header>
@@ -1136,11 +1219,11 @@ export default function Home() {
                     }`}
                   >
                     <option value="" disabled hidden>-- Select Session Length --</option> 
-                    <option value="60">60 Minutes (1 Hour) {bookingType ? `(₹${bookingType === "Half Court" ? 1100 : 2200})` : ""}</option>
-                    <option value="90">90 Minutes (1.5 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 1650 : 3300})` : ""}</option>
-                    <option value="120">120 Minutes (2 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 2200 : 4400})` : ""}</option>
-                    <option value="150">150 Minutes (2.5 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 2750 : 5500})` : ""}</option>
-                    <option value="180">180 Minutes (3 Hours) {bookingType ? `(₹${bookingType === "Half Court" ? 3300 : 6600})` : ""}</option>
+                    <option value="60">60 Minutes (1 Hour) {bookingType ? `(₹${sessionPrice(60)})` : ""}</option>
+                    <option value="90">90 Minutes (1.5 Hours) {bookingType ? `(₹${sessionPrice(90)})` : ""}</option>
+                    <option value="120">120 Minutes (2 Hours) {bookingType ? `(₹${sessionPrice(120)})` : ""}</option>
+                    <option value="150">150 Minutes (2.5 Hours) {bookingType ? `(₹${sessionPrice(150)})` : ""}</option>
+                    <option value="180">180 Minutes (3 Hours) {bookingType ? `(₹${sessionPrice(180)})` : ""}</option>
                   </select>
                   <div className={`pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-xs transition-all ${
                     !bookingDate || !bookingType ? "text-neutral-700 opacity-40" : "text-neutral-500"
@@ -1151,6 +1234,29 @@ export default function Home() {
               {/* Slot Grid */}
               <motion.div variants={fadeUp} className="space-y-2 relative">
                 <label className="text-xs font-mono uppercase text-neutral-400">Kickoff Slot</label>
+
+                {rainInfo && rainInfo.prob >= 40 && (
+                  <div
+                    role="status"
+                    className={`flex items-start gap-3 p-3 border text-xs font-mono leading-relaxed ${
+                      rainInfo.prob >= 70
+                        ? "bg-sky-500/10 border-sky-500/50 text-sky-200"
+                        : "bg-amber-500/10 border-amber-500/40 text-amber-200"
+                    }`}
+                  >
+                    <span className="text-xl leading-none">{rainInfo.prob >= 70 ? "🌧️" : "🌦️"}</span>
+                    <div>
+                      <p className="font-black uppercase tracking-widest text-[11px]">
+                        {rainInfo.prob >= 70 ? "Rain likely" : "Showers possible"} · {rainInfo.prob}% chance
+                      </p>
+                      <p className="mt-0.5 opacity-90">
+                        {rainInfo.slotSpecific
+                          ? "Rain is forecast during your selected time. Play may be affected — please keep this in mind before paying."
+                          : "Rain is forecast on this date. Pick your slot carefully — play may be affected."}
+                      </p>
+                    </div>
+                  </div>
+                )}
                 <div className="relative">
                   <LayoutGroup>
                     <motion.div

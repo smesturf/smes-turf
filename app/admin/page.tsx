@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
@@ -39,6 +39,35 @@ const getTomorrowStr = () => {
 const coachingInputCls =
   "w-full p-3.5 min-h-[48px] bg-neutral-950 border border-neutral-800 focus:border-lime-400 outline-none text-base sm:text-sm font-medium text-white placeholder:text-neutral-600 transition-colors rounded-none";
 const coachingLabelCls = "text-[11px] font-mono uppercase tracking-widest text-neutral-400";
+
+// 🇮🇳 Month helpers (always IST, so the month rolls over at IST midnight on the 1st)
+const shiftMonth = (ym: string, delta: number) => {
+  const [y, m] = ym.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+};
+const monthLabelOf = (ym: string) => {
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+};
+const istMonthOfTimestamp = (ts?: string) =>
+  ts ? new Date(ts).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }).slice(0, 7) : "";
+// A student "owes" a month only if they have no settled payment AND had already joined by then
+const isDue = (s: any) => s.payment_status !== "settled" && s.payment_status !== "not_enrolled";
+
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+// 30-minute slot labels exactly as the customer page uses them (5:00 AM – 10:30 PM)
+const ALL_SLOT_LABELS: string[] = (() => {
+  const out: string[] = [];
+  for (let mins = 5 * 60; mins <= 22 * 60 + 30; mins += 30) {
+    const h24 = Math.floor(mins / 60);
+    const m = mins % 60;
+    const ap = h24 >= 12 ? "PM" : "AM";
+    const h12 = h24 % 12 || 12;
+    out.push(`${String(h12).padStart(2, "0")}:${m === 0 ? "00" : "30"} ${ap}`);
+  }
+  return out;
+})();
 
 type BatchTabType = "Morning Batch" | "Evening Batch";
 
@@ -89,11 +118,40 @@ export default function AdminPage() {
   const [otpInput, setOtpInput] = useState("");
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
-  const [pendingAction, setPendingAction] = useState<"cancel_refund" | "reschedule" | "cancel_no_refund" | "extend" | null>(null);
+  const [pendingAction, setPendingAction] = useState<"cancel_refund" | "reschedule" | "cancel_no_refund" | "extend" | "update_settings" | null>(null);
+
+  // 📅 Fee month being viewed / settled (defaults to the current IST month)
+  const [feeMonth, setFeeMonth] = useState(getTodayStr().slice(0, 7));
+  const feeMonthRef = useRef(feeMonth);
+  feeMonthRef.current = feeMonth;
+  const feeMonthInit = useRef(true);
+
+  const [removedStudents, setRemovedStudents] = useState<any[]>([]);
+  const [showRemoved, setShowRemoved] = useState(false);
+  const [historyStudentId, setHistoryStudentId] = useState<string | null>(null);
+  const [editStudentId, setEditStudentId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<{ name: string; phone: string; dob: string; email: string; batch: BatchTabType }>({
+    name: "", phone: "", dob: "", email: "", batch: "Morning Batch",
+  });
+  const [undoToast, setUndoToast] = useState<{ message: string; undo: () => Promise<void> } | null>(null);
+  const undoTimerRef = useRef<any>(null);
+
+  // 💰 Pricing & academy hours settings
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [pricingForm, setPricingForm] = useState({ full_hour: "2200", full_regular: "2400", half_hour: "1100", half_regular: "1500" });
+  const [academyForm, setAcademyForm] = useState<{ enabled: boolean; start_date: string; days: number[]; slots: string[] }>({
+    enabled: true,
+    start_date: "2026-09-15",
+    days: [1, 2, 3, 4, 5],
+    slots: ["06:00 AM", "06:30 AM", "05:30 PM", "06:00 PM"],
+  });
 
   const FIXED_COACHING_FEE = 2500;
-  const currentMonthYear = new Date().toISOString().slice(0, 7);
-  const currentMonthLabel = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
+  const currentMonthYear = getTodayStr().slice(0, 7); // ✅ IST month (was UTC, wrong just after midnight on the 1st)
+  const currentMonthLabel = monthLabelOf(currentMonthYear);
+  const feeMonthLabel = monthLabelOf(feeMonth);
+  const feeMonthOptions = Array.from({ length: 24 }, (_, i) => shiftMonth(currentMonthYear, -i));
 
   const convertToMins = (t: string) => {
     if (!t) return 0;
@@ -310,8 +368,8 @@ export default function AdminPage() {
   }, [availableAdminSlots, slotTime]);
 
   const sendEmailReminders = async () => {
-    const pendingStudents = academyStudents.filter(s => s.payment_status !== "settled" && s.email);
-    const noEmailStudents = academyStudents.filter(s => s.payment_status !== "settled" && !s.email);
+    const pendingStudents = academyStudents.filter(s => isDue(s) && s.email);
+    const noEmailStudents = academyStudents.filter(s => isDue(s) && !s.email);
 
     if (pendingStudents.length === 0) {
       alert(noEmailStudents.length > 0
@@ -320,7 +378,7 @@ export default function AdminPage() {
       return;
     }
 
-    const confirmed = confirm(`Are you sure you want to send official email reminders to ${pendingStudents.length} student(s) for the month of ${currentMonthLabel}?`);
+    const confirmed = confirm(`Are you sure you want to send official email reminders to ${pendingStudents.length} student(s) for the month of ${feeMonthLabel}?`);
     if (!confirmed) return;
 
     setIsSendingEmails(true);
@@ -330,7 +388,7 @@ export default function AdminPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           students: pendingStudents,
-          month: currentMonthLabel,
+          month: feeMonthLabel,
           fee: FIXED_COACHING_FEE
         })
       });
@@ -347,24 +405,50 @@ export default function AdminPage() {
   };
 
   const loadAcademyData = async () => {
-    const { data: stData } = await supabase
+    const ym = feeMonthRef.current;
+    const selectCols = `*, student_payments(*), student_attendance(*)`;
+
+    // Active students (soft-deleted ones are hidden)
+    let { data: stData, error: stErr } = await supabase
       .from("students")
-      .select(`*, student_payments(*), student_attendance(*)`)
+      .select(selectCols)
+      .is("deleted_at", null)
       .order("name", { ascending: true });
+
+    // Safety net: if the SQL setup hasn't been run yet, fall back to the old query
+    if (stErr) {
+      const retry = await supabase.from("students").select(selectCols).order("name", { ascending: true });
+      stData = retry.data;
+    }
 
     if (stData) {
       setAcademyStudents(stData.map((student: any) => {
-        const currentMonthRecord = student.student_payments?.find((p: any) => p.month_year === currentMonthYear);
+        const rec = student.student_payments?.find((p: any) => p.month_year === ym);
+        const joinedLater = !rec && istMonthOfTimestamp(student.created_at) > ym;
         return {
           ...student,
-          payment_status: currentMonthRecord ? currentMonthRecord.status : "pending",
-          amount_paid: currentMonthRecord ? currentMonthRecord.amount_paid : 0,
-          payment_method: currentMonthRecord ? currentMonthRecord.payment_method : "-",
-          payment_record_id: currentMonthRecord ? currentMonthRecord.id : null,
+          payment_status: rec ? rec.status : joinedLater ? "not_enrolled" : "pending",
+          amount_paid: rec ? rec.amount_paid : 0,
+          payment_method: rec ? rec.payment_method : "-",
+          payment_record_id: rec ? rec.id : null,
         };
       }));
     }
+
+    // Recently removed (can be restored)
+    const { data: rmData } = await supabase
+      .from("students")
+      .select("id,name,phone,batch,deleted_at")
+      .not("deleted_at", "is", null)
+      .order("deleted_at", { ascending: false });
+    setRemovedStudents(rmData || []);
   };
+
+  // Reload fees when the admin switches month (skip the very first run; auth effect loads it)
+  useEffect(() => {
+    if (feeMonthInit.current) { feeMonthInit.current = false; return; }
+    loadAcademyData();
+  }, [feeMonth]);
 
   const markAttendance = async (studentId: string, status: "Present" | "Absent") => {
     const today = getTodayStr();
@@ -426,54 +510,239 @@ export default function AdminPage() {
     loadAcademyData();
   };
 
+  // ⏪ Undo toast (delete / edit / payment changes)
+  const showUndo = (message: string, undo: () => Promise<void>) => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setUndoToast({ message, undo });
+    undoTimerRef.current = setTimeout(() => setUndoToast(null), 10000);
+  };
+
+  const runUndo = async () => {
+    if (!undoToast) return;
+    const action = undoToast.undo;
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setUndoToast(null);
+    try {
+      await action();
+    } catch (e: any) {
+      alert(`Undo failed: ${e?.message || "Please try again"}`);
+    }
+    loadAcademyData();
+  };
+
+  // 💸 Mark one month as paid (updates the record if it exists, otherwise creates it)
+  const settleStudentMonth = async (studentId: string, ym: string, method: string) => {
+    const { data: existing } = await supabase
+      .from("student_payments")
+      .select("id")
+      .eq("student_id", studentId)
+      .eq("month_year", ym)
+      .limit(1);
+
+    const payload = { status: "settled", amount_paid: FIXED_COACHING_FEE, payment_method: method };
+    const { error } =
+      existing && existing.length > 0
+        ? await supabase.from("student_payments").update({ ...payload, updated_at: new Date().toISOString() }).eq("id", existing[0].id)
+        : await supabase.from("student_payments").insert([{ student_id: studentId, month_year: ym, ...payload }]);
+
+    if (error) {
+      alert(`Database Error: ${error.message}`);
+      return false;
+    }
+    return true;
+  };
+
   const handleAdminOldPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adminSelectedStudentId) { alert("Please select a student name first"); return; }
     const target = academyStudents.find(s => s.id === adminSelectedStudentId);
     if (!target) return;
 
-    if (target.payment_record_id) {
-      await supabase
-        .from("student_payments")
-        .update({ status: "settled", amount_paid: FIXED_COACHING_FEE, payment_method: adminExistingMethod, updated_at: new Date().toISOString() })
-        .eq("id", target.payment_record_id);
-    } else {
-      await supabase
-        .from("student_payments")
-        .insert([{ student_id: adminSelectedStudentId, month_year: currentMonthYear, status: "settled", amount_paid: FIXED_COACHING_FEE, payment_method: adminExistingMethod }]);
-    }
-    alert("💸 Monthly Payment Logged Successfully");
+    const ym = feeMonth;
+    const ok = await settleStudentMonth(target.id, ym, adminExistingMethod);
+    if (!ok) return;
+
+    showUndo(`💸 ${target.name} marked paid for ${monthLabelOf(ym)}`, async () => {
+      await supabase.from("student_payments").delete().eq("student_id", target.id).eq("month_year", ym);
+    });
     setAdminSelectedStudentId("");
     loadAcademyData();
   };
 
+  // ↩️ Remove one month's payment (history screen)
+  const undoPaymentMonth = async (student: any, ym: string) => {
+    const rec = student.student_payments?.find((p: any) => p.month_year === ym);
+    if (!rec) return;
+    if (!window.confirm(`Mark ${monthLabelOf(ym)} as NOT paid for ${student.name}?`)) return;
+
+    const { error } = await supabase.from("student_payments").delete().eq("id", rec.id);
+    if (error) { alert(`Database Error: ${error.message}`); return; }
+
+    showUndo(`↩️ ${monthLabelOf(ym)} payment removed for ${student.name}`, async () => {
+      await supabase.from("student_payments").insert([{
+        student_id: student.id,
+        month_year: ym,
+        status: rec.status,
+        amount_paid: rec.amount_paid,
+        payment_method: rec.payment_method,
+      }]);
+    });
+    loadAcademyData();
+  };
+
+  // 🗑️ Soft delete — student moves to "Recently Removed" and can be restored
   const deleteStudent = async (studentId: string, studentName: string) => {
-    const confirmDelete = window.confirm(
-      `⚠️ CRITICAL WARNING:\n\nAre you sure you want to completely delete "${studentName}"?\n\nThis will permanently destroy this student's profile and delete their entire multi-month payment history from the master system. This action cannot be undone.`
+    const ok = window.confirm(
+      `Remove "${studentName}" from the academy?\n\nThey will move to "Recently Removed" and can be restored any time. Their payment history is kept.`
     );
-    if (!confirmDelete) return;
+    if (!ok) return;
 
+    const { error } = await supabase.from("students").update({ deleted_at: new Date().toISOString() }).eq("id", studentId);
+    if (error) {
+      alert(`Database Error: ${error.message}\n\nMake sure the SQL setup (deleted_at column) has been run in Supabase.`);
+      return;
+    }
+    showUndo(`🗑️ ${studentName} removed`, async () => {
+      await supabase.from("students").update({ deleted_at: null }).eq("id", studentId);
+    });
+    loadAcademyData();
+  };
+
+  const restoreStudent = async (studentId: string, studentName: string) => {
+    const { error } = await supabase.from("students").update({ deleted_at: null }).eq("id", studentId);
+    if (error) { alert(`Database Error: ${error.message}`); return; }
+    alert(`✅ ${studentName} has been restored.`);
+    loadAcademyData();
+  };
+
+  const purgeStudent = async (studentId: string, studentName: string) => {
+    const ok = window.confirm(
+      `⚠️ DELETE FOREVER?\n\n"${studentName}" and their entire payment & attendance history will be permanently destroyed. This cannot be undone.`
+    );
+    if (!ok) return;
     try {
-      const { error: paymentError } = await supabase
-        .from("student_payments")
-        .delete()
-        .eq("student_id", studentId);
-
+      await supabase.from("student_attendance").delete().eq("student_id", studentId);
+      const { error: paymentError } = await supabase.from("student_payments").delete().eq("student_id", studentId);
       if (paymentError) throw paymentError;
-
-      const { error: studentError } = await supabase
-        .from("students")
-        .delete()
-        .eq("id", studentId);
-
+      const { error: studentError } = await supabase.from("students").delete().eq("id", studentId);
       if (studentError) throw studentError;
-
-      alert(`✅ ${studentName} and all associated ledger history records have been purged.`);
+      alert(`✅ ${studentName} permanently deleted.`);
       loadAcademyData();
     } catch (error: any) {
-      console.error("Deletion matrix failure:", error);
-      alert(`Database Error: ${error.message || "Failed to remove student record safely."}`);
+      alert(`Database Error: ${error.message || "Failed to delete student."}`);
     }
+  };
+
+  // ✏️ Edit student details
+  const openEditStudent = (s: any) => {
+    setEditStudentId(s.id);
+    setEditForm({
+      name: s.name || "",
+      phone: s.phone || "",
+      dob: s.dob ? String(s.dob).slice(0, 10) : "",
+      email: s.email || "",
+      batch: (s.batch as BatchTabType) || "Morning Batch",
+    });
+  };
+
+  const saveStudentEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const original = academyStudents.find(s => s.id === editStudentId);
+    if (!original) return;
+
+    const name = editForm.name.trim();
+    if (!name) { alert("Name cannot be empty"); return; }
+    if (editForm.phone.length !== 10) { alert("Phone number must be exactly 10 digits"); return; }
+
+    const updates = {
+      name,
+      phone: editForm.phone,
+      dob: editForm.dob || null,
+      email: editForm.email.trim() || null,
+      batch: editForm.batch,
+    };
+    const previous = {
+      name: original.name,
+      phone: original.phone,
+      dob: original.dob ?? null,
+      email: original.email ?? null,
+      batch: original.batch,
+    };
+
+    const { error } = await supabase.from("students").update(updates).eq("id", original.id);
+    if (error) { alert(`Database Error: ${error.message}`); return; }
+
+    setEditStudentId(null);
+    showUndo(`✏️ ${name} updated`, async () => {
+      await supabase.from("students").update(previous).eq("id", original.id);
+    });
+    loadAcademyData();
+  };
+
+  // 💰 Pricing & Academy Hours (OTP protected)
+  const loadSettings = async () => {
+    const { data } = await supabase.from("site_settings").select("key,value");
+    (data || []).forEach((row: any) => {
+      if (row.key === "pricing" && row.value) {
+        setPricingForm({
+          full_hour: String(row.value.full_hour ?? 2200),
+          full_regular: String(row.value.full_regular ?? 2400),
+          half_hour: String(row.value.half_hour ?? 1100),
+          half_regular: String(row.value.half_regular ?? 1500),
+        });
+      }
+      if (row.key === "academy_hours" && row.value) {
+        setAcademyForm({
+          enabled: row.value.enabled ?? true,
+          start_date: row.value.start_date || "2026-09-15",
+          days: row.value.days || [1, 2, 3, 4, 5],
+          slots: row.value.slots || [],
+        });
+      }
+    });
+  };
+
+  const requestSaveSettings = () => {
+    const nums = Object.values(pricingForm).map(Number);
+    if (nums.some((n) => !Number.isFinite(n) || n <= 0)) {
+      alert("Please enter a valid price (greater than 0) in every price field.");
+      return;
+    }
+    if (academyForm.enabled && (!academyForm.start_date || academyForm.days.length === 0 || academyForm.slots.length === 0)) {
+      alert("Academy blocking is ON: pick a start date, at least one day and at least one time slot (or switch it OFF).");
+      return;
+    }
+    triggerOtpProtection("update_settings");
+  };
+
+  const saveSettings = async () => {
+    setIsSavingSettings(true);
+    const now = new Date().toISOString();
+    const pricingValue = {
+      full_hour: Number(pricingForm.full_hour),
+      full_regular: Number(pricingForm.full_regular),
+      half_hour: Number(pricingForm.half_hour),
+      half_regular: Number(pricingForm.half_regular),
+    };
+    const academyValue = {
+      enabled: academyForm.enabled,
+      start_date: academyForm.start_date,
+      days: [...academyForm.days].sort(),
+      slots: ALL_SLOT_LABELS.filter((l) => academyForm.slots.includes(l)),
+    };
+    const { error } = await supabase.from("site_settings").upsert(
+      [
+        { key: "pricing", value: pricingValue, updated_at: now },
+        { key: "academy_hours", value: academyValue, updated_at: now },
+      ],
+      { onConflict: "key" }
+    );
+    setIsSavingSettings(false);
+    if (error) {
+      alert(`Database Error: ${error.message}\n\nMake sure the SQL setup (site_settings table) has been run in Supabase.`);
+      return;
+    }
+    alert("✅ Saved! Customers will see the new prices and academy hours the next time they load the booking page.");
   };
 
   const loadBookings = async () => {
@@ -863,7 +1132,7 @@ export default function AdminPage() {
   /* 🔒 MASTER OTP SECURITY LOGIC */
   /* ========================================================================= */
 
-  const triggerOtpProtection = async (actionType: "cancel_refund" | "reschedule" | "cancel_no_refund" | "extend") => {
+  const triggerOtpProtection = async (actionType: "cancel_refund" | "reschedule" | "cancel_no_refund" | "extend" | "update_settings") => {
     setIsSendingOtp(true);
     try {
       const response = await fetch("/api/admin-otp", {
@@ -907,6 +1176,7 @@ export default function AdminPage() {
         else if (pendingAction === "reschedule") await handleRescheduleBooking(true);
         else if (pendingAction === "cancel_no_refund") await handleCancelWithoutRefund(true);
         else if (pendingAction === "extend") await checkAndExtendBooking(true);
+        else if (pendingAction === "update_settings") await saveSettings();
         
         setPendingAction(null);
       } else {
@@ -1165,11 +1435,9 @@ export default function AdminPage() {
     }));
 
     // --- 2. Coaching Data Processing ---
-    const currentMonthNum = new Date().getMonth();
-    const currentYearNum = new Date().getFullYear();
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     
-    const { data: dbStudents } = await supabase.from("students").select(`*, student_payments(*), student_attendance(*)`)?.order("name", { ascending: true });
+    const { data: dbStudents } = await supabase.from("students").select(`*, student_payments(*), student_attendance(*)`).is("deleted_at", null).order("name", { ascending: true });
 
     const morningStudents = [...(dbStudents || [])].filter(s => s.batch === "Morning Batch").sort((a, b) => a.name.localeCompare(b.name));
     const eveningStudents = [...(dbStudents || [])].filter(s => s.batch === "Evening Batch").sort((a, b) => a.name.localeCompare(b.name));
@@ -1180,8 +1448,7 @@ export default function AdminPage() {
 
     const processBatch = (batchStudents: any[]) => {
       batchStudents.forEach((s) => {
-        const joinDate = new Date(s.created_at);
-        const isNew = joinDate.getMonth() === currentMonthNum && joinDate.getFullYear() === currentYearNum;
+        const isNew = istMonthOfTimestamp(s.created_at) === currentMonthYear;
 
         const rRow: any = {
           "ID": serialCounter,
@@ -1558,7 +1825,7 @@ export default function AdminPage() {
       const present = list.filter(s =>
         s.student_attendance?.some((a: any) => a.date === today && a.status === "Present")
       ).length;
-      return { total: list.length, paid, due: list.length - paid, present };
+      return { total: list.length, paid, due: list.filter(isDue).length, present };
     };
     return { morning: calc("Morning Batch"), evening: calc("Evening Batch") };
   }, [academyStudents]);
@@ -1573,6 +1840,24 @@ export default function AdminPage() {
     });
     return map;
   }, [academyStudents]);
+
+  // 🧾 Payment-history sheet data
+  const historyStudent = historyStudentId ? academyStudents.find((st) => st.id === historyStudentId) : null;
+  const historyRows: { ym: string; rec: any }[] = (() => {
+    if (!historyStudent) return [];
+    const payments: any[] = historyStudent.student_payments || [];
+    const joinYm = istMonthOfTimestamp(historyStudent.created_at) || currentMonthYear;
+    const earliest = [joinYm, ...payments.map((p: any) => p.month_year)].filter(Boolean).sort()[0];
+    const rows: { ym: string; rec: any }[] = [];
+    for (let ym = currentMonthYear; ym >= earliest && rows.length < 60; ym = shiftMonth(ym, -1)) {
+      rows.push({ ym, rec: payments.find((p: any) => p.month_year === ym) });
+    }
+    return rows;
+  })();
+  const historyPaidCount = historyRows.filter((r) => r.rec && r.rec.status === "settled").length;
+  const historyTotalPaid = historyRows.reduce(
+    (sum, r) => sum + (r.rec && r.rec.status === "settled" ? Number(r.rec.amount_paid || 0) : 0), 0
+  );
 
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans tracking-tight antialiased relative w-full overflow-x-hidden selection:bg-lime-400 selection:text-black">
@@ -1702,6 +1987,19 @@ export default function AdminPage() {
             <motion.button
               whileHover={{ y: -2 }}
               whileTap={{ scale: 0.97 }}
+              className={`font-mono text-xs uppercase tracking-widest px-5 py-4 font-black transition-colors ${showSettingsPanel ? 'bg-amber-400 text-black' : 'bg-amber-600 hover:bg-amber-500 text-white'}`}
+              onClick={() => {
+                const next = !showSettingsPanel;
+                setShowSettingsPanel(next);
+                if (next) loadSettings();
+              }}
+            >
+              💰 Pricing & Hours
+            </motion.button>
+
+            <motion.button
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.97 }}
               className={`font-mono text-xs uppercase tracking-widest px-5 py-4 font-black transition-colors ${showCoachingPanel ? 'bg-lime-400 text-black' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}
               onClick={() => {
                 const nextState = !showCoachingPanel;
@@ -1759,6 +2057,53 @@ export default function AdminPage() {
                   >
                     ✕
                   </button>
+                </div>
+
+                {/* Fee month picker — check or settle any past month */}
+                <div className="space-y-2">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">Fee Month</span>
+                  <div className="flex items-stretch gap-2">
+                    <button
+                      type="button"
+                      aria-label="Previous month"
+                      onClick={() => setFeeMonth(shiftMonth(feeMonth, -1))}
+                      className="w-12 min-h-[48px] shrink-0 flex items-center justify-center bg-neutral-950 border border-neutral-800 text-lime-400 text-2xl active:bg-neutral-900"
+                    >
+                      ‹
+                    </button>
+                    <select
+                      value={feeMonth}
+                      onChange={(e) => setFeeMonth(e.target.value)}
+                      className={`${coachingInputCls} flex-1 text-center font-black uppercase tracking-wide`}
+                    >
+                      {feeMonthOptions.map((ym) => (
+                        <option key={ym} value={ym}>
+                          {monthLabelOf(ym)}{ym === currentMonthYear ? " (Current)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      aria-label="Next month"
+                      disabled={feeMonth >= currentMonthYear}
+                      onClick={() => setFeeMonth(shiftMonth(feeMonth, 1))}
+                      className="w-12 min-h-[48px] shrink-0 flex items-center justify-center bg-neutral-950 border border-neutral-800 text-lime-400 text-2xl active:bg-neutral-900 disabled:opacity-30"
+                    >
+                      ›
+                    </button>
+                  </div>
+                  {feeMonth !== currentMonthYear && (
+                    <div className="flex items-center justify-between gap-2 p-2.5 bg-amber-500/10 border border-amber-500/30 text-[11px] font-mono text-amber-300">
+                      <span>📅 Viewing {feeMonthLabel} — fee status below is for this month</span>
+                      <button
+                        type="button"
+                        onClick={() => setFeeMonth(currentMonthYear)}
+                        className="px-2.5 py-1.5 border border-amber-500/40 font-black uppercase shrink-0"
+                      >
+                        Current
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 items-start">
@@ -1900,14 +2245,14 @@ export default function AdminPage() {
                           className="space-y-3"
                         >
                           <div className="space-y-1.5">
-                            <label className={coachingLabelCls}>Select Due Student</label>
+                            <label className={coachingLabelCls}>Select Due Student · {feeMonthLabel}</label>
                             <select
                               value={adminSelectedStudentId}
                               onChange={(e) => setAdminSelectedStudentId(e.target.value)}
                               className={coachingInputCls}
                             >
                               <option value="">-- Select Due Student --</option>
-                              {academyStudents.filter(s => s.payment_status !== "settled").map(s => (
+                              {academyStudents.filter(isDue).map(s => (
                                 <option key={s.id} value={s.id}>{s.name} ({s.phone})</option>
                               ))}
                             </select>
@@ -1931,11 +2276,50 @@ export default function AdminPage() {
                             type="submit"
                             className="w-full min-h-[52px] bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-mono font-black text-xs uppercase tracking-widest transition-colors"
                           >
-                            Settle Selected Student
+                            Settle {feeMonthLabel}
                           </motion.button>
                         </motion.form>
                       )}
                     </AnimatePresence>
+                    {removedStudents.length > 0 && (
+                      <div className="pt-3 border-t border-neutral-800 space-y-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowRemoved((v) => !v)}
+                          className="w-full min-h-[44px] flex items-center justify-between text-left text-[11px] font-mono font-black uppercase tracking-widest text-neutral-300"
+                        >
+                          <span>🗑️ Recently Removed ({removedStudents.length})</span>
+                          <span className="text-lime-400 text-base">{showRemoved ? "▴" : "▾"}</span>
+                        </button>
+                        {showRemoved &&
+                          removedStudents.map((r) => (
+                            <div key={r.id} className="p-3 bg-neutral-950 border border-neutral-800 space-y-2.5">
+                              <div className="min-w-0">
+                                <p className="text-sm font-black text-white truncate">{r.name}</p>
+                                <p className="text-[10px] font-mono text-neutral-500">
+                                  {r.batch} · removed {r.deleted_at ? new Date(r.deleted_at).toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata" }) : "-"}
+                                </p>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => restoreStudent(r.id, r.name)}
+                                  className="h-11 bg-lime-400 text-black font-mono font-black text-[11px] uppercase tracking-widest active:bg-lime-300"
+                                >
+                                  ↩️ Restore
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => purgeStudent(r.id, r.name)}
+                                  className="h-11 border border-red-500/40 text-red-400 font-mono font-black text-[11px] uppercase tracking-widest active:bg-red-950"
+                                >
+                                  Delete forever
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    )}
                   </div>
                   <div className="lg:col-span-2 space-y-3 sm:space-y-4">
                     {/* Football Academy — tap to open batches & roster */}
@@ -2129,7 +2513,8 @@ export default function AdminPage() {
                     {/* Phone cards */}
                     <div className="block sm:hidden max-h-[70vh] overflow-y-auto p-3 space-y-2.5">
                       {filteredAcademyStudents.map((s) => {
-                        const isUnpaid = s.payment_status !== "settled";
+                        const isUnpaid = isDue(s);
+                        const notEnrolled = s.payment_status === "not_enrolled";
                         const todayAtt = s.student_attendance?.find((a: any) => a.date === getTodayStr());
                         const isPresent = todayAtt?.status === "Present";
                         const isAbsent = todayAtt?.status === "Absent";
@@ -2156,7 +2541,9 @@ export default function AdminPage() {
                                   📞 {s.phone}
                                 </a>
                               </div>
-                              {isUnpaid ? (
+                              {notEnrolled ? (
+                                <span className="px-2 py-1 text-[10px] font-mono uppercase bg-neutral-900 border border-neutral-700 text-neutral-400 font-black shrink-0 whitespace-nowrap">Joined later</span>
+                              ) : isUnpaid ? (
                                 <motion.span
                                   animate={{ opacity: [1, 0.55, 1] }}
                                   transition={{ duration: 2, repeat: Infinity }}
@@ -2171,7 +2558,7 @@ export default function AdminPage() {
                               )}
                             </div>
 
-                            <div className="grid grid-cols-[1fr_1fr_44px] gap-2">
+                            <div className="grid grid-cols-2 gap-2">
                               <button
                                 type="button"
                                 onClick={() => markAttendance(s.id, "Present")}
@@ -2190,13 +2577,29 @@ export default function AdminPage() {
                               >
                                 ✕ Absent
                               </button>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openEditStudent(s)}
+                                className="h-10 text-[10px] font-mono font-black uppercase tracking-wider bg-neutral-900 border border-neutral-800 text-neutral-200 active:bg-neutral-800"
+                              >
+                                ✏️ Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setHistoryStudentId(s.id)}
+                                className="h-10 text-[10px] font-mono font-black uppercase tracking-wider bg-neutral-900 border border-neutral-800 text-neutral-200 active:bg-neutral-800"
+                              >
+                                🧾 History
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => deleteStudent(s.id, s.name)}
-                                aria-label={`Delete ${s.name}`}
-                                className="h-11 flex items-center justify-center bg-neutral-900 border border-neutral-800 text-red-400 active:bg-red-950 text-sm"
+                                className="h-10 text-[10px] font-mono font-black uppercase tracking-wider bg-neutral-900 border border-neutral-800 text-red-400 active:bg-red-950"
                               >
-                                🗑️
+                                🗑️ Remove
                               </button>
                             </div>
 
@@ -2227,7 +2630,8 @@ export default function AdminPage() {
                           className="divide-y divide-neutral-900 text-xs font-medium"
                         >
                           {filteredAcademyStudents.map((s) => {
-                            const isUnpaid = s.payment_status !== "settled";
+                            const isUnpaid = isDue(s);
+                        const notEnrolled = s.payment_status === "not_enrolled";
                             const todayAtt = s.student_attendance?.find((a: any) => a.date === getTodayStr());
                             const isPresent = todayAtt?.status === "Present";
                             const isAbsent = todayAtt?.status === "Absent";
@@ -2245,14 +2649,28 @@ export default function AdminPage() {
                                   </span>
                                 </td>
                                 <td className="p-4">
-                                  <div className="font-black text-white flex items-center gap-2">
+                                  <div className="font-black text-white flex flex-wrap items-center gap-2">
                                     <span>{s.name}</span>
-                                    <button
-                                      onClick={() => deleteStudent(s.id, s.name)}
-                                      className="px-2 py-0.5 text-[9px] font-mono uppercase bg-neutral-900 hover:bg-red-600 border border-neutral-800 hover:border-red-500 text-red-400 hover:text-white transition-colors"
-                                    >
-                                      🗑️ Delete
-                                    </button>
+                                    <span className="flex flex-wrap gap-1.5">
+                                      <button
+                                        onClick={() => openEditStudent(s)}
+                                        className="px-2 py-0.5 text-[9px] font-mono uppercase bg-neutral-900 hover:bg-neutral-700 border border-neutral-800 text-neutral-200 transition-colors"
+                                      >
+                                        ✏️ Edit
+                                      </button>
+                                      <button
+                                        onClick={() => setHistoryStudentId(s.id)}
+                                        className="px-2 py-0.5 text-[9px] font-mono uppercase bg-neutral-900 hover:bg-neutral-700 border border-neutral-800 text-neutral-200 transition-colors"
+                                      >
+                                        🧾 History
+                                      </button>
+                                      <button
+                                        onClick={() => deleteStudent(s.id, s.name)}
+                                        className="px-2 py-0.5 text-[9px] font-mono uppercase bg-neutral-900 hover:bg-red-600 border border-neutral-800 hover:border-red-500 text-red-400 hover:text-white transition-colors"
+                                      >
+                                        🗑️ Remove
+                                      </button>
+                                    </span>
                                   </div>
                                   <div className="text-[10px] font-mono text-neutral-500 mt-0.5">
                                     DOB: {s.dob ? new Date(s.dob).toLocaleDateString("en-GB") : "-"}
@@ -2263,7 +2681,9 @@ export default function AdminPage() {
                                   <div className="text-[11px] text-neutral-500 truncate max-w-[180px]">{s.email || "-"}</div>
                                 </td>
                                 <td className="p-4 text-center">
-                                  {isUnpaid ? (
+                                  {notEnrolled ? (
+                                <span className="px-2 py-1 text-[10px] font-mono uppercase bg-neutral-900 border border-neutral-700 text-neutral-400 font-black shrink-0 whitespace-nowrap">Joined later</span>
+                              ) : isUnpaid ? (
                                     <motion.span
                                       animate={{ opacity: [1, 0.55, 1] }}
                                       transition={{ duration: 2, repeat: Infinity }}
@@ -2307,6 +2727,184 @@ export default function AdminPage() {
                     </AnimatePresence>
                   </div>
                 </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ---------- Pricing & Academy Hours (OTP protected) ---------- */}
+        <AnimatePresence>
+          {showSettingsPanel && (
+            <motion.div
+              initial={{ opacity: 0, y: -12, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: "auto" }}
+              exit={{ opacity: 0, y: -12, height: 0 }}
+              transition={{ duration: 0.35, ease: easeOut }}
+              className="overflow-hidden mb-8"
+            >
+              <div className="space-y-4 p-3 sm:p-6 border border-neutral-900 bg-neutral-900/30 backdrop-blur relative">
+                <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-amber-400 to-lime-400" />
+
+                <div className="flex items-start justify-between gap-3 pt-1">
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">A4 — Turf Settings</span>
+                    <h2 className="text-lg sm:text-xl font-black uppercase text-white leading-tight">Pricing & Academy Hours</h2>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowSettingsPanel(false)}
+                    aria-label="Close settings"
+                    className="w-10 h-10 shrink-0 flex items-center justify-center border border-neutral-800 bg-neutral-950 text-neutral-400 text-sm"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="p-3 border border-amber-500/30 bg-amber-500/10 text-[11px] font-mono text-amber-200 leading-relaxed">
+                  🔒 Saving needs an OTP sent to the master admin email. Changes show for customers the next time they load the booking page. Bookings already made are not changed.
+                </div>
+
+                {/* Price per hour */}
+                <div className="p-4 bg-neutral-950 border border-neutral-800 space-y-4">
+                  <h3 className="text-sm font-black uppercase text-white">💰 Price per Hour</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {([
+                      { title: "Full Court", offer: "full_hour", regular: "full_regular" },
+                      { title: "Half Court", offer: "half_hour", regular: "half_regular" },
+                    ] as const).map((g) => (
+                      <div key={g.title} className="space-y-3 p-3 border border-neutral-800 bg-neutral-900/40">
+                        <span className="text-[11px] font-mono uppercase tracking-widest text-lime-400 font-black block">{g.title}</span>
+                        <div className="space-y-1.5">
+                          <label className={coachingLabelCls}>Customer pays (₹ / hr)</label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={pricingForm[g.offer]}
+                            onChange={(e) => setPricingForm({ ...pricingForm, [g.offer]: e.target.value.replace(/\D/g, "").slice(0, 6) })}
+                            className={`${coachingInputCls} font-mono`}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className={coachingLabelCls}>Crossed-out regular price (₹ / hr)</label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={pricingForm[g.regular]}
+                            onChange={(e) => setPricingForm({ ...pricingForm, [g.regular]: e.target.value.replace(/\D/g, "").slice(0, 6) })}
+                            className={`${coachingInputCls} font-mono`}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[11px] font-mono text-neutral-400 leading-relaxed">
+                    Customers will see: <span className="line-through text-neutral-500">₹{pricingForm.full_regular || 0}</span>{" "}
+                    <span className="text-lime-400 font-black">₹{pricingForm.full_hour || 0} / Hr</span> · 1.5 hrs full court = ₹
+                    {Math.round(1.5 * Number(pricingForm.full_hour || 0)).toLocaleString("en-IN")}
+                  </p>
+                </div>
+
+                {/* Academy hours */}
+                <div className="p-4 bg-neutral-950 border border-neutral-800 space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="text-sm font-black uppercase text-white">⚽ Academy Hours</h3>
+                      <p className="text-[11px] font-mono text-neutral-400 mt-0.5">Slots blocked for customers because of coaching</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={academyForm.enabled}
+                      onClick={() => setAcademyForm({ ...academyForm, enabled: !academyForm.enabled })}
+                      className={`shrink-0 min-h-[44px] px-4 border font-mono font-black text-[11px] uppercase tracking-widest transition-colors ${
+                        academyForm.enabled ? "bg-lime-400 text-black border-lime-400" : "bg-neutral-900 text-neutral-400 border-neutral-700"
+                      }`}
+                    >
+                      {academyForm.enabled ? "ON" : "OFF"}
+                    </button>
+                  </div>
+
+                  <div className={`space-y-4 transition-opacity ${academyForm.enabled ? "" : "opacity-40 pointer-events-none"}`}>
+                    <div className="space-y-1.5">
+                      <label className={coachingLabelCls}>Blocking starts from</label>
+                      <input
+                        type="date"
+                        value={academyForm.start_date}
+                        onChange={(e) => setAcademyForm({ ...academyForm, start_date: e.target.value })}
+                        className={coachingInputCls}
+                        style={{ colorScheme: "dark" }}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className={coachingLabelCls}>Days</label>
+                      <div className="grid grid-cols-7 gap-1.5">
+                        {DAY_NAMES.map((d, i) => {
+                          const on = academyForm.days.includes(i);
+                          return (
+                            <button
+                              key={d}
+                              type="button"
+                              onClick={() =>
+                                setAcademyForm({
+                                  ...academyForm,
+                                  days: on ? academyForm.days.filter((x) => x !== i) : [...academyForm.days, i],
+                                })
+                              }
+                              className={`min-h-[44px] text-[10px] font-mono font-black uppercase border transition-colors ${
+                                on ? "bg-lime-400 text-black border-lime-400" : "bg-neutral-900 text-neutral-400 border-neutral-800"
+                              }`}
+                            >
+                              {d}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className={coachingLabelCls}>Blocked time slots (tap to select)</label>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-1.5 max-h-[280px] overflow-y-auto p-1">
+                        {ALL_SLOT_LABELS.map((slot) => {
+                          const on = academyForm.slots.includes(slot);
+                          return (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={() =>
+                                setAcademyForm({
+                                  ...academyForm,
+                                  slots: on ? academyForm.slots.filter((x) => x !== slot) : [...academyForm.slots, slot],
+                                })
+                              }
+                              className={`min-h-[44px] text-[10px] font-mono font-black border transition-colors ${
+                                on ? "bg-red-500/20 text-red-300 border-red-500/60" : "bg-neutral-900 text-neutral-400 border-neutral-800"
+                              }`}
+                            >
+                              {slot}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-[11px] font-mono text-neutral-400">
+                        {academyForm.slots.length} slot(s) blocked on{" "}
+                        {academyForm.days.length ? [...academyForm.days].sort().map((d) => DAY_NAMES[d]).join(", ") : "no days"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <motion.button
+                  type="button"
+                  whileTap={{ scale: 0.97 }}
+                  onClick={requestSaveSettings}
+                  disabled={isSavingSettings || isSendingOtp}
+                  className={`w-full min-h-[56px] bg-amber-400 hover:bg-amber-300 text-black font-mono font-black text-xs uppercase tracking-widest transition-colors ${
+                    isSavingSettings || isSendingOtp ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
+                >
+                  {isSavingSettings ? "Saving..." : isSendingOtp ? "Sending OTP..." : "🔒 Save Changes (OTP)"}
+                </motion.button>
               </div>
             </motion.div>
           )}
@@ -3293,6 +3891,247 @@ export default function AdminPage() {
                 </motion.button>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------- STUDENT PAYMENT HISTORY (bottom sheet) ---------- */}
+      <AnimatePresence>
+        {historyStudent && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9990] flex items-end sm:items-center justify-center"
+            onClick={() => setHistoryStudentId(null)}
+          >
+            <motion.div
+              initial={{ y: 60, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 60, opacity: 0 }}
+              transition={{ duration: 0.3, ease: easeOut }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-md max-h-[88vh] flex flex-col relative overflow-hidden"
+            >
+              <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-lime-400 to-emerald-500" />
+              <div className="p-4 pt-5 border-b border-neutral-900 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">Payment History</span>
+                    <h3 className="text-lg font-black text-white truncate">{historyStudent.name}</h3>
+                    <p className="text-[11px] font-mono text-neutral-400">{historyStudent.batch} · {historyStudent.phone}</p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Close"
+                    onClick={() => setHistoryStudentId(null)}
+                    className="w-10 h-10 shrink-0 flex items-center justify-center border border-neutral-800 bg-neutral-900 text-neutral-400 text-sm"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="p-2 bg-neutral-900 border border-neutral-800">
+                    <span className="block text-lg font-black text-lime-400 leading-none">{historyPaidCount}</span>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Months Paid</span>
+                  </div>
+                  <div className="p-2 bg-neutral-900 border border-neutral-800">
+                    <span className="block text-lg font-black text-white leading-none">₹{historyTotalPaid.toLocaleString("en-IN")}</span>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Total Paid</span>
+                  </div>
+                  <div className="p-2 bg-neutral-900 border border-neutral-800">
+                    <span className={`block text-lg font-black leading-none ${historyRows.length - historyPaidCount > 0 ? "text-red-400" : "text-neutral-500"}`}>
+                      {historyRows.length - historyPaidCount}
+                    </span>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Months Due</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-y-auto p-3 space-y-2">
+                {historyRows.map(({ ym, rec }) => {
+                  const paid = rec && rec.status === "settled";
+                  const when = rec ? (rec.updated_at || rec.created_at) : null;
+                  return (
+                    <div
+                      key={ym}
+                      className={`p-3 border space-y-2.5 ${paid ? "bg-lime-400/[0.04] border-lime-400/20" : "bg-red-500/[0.05] border-red-500/25"}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-black text-white">{monthLabelOf(ym)}</span>
+                        {paid ? (
+                          <span className="px-2 py-1 text-[10px] font-mono uppercase bg-lime-400/10 border border-lime-400/30 text-lime-400 font-black">
+                            ✅ Paid ₹{Number(rec.amount_paid || 0).toLocaleString("en-IN")}
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 text-[10px] font-mono uppercase bg-red-500/15 border border-red-500/40 text-red-400 font-black">
+                            ⚠️ Due ₹{FIXED_COACHING_FEE.toLocaleString("en-IN")}
+                          </span>
+                        )}
+                      </div>
+                      {paid ? (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-mono text-neutral-400">
+                            {rec.payment_method}
+                            {when ? ` · ${new Date(when).toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata" })}` : ""}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => undoPaymentMonth(historyStudent, ym)}
+                            className="h-9 px-3 border border-neutral-700 text-neutral-300 text-[10px] font-mono font-black uppercase tracking-widest active:bg-neutral-800"
+                          >
+                            ↩️ Undo
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                          {["UPI", "Cash"].map((method) => (
+                            <button
+                              key={method}
+                              type="button"
+                              onClick={async () => {
+                                const ok = await settleStudentMonth(historyStudent.id, ym, method);
+                                if (!ok) return;
+                                showUndo(`💸 ${historyStudent.name}: ${monthLabelOf(ym)} paid (${method})`, async () => {
+                                  await supabase.from("student_payments").delete().eq("student_id", historyStudent.id).eq("month_year", ym);
+                                });
+                                loadAcademyData();
+                              }}
+                              className="h-11 bg-lime-400 text-black font-mono font-black text-[11px] uppercase tracking-widest active:bg-lime-300"
+                            >
+                              Paid · {method}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------- EDIT STUDENT (bottom sheet) ---------- */}
+      <AnimatePresence>
+        {editStudentId && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9990] flex items-end sm:items-center justify-center"
+            onClick={() => setEditStudentId(null)}
+          >
+            <motion.form
+              initial={{ y: 60, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 60, opacity: 0 }}
+              transition={{ duration: 0.3, ease: easeOut }}
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={saveStudentEdit}
+              className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-md max-h-[90vh] overflow-y-auto p-4 pt-5 space-y-3 relative"
+            >
+              <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-lime-400 to-emerald-500" />
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-lg font-black uppercase text-white">Edit Student</h3>
+                <button
+                  type="button"
+                  aria-label="Close"
+                  onClick={() => setEditStudentId(null)}
+                  className="w-10 h-10 flex items-center justify-center border border-neutral-800 bg-neutral-900 text-neutral-400 text-sm"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="space-y-1.5">
+                <label className={coachingLabelCls}>Student Name</label>
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  className={coachingInputCls}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className={coachingLabelCls}>Phone (10 Digits)</label>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={10}
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value.replace(/\D/g, "").slice(0, 10) })}
+                  className={`${coachingInputCls} font-mono`}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className={coachingLabelCls}>Date of Birth</label>
+                <input
+                  type="date"
+                  value={editForm.dob}
+                  onChange={(e) => setEditForm({ ...editForm, dob: e.target.value })}
+                  className={coachingInputCls}
+                  style={{ colorScheme: "dark" }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className={coachingLabelCls}>Email ID</label>
+                <input
+                  type="email"
+                  inputMode="email"
+                  value={editForm.email}
+                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                  className={coachingInputCls}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className={coachingLabelCls}>Batch</label>
+                <select
+                  value={editForm.batch}
+                  onChange={(e) => setEditForm({ ...editForm, batch: e.target.value as BatchTabType })}
+                  className={coachingInputCls}
+                >
+                  <option value="Morning Batch">🌅 Morning Batch</option>
+                  <option value="Evening Batch">🌙 Evening Batch</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setEditStudentId(null)}
+                  className="min-h-[52px] border border-neutral-700 text-neutral-300 font-mono font-black text-xs uppercase tracking-widest active:bg-neutral-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="min-h-[52px] bg-lime-400 text-black font-mono font-black text-xs uppercase tracking-widest active:bg-lime-300"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </motion.form>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------- UNDO TOAST ---------- */}
+      <AnimatePresence>
+        {undoToast && (
+          <motion.div
+            initial={{ y: 40, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 40, opacity: 0 }}
+            className="fixed bottom-4 inset-x-3 sm:inset-x-auto sm:right-6 sm:w-96 z-[10001] flex items-center justify-between gap-3 p-3 bg-neutral-900 border border-lime-400/40 shadow-2xl"
+          >
+            <span className="text-xs font-mono text-white leading-snug">{undoToast.message}</span>
+            <button
+              type="button"
+              onClick={runUndo}
+              className="shrink-0 min-h-[40px] px-4 bg-lime-400 text-black font-mono font-black text-xs uppercase tracking-widest active:bg-lime-300"
+            >
+              Undo
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
