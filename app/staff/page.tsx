@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import { setStoredStaff, ROLE_EMAIL, usernameSlug, type StaffRole } from "../lib/staff";
@@ -19,6 +19,16 @@ export default function StaffPortal() {
   const [staffPassword, setStaffPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  // Remember the last role + name used on this device (so nobody has to re-pick their role every time)
+  useEffect(() => {
+    try {
+      const savedRole = localStorage.getItem("smes_staff_role");
+      if (savedRole && ROLES.some((r) => r.label === savedRole)) setStaffRole(savedRole);
+      const savedName = localStorage.getItem("smes_staff_name");
+      if (savedName) setStaffName(savedName);
+    } catch {}
+  }, []);
 
   const handleStaffLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,6 +54,7 @@ export default function StaffPortal() {
 
     // 2. Remember the name typed, so it is stamped on every payment collected
     setStoredStaff(staffName);
+    try { localStorage.setItem("smes_staff_role", selected.label); } catch {}
 
     // 3. Route the user. Supabase has already saved the secure session token!
     router.push(selected.path);
@@ -121,7 +132,7 @@ export default function StaffPortal() {
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
-              placeholder="e.g. Ravi"
+              placeholder="Enter your name"
               value={staffName}
               onChange={(e) => setStaffName(e.target.value)}
               className="w-full p-3.5 rounded-xl bg-neutral-950 text-white border border-neutral-800 focus:border-lime-400 outline-none text-base sm:text-sm font-medium transition-colors"
