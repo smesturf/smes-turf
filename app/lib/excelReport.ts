@@ -196,7 +196,7 @@ function setup(ws: any, tab: string, landscape = true) {
  * A4 print layout. Fits the sheet to the page width (readable scale); very wide sheets are
  * split over 2-3 pages across, repeating the header rows and the name columns on every page.
  */
-function finishPrint(ws: any, lastCol: number, o: { titleRows?: string; titleCols?: string; pagesWide?: number } = {}) {
+function finishPrint(ws: any, lastCol: number, o: { titleRows?: string; titleCols?: string; pagesWide?: number; sideMargin?: number } = {}) {
   const AVAIL = 192; // ≈ column-width units that fit an A4 landscape page at ~65% scale
   let total = 0;
   for (let c = 1; c <= lastCol; c++) total += Number(ws.getColumn(c).width) || 9;
@@ -209,7 +209,7 @@ function finishPrint(ws: any, lastCol: number, o: { titleRows?: string; titleCol
     fitToWidth: pagesWide,
     fitToHeight: 0,
     horizontalCentered: true,
-    margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.6, header: 0.25, footer: 0.3 },
+    margins: { left: o.sideMargin ?? 0.4, right: o.sideMargin ?? 0.4, top: 0.5, bottom: 0.6, header: 0.25, footer: 0.3 },
   };
   if (o.titleRows) ws.pageSetup.printTitlesRow = o.titleRows;
   if (o.titleCols && pagesWide > 1) ws.pageSetup.printTitlesColumn = o.titleCols;
@@ -553,10 +553,11 @@ export async function downloadMasterReport(input: ReportInput) {
     const ws = wb.addWorksheet("Bookings");
     setup(ws, "FF2563EB");
     const headers = ["S.No.", "Date", "Time", "Customer", "Phone", "Sport", "Type", "Court", "Duration (min)", "Total (₹)", "Advance (₹)", "Balance (₹)", "Cash (₹)", "UPI / Online (₹)", "Payment Method", "Booking Status", "Payment", "Collected By", "Collector Role", "Collected At", "Email", "Reference ID", "Booking ID"];
-    setWidths(ws, [7, 13, 11, 24, 15, 13, 13, 9, 11, 13, 13, 13, 13, 15, 16, 16, 12, 16, 14, 22, 28, 18, 12]);
+    setWidths(ws, [5, 11, 8, 26, 11, 9, 10, 8, 8, 9, 9, 9, 8, 9, 11, 8, 8, 11, 10, 17, 26, 19, 7]); // tight, so the whole sheet fits one A4 page width
     titleBar(ws, "BOOKINGS  ·  FULL HISTORY", `${bookings.length} bookings  ·  ${sub}`, headers.length, 4);
     const HR = 4;
     headerRow(ws, HR, headers);
+    ws.getRow(HR).height = 44;
     const rows = bookings.map((b, i) => {
       const m = moneyOf(b);
       return [
@@ -595,15 +596,17 @@ export async function downloadMasterReport(input: ReportInput) {
       if (row[11] > 0) ws.getCell(rr, 12).font = { bold: true, size: 10, color: { argb: C.redTx } };
       ws.getCell(rr, 4).font = { bold: true, size: 10 };
       if (row[17] !== "-") ws.getCell(rr, 18).font = { bold: true, size: 10, color: { argb: C.blueTx } };
-      ws.getCell(rr, 18).alignment = { horizontal: "center", vertical: "middle" };
       ws.getCell(rr, 19).alignment = { horizontal: "center", vertical: "middle" };
+      // long text shrinks to fit its cell, so nothing is cut off when printed
+      [4, 21, 22].forEach((c) => (ws.getCell(rr, c).alignment = { horizontal: "left", vertical: "middle", shrinkToFit: true }));
+      [18, 20].forEach((c) => (ws.getCell(rr, c).alignment = { horizontal: "center", vertical: "middle", shrinkToFit: true }));
     });
     if (rows.length > 0) {
       totalsRow(ws, l + 1, "TOTAL (follows filters)", f, l, [10, 11, 12, 13, 14], { 10: sAll.total, 11: sAll.adv, 12: sAll.bal, 13: sAll.cash, 14: sAll.upi }, INR, headers.length);
       ws.autoFilter = { from: { row: HR, column: 1 }, to: { row: l, column: headers.length } };
     }
     ws.views = [{ state: "frozen", xSplit: 4, showGridLines: false }];
-    finishPrint(ws, headers.length, { titleRows: "4:4", titleCols: "A:D" });
+    finishPrint(ws, headers.length, { titleRows: "4:4", pagesWide: 1, sideMargin: 0.25 });
   }
 
   /* ======================= 3. DAILY SUMMARY ======================= */
@@ -650,8 +653,8 @@ export async function downloadMasterReport(input: ReportInput) {
     setup(ws, "FF7C3AED");
     const fixed = ["ID", "Student Name", "Batch", "Phone", "Date of Birth", "Email", "Joined", "Type", "Monthly Fee (₹)", "Total Paid (₹)", "Months Pending"];
     const lastCol = fixed.length + allMonths.length * 2;
-    setWidths(ws, [6, 26, 16, 15, 14, 28, 14, 22, 14, 15, 11]);
-    for (let i = 0; i < allMonths.length * 2; i++) ws.getColumn(fixed.length + 1 + i).width = i % 2 === 0 ? 14 : 15;
+    setWidths(ws, [5, 24, 14, 11, 11, 22, 11, 18, 9, 10, 8]);
+    for (let i = 0; i < allMonths.length * 2; i++) ws.getColumn(fixed.length + 1 + i).width = i % 2 === 0 ? 11 : 12;
     titleBar(ws, "COACHING ROSTER  ·  FEES", `${sorted.length} students${leftSorted.length ? `  ·  ${leftSorted.length} left` : ""}  ·  ${sub}`, Math.max(lastCol, 11), 2);
     // two header rows: 4 = group, 5 = sub
     headerRow(ws, 5, fixed);
@@ -711,6 +714,8 @@ export async function downloadMasterReport(input: ReportInput) {
     const [f, l] = bodyRows(ws, 6, rows, fmts, aligns);
     const styleRow = (rr: number, row: any[], left: boolean) => {
       ws.getCell(rr, 2).font = { bold: true, size: 10 };
+      // long text shrinks to fit its cell so nothing is cut off when printed
+      [2, 6].forEach((c) => (ws.getCell(rr, c).alignment = { horizontal: "left", vertical: "middle", shrinkToFit: true }));
       tone(ws.getCell(rr, 3), row[2] === "Morning Batch" ? "warn" : row[2] === "Evening Batch" ? "violet" : "grey");
       tone(ws.getCell(rr, 8), left ? "bad" : row[7] === "NEW" ? "info" : "grey");
       ws.getCell(rr, 10).font = { bold: true, size: 10, color: { argb: C.greenTx } };
@@ -720,6 +725,7 @@ export async function downloadMasterReport(input: ReportInput) {
         const v = row[cc - 1];
         tone(ws.getCell(rr, cc), v.startsWith("✔") ? "good" : v.startsWith("✖") ? "bad" : "grey");
         if (row[cc] !== "-") ws.getCell(rr, cc + 1).font = { bold: true, size: 10, color: { argb: C.blueTx } };
+        ws.getCell(rr, cc + 1).alignment = { horizontal: "center", vertical: "middle", shrinkToFit: true };
       });
     };
     rows.forEach((row, i) => styleRow(f + i, row, false));
@@ -738,7 +744,7 @@ export async function downloadMasterReport(input: ReportInput) {
       lrows.forEach((row, i) => styleRow(lf + i, row, true));
     }
     ws.views = [{ state: "frozen", xSplit: 2, showGridLines: false }];
-    finishPrint(ws, Math.max(lastCol, 11), { titleRows: "4:5", titleCols: "A:B" });
+    finishPrint(ws, Math.max(lastCol, 11), { titleRows: "4:5", pagesWide: 1, sideMargin: 0.25 });
   }
 
   /* ======================= 5. ATTENDANCE ======================= */
@@ -748,8 +754,8 @@ export async function downloadMasterReport(input: ReportInput) {
     const dates = Array.from(new Set(sorted.flatMap((s) => (s.student_attendance || []).map((a: any) => a.date as string)))).filter(Boolean).sort();
     const fixed = ["ID", "Student Name", "Batch", "Present", "Absent", "Attendance %"];
     const lastCol = fixed.length + dates.length;
-    setWidths(ws, [6, 26, 16, 10, 10, 13]);
-    for (let i = 0; i < dates.length; i++) ws.getColumn(fixed.length + 1 + i).width = 5.5;
+    setWidths(ws, [5, 24, 14, 8, 8, 11]);
+    for (let i = 0; i < dates.length; i++) ws.getColumn(fixed.length + 1 + i).width = 4.6;
     titleBar(ws, "ATTENDANCE RECORD", `P = Present · A = Absent  ·  ${sub}`, Math.max(lastCol, 9), 2);
     headerRow(ws, 4, fixed);
     dates.forEach((d, i) => {
@@ -777,6 +783,7 @@ export async function downloadMasterReport(input: ReportInput) {
     rows.forEach((row, i) => {
       const rr = f + i;
       ws.getCell(rr, 2).font = { bold: true, size: 10 };
+      ws.getCell(rr, 2).alignment = { horizontal: "left", vertical: "middle", shrinkToFit: true };
       tone(ws.getCell(rr, 3), row[2] === "Morning Batch" ? "warn" : row[2] === "Evening Batch" ? "violet" : "grey");
       tone(ws.getCell(rr, 6), row[5] >= 0.75 ? "good" : row[5] >= 0.5 ? "warn" : "bad");
       ws.getCell(rr, 6).numFmt = PCT;
@@ -788,33 +795,7 @@ export async function downloadMasterReport(input: ReportInput) {
     });
     if (rows.length > 0) ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: f + rows.length - 1, column: lastCol } };
     ws.views = [{ state: "frozen", xSplit: 2, showGridLines: false }];
-    finishPrint(ws, Math.max(lastCol, 9), { titleRows: "4:4", titleCols: "A:B" });
-  }
-
-  /* ======================= 6. PAYMENT LOG ======================= */
-  if (paymentLog.length > 0) {
-    const ws = wb.addWorksheet("Payment Log");
-    setup(ws, "FFDB2777");
-    const headers = ["When (IST)", "Collected By", "Role", "Action", "Amount (₹)", "Method", "Month", "Details"];
-    setWidths(ws, [24, 16, 14, 20, 14, 16, 18, 60]);
-    titleBar(ws, "PAYMENT LOG  ·  WHO COLLECTED WHAT", `${paymentLog.length} entries  ·  ${sub}`, headers.length);
-    headerRow(ws, 4, headers);
-    const KIND: Record<string, [string, Tone]> = {
-      booking_balance: ["Booking balance", "info"],
-      booking_advance: ["Booking advance", "info"],
-      booking_reset: ["Payment reset", "bad"],
-      student_fee: ["Student fee", "good"],
-      student_fee_removed: ["Fee removed", "bad"],
-    };
-    const rows = paymentLog.map((p) => [fmtIST(p.created_at), p.collected_by || "-", p.collected_by_role || "-", (KIND[p.kind] || [p.kind, "grey"])[0], num(p.amount), p.method || "-", p.month_year ? fmtMonth(p.month_year) : "-", p.note || ""] as any[]);
-    const [f, l] = bodyRows(ws, 5, rows, [undefined, undefined, undefined, undefined, INR], [undefined, "center", "center", "center", undefined, "center", "center"]);
-    rows.forEach((_, i) => {
-      tone(ws.getCell(f + i, 4), (KIND[paymentLog[i].kind] || ["", "grey"])[1] as Tone);
-      ws.getCell(f + i, 2).font = { bold: true, size: 10, color: { argb: C.blueTx } };
-    });
-    ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: l, column: headers.length } };
-    ws.views = [{ showGridLines: false }];
-    finishPrint(ws, headers.length, { titleRows: "4:4" });
+    finishPrint(ws, Math.max(lastCol, 9), { titleRows: "4:4", pagesWide: 1, sideMargin: 0.25 });
   }
 
   /* ---------- download ---------- */
