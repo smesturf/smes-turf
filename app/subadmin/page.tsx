@@ -2536,7 +2536,7 @@ export default function SubAdminPage() {
                         key={booking.id}
                         variants={rowItem}
                         layout
-                        className={`${rowColor} flex items-stretch sm:table-row ring-1 ring-neutral-700 sm:ring-0 hover:bg-white/[0.03] transition-colors`}
+                        className={`${rowColor} flex flex-wrap items-stretch sm:table-row ring-1 ring-neutral-700 sm:ring-0 hover:bg-white/[0.03] transition-colors`}
                       >
                         <td className="block flex-1 min-w-0 sm:table-cell sm:flex-none p-2.5 sm:p-4 align-top">
                           <div className="flex flex-col gap-1">
@@ -2586,27 +2586,10 @@ export default function SubAdminPage() {
                               </div>
                               <div className="flex flex-col">
                                 <div className="flex items-center gap-2 min-w-0">
-                                  <a
-                                    href={`tel:${String(booking.phone || "").replace(/\s/g, "")}`}
-                                    className="shrink-0 text-sky-400 underline underline-offset-2 whitespace-nowrap"
-                                  >
-                                    {booking.phone}
-                                  </a>
+                                  <span className="shrink-0 text-neutral-300 whitespace-nowrap select-all">{booking.phone}</span>
                                   <span className="min-w-0 truncate text-[9px] text-neutral-500">{booking.booking_reference || ""}</span>
                                 </div>
                                 <span className="text-neutral-500 truncate max-w-[200px]">{booking.email || "No Email Provided"}</span>
-                              </div>
-                              <div className="flex items-center gap-1.5 whitespace-nowrap">
-                                <span className="text-neutral-400">₹{booking.total_amount}</span>
-                                <span className="text-emerald-400">Adv ₹{booking.advance_amount ?? ((booking.total_amount || 0) - (booking.balance_amount || 0))}</span>
-                                {Number(booking.balance_amount || 0) > 0 ? (
-                                  <span className="text-red-400 font-black">Due ₹{booking.balance_amount}</span>
-                                ) : (
-                                  <>
-                                    <span className="text-lime-400 font-black">Due ₹0</span>
-                                    <span className="text-lime-400 font-black">✓ Paid</span>
-                                  </>
-                                )}
                               </div>
                             </div>
                           </div>
@@ -2737,37 +2720,35 @@ export default function SubAdminPage() {
                               ⚙️ Manage
                             </motion.button>
                           </div>
-
-                          {/* Mobile only: collected by + payment method */}
-                          <div className="sm:hidden mt-1.5 flex flex-col gap-0.5 font-mono text-[11px] leading-tight text-left whitespace-nowrap">
-                            <div className="flex items-center gap-1 min-w-0">
-                              {booking.collected_by ? (
-                                <span className="text-fuchsia-400 font-black truncate">👤 {booking.collected_by}</span>
-                              ) : (
-                                <span className="text-neutral-600">👤 —</span>
-                              )}
-                            </div>
-                            {Number(booking.balance_amount || 0) === 0 && (() => {
-                              // Advance paid online sits inside upi_received, so remove it to see how the balance was collected
-                              const isOffline = booking.customer_name === "Offline Booking";
-                              const advance = isOffline ? 0 : Number(booking.advance_amount || 0);
-                              const cash = Number(booking.cash_received || 0);
-                              const upi = Math.max(0, Number(booking.upi_received || 0) - advance);
-                              let label = "";
-                              let color = "text-neutral-300";
-                              if (cash > 0 && upi > 0) { label = "Cash + UPI"; color = "text-fuchsia-400"; }
-                              else if (cash > 0) { label = "Full Cash"; color = "text-amber-400"; }
-                              else if (upi > 0) { label = "Full UPI"; color = "text-cyan-400"; }
-                              else if (Number(booking.upi_received || 0) > 0) { label = "Full UPI"; color = "text-cyan-400"; }
-                              else if (booking.payment_method) { label = String(booking.payment_method); }
-                              if (!label) return null;
-                              return (
-                                <div className="flex justify-between gap-2">
-                                  <span className="text-neutral-500">Via</span>
-                                  <span className={`font-black ${color}`}>{label}</span>
-                                </div>
-                              );
-                            })()}
+                        </td>
+                        <td className="block w-full sm:hidden px-3 py-1 border-t border-neutral-800">
+                          <div className="flex items-center justify-between gap-2 font-mono text-sm font-bold whitespace-nowrap">
+                            <span className="shrink-0 text-neutral-200"><span className="text-neutral-500 font-normal text-xs">Total </span>₹{booking.total_amount}</span>
+                            <span className="shrink-0 text-emerald-400"><span className="text-neutral-500 font-normal text-xs">Adv </span>₹{booking.advance_amount ?? ((booking.total_amount || 0) - (booking.balance_amount || 0))}</span>
+                            {Number(booking.balance_amount || 0) > 0 ? (
+                              <span className="shrink-0 text-red-400 font-black"><span className="text-neutral-500 font-normal text-xs">Due </span>₹{booking.balance_amount}</span>
+                            ) : (
+                              <span className="shrink-0 text-lime-400 font-black">✓ Paid</span>
+                            )}
+                            <span className="min-w-0 flex flex-col items-end text-[10px] leading-[11px] font-black">
+                              {Number(booking.balance_amount || 0) === 0 && (() => {
+                                // Advance paid online sits inside upi_received, so remove it to see how the balance was collected
+                                const isOffline = booking.customer_name === "Offline Booking";
+                                const advance = isOffline ? 0 : Number(booking.advance_amount || 0);
+                                const cash = Number(booking.cash_received || 0);
+                                const upi = Math.max(0, Number(booking.upi_received || 0) - advance);
+                                let label = "";
+                                let color = "text-neutral-300";
+                                if (cash > 0 && upi > 0) { label = "Cash + UPI"; color = "text-fuchsia-400"; }
+                                else if (cash > 0) { label = "Full Cash"; color = "text-amber-400"; }
+                                else if (upi > 0) { label = "Full UPI"; color = "text-cyan-400"; }
+                                else if (Number(booking.upi_received || 0) > 0) { label = "Full UPI"; color = "text-cyan-400"; }
+                                else if (booking.payment_method) { label = String(booking.payment_method); }
+                                if (!label) return null;
+                                return <span className={`${color} max-w-full truncate`}>{label}</span>;
+                              })()}
+                              <span className={`max-w-full truncate ${booking.collected_by ? "text-fuchsia-400" : "text-neutral-600"}`}>👤 {booking.collected_by || "—"}</span>
+                            </span>
                           </div>
                         </td>
                       </motion.tr>
