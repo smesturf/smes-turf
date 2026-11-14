@@ -555,13 +555,8 @@ export default function AdminPage() {
       }));
     }
 
-    // Recently removed (can be restored)
-    const { data: rmData } = await supabase
-      .from("students")
-      .select("id,name,phone,batch,deleted_at")
-      .not("deleted_at", "is", null)
-      .order("deleted_at", { ascending: false });
-    setRemovedStudents(rmData || []);
+    // Removed students are intentionally not shown or loaded in the admin page.
+    setRemovedStudents([]);
   };
 
   // Reload fees when the admin switches month (skip the very first run; auth effect loads it)
@@ -1722,7 +1717,6 @@ export default function AdminPage() {
     const { data: dbStudents } = await supabase
       .from("students")
       .select(`*, student_payments(*), student_attendance(*)`)
-      .is("deleted_at", null)
       .order("name", { ascending: true });
 
     // Payment log (only exists after the staff SQL has been run; ignore errors)
@@ -2459,45 +2453,6 @@ export default function AdminPage() {
                         </motion.form>
                       )}
                     </AnimatePresence>
-                    {removedStudents.length > 0 && (
-                      <div className="pt-3 border-t border-neutral-800 space-y-2">
-                        <button
-                          type="button"
-                          onClick={() => setShowRemoved((v) => !v)}
-                          className="w-full min-h-[44px] flex items-center justify-between text-left text-[11px] font-mono font-black uppercase tracking-widest text-neutral-300"
-                        >
-                          <span>🗑️ Recently Removed ({removedStudents.length})</span>
-                          <span className="text-lime-400 text-base">{showRemoved ? "▴" : "▾"}</span>
-                        </button>
-                        {showRemoved &&
-                          removedStudents.map((r) => (
-                            <div key={r.id} className="p-3 bg-neutral-950 border border-neutral-800 space-y-2.5">
-                              <div className="min-w-0">
-                                <p className="text-sm font-black text-white truncate">{r.name}</p>
-                                <p className="text-[10px] font-mono text-neutral-500">
-                                  {r.batch} · removed {r.deleted_at ? new Date(r.deleted_at).toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata" }) : "-"}
-                                </p>
-                              </div>
-                              <div className="grid grid-cols-2 gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => restoreStudent(r.id, r.name)}
-                                  className="h-11 bg-lime-400 text-black font-mono font-black text-[11px] uppercase tracking-widest active:bg-lime-300"
-                                >
-                                  ↩️ Restore
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => purgeStudent(r.id, r.name)}
-                                  className="h-11 border border-red-500/40 text-red-400 font-mono font-black text-[11px] uppercase tracking-widest active:bg-red-950"
-                                >
-                                  Delete forever
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                      </div>
-                    )}
                   </div>
                   <div className="lg:col-span-2 space-y-3 sm:space-y-4">
                     {/* Football Academy — tap to open batches & roster */}

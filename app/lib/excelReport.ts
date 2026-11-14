@@ -192,20 +192,47 @@ function setup(ws: any, tab: string, landscape = true) {
   ws.pageSetup = { orientation: landscape ? "landscape" : "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
 }
 
+/**
+ * A4 print layout. Fits the sheet to the page width (readable scale); very wide sheets are
+ * split over 2-3 pages across, repeating the header rows and the name columns on every page.
+ */
+function finishPrint(ws: any, lastCol: number, o: { titleRows?: string; titleCols?: string; pagesWide?: number } = {}) {
+  const AVAIL = 192; // ≈ column-width units that fit an A4 landscape page at ~65% scale
+  let total = 0;
+  for (let c = 1; c <= lastCol; c++) total += Number(ws.getColumn(c).width) || 9;
+  const pagesWide = o.pagesWide || Math.max(1, Math.ceil(total / AVAIL));
+  ws.pageSetup = {
+    ...(ws.pageSetup || {}),
+    paperSize: 9, // A4
+    orientation: "landscape",
+    fitToPage: true,
+    fitToWidth: pagesWide,
+    fitToHeight: 0,
+    horizontalCentered: true,
+    margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.6, header: 0.25, footer: 0.3 },
+  };
+  if (o.titleRows) ws.pageSetup.printTitlesRow = o.titleRows;
+  if (o.titleCols && pagesWide > 1) ws.pageSetup.printTitlesColumn = o.titleCols;
+  ws.headerFooter = { oddFooter: `&L&8SMES Turf  ·  ${ws.name}&C&8Page &P of &N&R&8Printed &D` };
+}
+
 function titleBar(ws: any, title: string, sub: string, lastCol: number, mergeTo = lastCol) {
   const narrow = mergeTo < lastCol;
+  let w = 0;
+  for (let c = 1; c <= mergeTo; c++) w += Number(ws.getColumn(c).width) || 9;
+  const lines = (text: string, perChar: number) => Math.max(1, Math.ceil((text.length * perChar) / Math.max(w, 1)));
   ws.mergeCells(1, 1, 1, mergeTo);
   const t = ws.getCell(1, 1);
   t.value = title;
-  t.font = { bold: true, size: 18, color: { argb: C.lime } };
-  t.alignment = { vertical: "middle", horizontal: "center" };
-  ws.getRow(1).height = 36;
+  t.font = { bold: true, size: narrow ? 13 : 18, color: { argb: C.lime } };
+  t.alignment = { vertical: "middle", horizontal: "center", wrapText: narrow };
+  ws.getRow(1).height = narrow ? Math.max(36, lines(title, 1.5) * 20 + 8) : 36;
   ws.mergeCells(2, 1, 2, mergeTo);
   const s = ws.getCell(2, 1);
   s.value = sub;
   s.font = { size: 10, color: { argb: "FFCBD5E1" } };
   s.alignment = { vertical: "middle", horizontal: "center", wrapText: narrow };
-  ws.getRow(2).height = narrow ? 34 : 20;
+  ws.getRow(2).height = narrow ? Math.max(20, lines(sub, 1.05) * 14 + 8) : 20;
   for (let c = 1; c <= lastCol; c++) {
     ws.getCell(1, c).fill = fill(C.ink);
     ws.getCell(2, c).fill = fill(C.head);
@@ -262,8 +289,8 @@ function totalsRow(ws: any, rowIdx: number, label: string, firstData: number, la
   row.height = 24;
 }
 
-function sectionBand(ws: any, rowIdx: number, text: string, lastCol: number) {
-  ws.mergeCells(rowIdx, 1, rowIdx, lastCol);
+function sectionBand(ws: any, rowIdx: number, text: string, lastCol: number, mergeTo = lastCol) {
+  ws.mergeCells(rowIdx, 1, rowIdx, mergeTo);
   const c = ws.getCell(rowIdx, 1);
   c.value = text;
   c.font = { bold: true, size: 11, color: { argb: C.limeDark } };
@@ -346,7 +373,8 @@ export async function downloadMasterReport(input: ReportInput) {
   const sMonth = statsOf(monthList);
 
   // coaching numbers
-  const activeStudents = students;
+  const activeStudents = students.filter((s) => !s.deleted_at);
+  const leftStudents = students.filter((s) => !!s.deleted_at);
   const morning = activeStudents.filter((s) => s.batch === "Morning Batch").length;
   const evening = activeStudents.filter((s) => s.batch === "Evening Batch").length;
   const newThisMonth = activeStudents.filter((s) => isNewStudent(s)).length;
@@ -366,7 +394,8 @@ export async function downloadMasterReport(input: ReportInput) {
     const rank = (s: any) => (s.batch === "Morning Batch" ? 0 : s.batch === "Evening Batch" ? 1 : 2);
     return rank(a) - rank(b) || String(a.name).localeCompare(String(b.name));
   });
-  const allMonths = Array.from(new Set(sorted.flatMap((s) => (s.student_payments || []).map((p: any) => p.month_year as string)))).filter(Boolean).sort();
+  const leftSorted = [...leftStudents].sort((a, b) => String(b.deleted_at).localeCompare(String(a.deleted_at)));
+  const allMonths = Array.from(new Set([...sorted, ...leftSorted].flatMap((s) => (s.student_payments || []).map((p: any) => p.month_year as string)))).filter(Boolean).sort();
 
   // collections that are still standing (resets / removed fees are netted out)
   const liveLog = netPaymentLog(paymentLog);
@@ -456,6 +485,7 @@ export async function downloadMasterReport(input: ReportInput) {
 
     // Coaching
     r += 2;
+    ws.getRow(r - 1).addPageBreak(); // page 1 = bookings, page 2 = coaching / staff / sport
     sectionBand(ws, r, "🎓  COACHING ACADEMY", 7);
     r++;
     headerRow(ws, r, ["Metric", "Value"]);
@@ -515,6 +545,7 @@ export async function downloadMasterReport(input: ReportInput) {
     sectionBand(ws, r, "⚽  SPORT-WISE", 7);
     r++;
     sportTable(ws, r, bookings, 7, 6);
+    finishPrint(ws, 7, { pagesWide: 1 });
   }
 
   /* ======================= 2. BOOKINGS ======================= */
@@ -572,6 +603,7 @@ export async function downloadMasterReport(input: ReportInput) {
       ws.autoFilter = { from: { row: HR, column: 1 }, to: { row: l, column: headers.length } };
     }
     ws.views = [{ state: "frozen", xSplit: 4, showGridLines: false }];
+    finishPrint(ws, headers.length, { titleRows: "4:4", titleCols: "A:D" });
   }
 
   /* ======================= 3. DAILY SUMMARY ======================= */
@@ -580,7 +612,7 @@ export async function downloadMasterReport(input: ReportInput) {
     setup(ws, "FF0891B2");
     const headers = ["Date", "Day", "Bookings", "Revenue (₹)", "Advance (₹)", "Cash (₹)", "UPI / Online (₹)", "Money In Hand (₹)", "Pending (₹)", "Status"];
     setWidths(ws, [14, 8, 11, 15, 15, 15, 17, 18, 15, 18]);
-    titleBar(ws, "DAILY SUMMARY", sub, headers.length);
+    titleBar(ws, "DAILY SUMMARY", sub, headers.length, 1);
     headerRow(ws, 4, headers);
     const byDay: Record<string, any[]> = {};
     bookings.forEach((b) => {
@@ -608,7 +640,8 @@ export async function downloadMasterReport(input: ReportInput) {
         rules: [{ type: "colorScale", cfvo: [{ type: "min" }, { type: "max" }], color: [{ argb: "FFFFFFFF" }, { argb: C.lime }] }],
       });
     }
-    ws.views = [{ showGridLines: false }];
+    ws.views = [{ state: "frozen", xSplit: 1, showGridLines: false }];
+    finishPrint(ws, headers.length, { titleRows: "4:4", titleCols: "A:A" });
   }
 
   /* ======================= 4. COACHING ROSTER ======================= */
@@ -617,9 +650,9 @@ export async function downloadMasterReport(input: ReportInput) {
     setup(ws, "FF7C3AED");
     const fixed = ["ID", "Student Name", "Batch", "Phone", "Date of Birth", "Email", "Joined", "Type", "Monthly Fee (₹)", "Total Paid (₹)", "Months Pending"];
     const lastCol = fixed.length + allMonths.length * 2;
-    setWidths(ws, [6, 26, 16, 15, 14, 28, 14, 14, 14, 15, 11]);
+    setWidths(ws, [6, 26, 16, 15, 14, 28, 14, 22, 14, 15, 11]);
     for (let i = 0; i < allMonths.length * 2; i++) ws.getColumn(fixed.length + 1 + i).width = i % 2 === 0 ? 14 : 15;
-    titleBar(ws, "COACHING ROSTER  ·  FEES", `${sorted.length} students  ·  ${sub}`, Math.max(lastCol, 11));
+    titleBar(ws, "COACHING ROSTER  ·  FEES", `${sorted.length} students${leftSorted.length ? `  ·  ${leftSorted.length} left` : ""}  ·  ${sub}`, Math.max(lastCol, 11), 2);
     // two header rows: 4 = group, 5 = sub
     headerRow(ws, 5, fixed);
     fixed.forEach((_, i) => ws.mergeCells(4, i + 1, 5, i + 1));
@@ -645,11 +678,12 @@ export async function downloadMasterReport(input: ReportInput) {
     ws.getRow(4).height = 22;
     ws.getRow(5).height = 24;
 
-    const rows = sorted.map((s, i) => {
+    const mkRow = (s: any, i: number, left: boolean) => {
       const pays: Record<string, any> = {};
       (s.student_payments || []).forEach((p: any) => (pays[p.month_year] = p));
       const totalPaid = (s.student_payments || []).filter((p: any) => p.status === "settled").reduce((a: number, p: any) => a + num(p.amount_paid), 0);
-      const pending = allMonths.filter((m) => !pays[m] || pays[m].status !== "settled").length;
+      const pending = left ? allMonths.filter((m) => pays[m] && pays[m].status !== "settled").length : allMonths.filter((m) => !pays[m] || pays[m].status !== "settled").length;
+      const leftOn = left ? new Date(s.deleted_at).toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" }) : "";
       const row: any[] = [
         i + 1,
         s.name,
@@ -658,7 +692,7 @@ export async function downloadMasterReport(input: ReportInput) {
         s.dob ? toDate(s.dob) || "-" : "-",
         s.email || "-",
         s.created_at ? toDate(String(s.created_at).split("T")[0]) : "-",
-        isNewStudent(s) ? "NEW" : "Existing",
+        left ? `LEFT · ${leftOn}` : isNewStudent(s) ? "NEW" : "Existing",
         num(s.monthly_fee) || fixedFee,
         totalPaid,
         pending,
@@ -669,16 +703,16 @@ export async function downloadMasterReport(input: ReportInput) {
         row.push(p && p.collected_by ? p.collected_by : "-");
       });
       return row;
-    });
+    };
+    const rows = sorted.map((s, i) => mkRow(s, i, false));
     const fmts: (string | undefined)[] = [undefined, undefined, undefined, undefined, "dd-mmm-yyyy", undefined, "dd-mmm-yyyy", undefined, INR, INR, "0"];
     const aligns: (string | undefined)[] = ["center", undefined, "center", undefined, "center", undefined, "center", "center"];
     for (let i = 0; i < allMonths.length * 2; i++) aligns.push("center");
     const [f, l] = bodyRows(ws, 6, rows, fmts, aligns);
-    rows.forEach((row, i) => {
-      const rr = f + i;
+    const styleRow = (rr: number, row: any[], left: boolean) => {
       ws.getCell(rr, 2).font = { bold: true, size: 10 };
       tone(ws.getCell(rr, 3), row[2] === "Morning Batch" ? "warn" : row[2] === "Evening Batch" ? "violet" : "grey");
-      tone(ws.getCell(rr, 8), row[7] === "NEW" ? "info" : "grey");
+      tone(ws.getCell(rr, 8), left ? "bad" : row[7] === "NEW" ? "info" : "grey");
       ws.getCell(rr, 10).font = { bold: true, size: 10, color: { argb: C.greenTx } };
       tone(ws.getCell(rr, 11), row[10] > 0 ? "bad" : "good");
       allMonths.forEach((_, k) => {
@@ -687,13 +721,24 @@ export async function downloadMasterReport(input: ReportInput) {
         tone(ws.getCell(rr, cc), v.startsWith("✔") ? "good" : v.startsWith("✖") ? "bad" : "grey");
         if (row[cc] !== "-") ws.getCell(rr, cc + 1).font = { bold: true, size: 10, color: { argb: C.blueTx } };
       });
-    });
+    };
+    rows.forEach((row, i) => styleRow(f + i, row, false));
     if (rows.length > 0) {
       const tr = l + 1;
       totalsRow(ws, tr, "TOTAL (follows filters)", f, l, [10], { 10: rows.reduce((a, r) => a + r[9], 0) }, INR, 11);
       ws.autoFilter = { from: { row: 5, column: 1 }, to: { row: l, column: lastCol } };
     }
-    ws.views = [{ showGridLines: false }];
+
+    // students who have left / been removed: listed separately at the bottom
+    if (leftSorted.length > 0) {
+      const start = rows.length > 0 ? l + 3 : 6;
+      sectionBand(ws, start, `🚪  LEFT / REMOVED STUDENTS (${leftSorted.length})`, Math.max(lastCol, 11), 2);
+      const lrows = leftSorted.map((s, i) => mkRow(s, i, true));
+      const [lf] = bodyRows(ws, start + 1, lrows, fmts, aligns);
+      lrows.forEach((row, i) => styleRow(lf + i, row, true));
+    }
+    ws.views = [{ state: "frozen", xSplit: 2, showGridLines: false }];
+    finishPrint(ws, Math.max(lastCol, 11), { titleRows: "4:5", titleCols: "A:B" });
   }
 
   /* ======================= 5. ATTENDANCE ======================= */
@@ -705,7 +750,7 @@ export async function downloadMasterReport(input: ReportInput) {
     const lastCol = fixed.length + dates.length;
     setWidths(ws, [6, 26, 16, 10, 10, 13]);
     for (let i = 0; i < dates.length; i++) ws.getColumn(fixed.length + 1 + i).width = 5.5;
-    titleBar(ws, "ATTENDANCE RECORD", `P = Present · A = Absent  ·  ${sub}`, Math.max(lastCol, 9));
+    titleBar(ws, "ATTENDANCE RECORD", `P = Present · A = Absent  ·  ${sub}`, Math.max(lastCol, 9), 2);
     headerRow(ws, 4, fixed);
     dates.forEach((d, i) => {
       const c = ws.getCell(4, fixed.length + 1 + i);
@@ -742,7 +787,8 @@ export async function downloadMasterReport(input: ReportInput) {
       });
     });
     if (rows.length > 0) ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: f + rows.length - 1, column: lastCol } };
-    ws.views = [{ showGridLines: false }];
+    ws.views = [{ state: "frozen", xSplit: 2, showGridLines: false }];
+    finishPrint(ws, Math.max(lastCol, 9), { titleRows: "4:4", titleCols: "A:B" });
   }
 
   /* ======================= 6. PAYMENT LOG ======================= */
@@ -768,6 +814,7 @@ export async function downloadMasterReport(input: ReportInput) {
     });
     ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: l, column: headers.length } };
     ws.views = [{ showGridLines: false }];
+    finishPrint(ws, headers.length, { titleRows: "4:4" });
   }
 
   /* ---------- download ---------- */
