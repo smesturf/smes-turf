@@ -776,9 +776,17 @@ export async function downloadMasterReport(input: ReportInput) {
         totalPaid,
         pending,
       ];
+      const joinLabel = joinMonth ? `${SHORT[parseInt(joinMonth.slice(5), 10) - 1] || ""} ${joinMonth.slice(0, 4)}` : "";
       allMonths.forEach((m) => {
-        const p = afterJoin(m) ? pays[m] : undefined; // before joining -> "—"
-        row.push(!p ? "—" : p.status === "settled" ? "✔ SETTLED" : "✖ PENDING");
+        const p = pays[m];
+        if (!afterJoin(m)) {
+          // month before the student was added: say when they joined instead of showing a dash
+          row.push(`Joined ${joinLabel}`);
+          row.push("-");
+          return;
+        }
+        // a month with no fee record yet counts as PENDING (same rule as the Months Pending column)
+        row.push(p && p.status === "settled" ? "✔ SETTLED" : !p && left ? "—" : "✖ PENDING");
         row.push(p && p.collected_by ? p.collected_by : "-");
       });
       return row;
@@ -799,7 +807,7 @@ export async function downloadMasterReport(input: ReportInput) {
       allMonths.forEach((_, k) => {
         const cc = fixed.length + 1 + k * 2;
         const v = row[cc - 1];
-        tone(ws.getCell(rr, cc), v.startsWith("✔") ? "good" : v.startsWith("✖") ? "bad" : "grey");
+        tone(ws.getCell(rr, cc), v.startsWith("✔") ? "good" : v.startsWith("✖") ? "bad" : v.startsWith("Joined") ? "violet" : "grey");
         if (row[cc] !== "-") ws.getCell(rr, cc + 1).font = { bold: true, size: 10, color: { argb: C.blueTx } };
         ws.getCell(rr, cc + 1).alignment = { horizontal: "center", vertical: "middle", shrinkToFit: true };
       });
