@@ -725,7 +725,7 @@ export async function downloadMasterReport(input: ReportInput) {
     const fixed = ["ID", "Student Name", "Batch", "Phone", "Date of Birth", "Joined", "Type", "Monthly Fee (₹)", "Total Paid (₹)", "Months Pending"];
     const lastCol = fixed.length + allMonths.length * 2;
     setWidths(ws, [5, 26, 14, 11, 11, 11, 18, 10, 10, 9]);
-    for (let i = 0; i < allMonths.length * 2; i++) ws.getColumn(fixed.length + 1 + i).width = i % 2 === 0 ? 12 : 13;
+    for (let i = 0; i < allMonths.length * 2; i++) ws.getColumn(fixed.length + 1 + i).width = i % 2 === 0 ? 16 : 13;
     titleBar(ws, "COACHING ROSTER  ·  FEES", `${sorted.length} students${leftSorted.length ? `  ·  ${leftSorted.length} left` : ""}  ·  ${sub}`, Math.max(lastCol, 10), 2);
     // two header rows: 4 = group, 5 = sub
     headerRow(ws, 5, fixed);
@@ -786,7 +786,18 @@ export async function downloadMasterReport(input: ReportInput) {
           return;
         }
         // a month with no fee record yet counts as PENDING (same rule as the Months Pending column)
-        row.push(p && p.status === "settled" ? "✔ SETTLED" : !p && left ? "—" : "✖ PENDING");
+        const fee = num(s.monthly_fee) || fixedFee;
+        const paid = p ? num(p.amount_paid) : 0;
+        // half-fee is only expected for students who joined after the 12th, in their joining month
+        const lateJoiner = joinDay ? parseInt(joinDay.slice(8, 10), 10) > 12 : false;
+        const partial = lateJoiner && m === joinMonth && !!p && paid > 0 && paid < fee;
+        const partLabel = Math.abs(paid * 2 - fee) < 1 ? "HALF" : "PART";
+        row.push(
+          partial ? `◐ ${partLabel} ${p.status === "settled" ? "SETTLED" : "PAID"}`
+            : p && p.status === "settled" ? "✔ SETTLED"
+            : !p && left ? "—"
+            : "✖ PENDING"
+        );
         row.push(p && p.collected_by ? p.collected_by : "-");
       });
       return row;
@@ -807,7 +818,7 @@ export async function downloadMasterReport(input: ReportInput) {
       allMonths.forEach((_, k) => {
         const cc = fixed.length + 1 + k * 2;
         const v = row[cc - 1];
-        tone(ws.getCell(rr, cc), v.startsWith("✔") ? "good" : v.startsWith("✖") ? "bad" : v.startsWith("Joined") ? "violet" : "grey");
+        tone(ws.getCell(rr, cc), v.startsWith("✔") ? "good" : v.startsWith("✖") ? "bad" : v.startsWith("◐") ? "warn" : v.startsWith("Joined") ? "violet" : "grey");
         if (row[cc] !== "-") ws.getCell(rr, cc + 1).font = { bold: true, size: 10, color: { argb: C.blueTx } };
         ws.getCell(rr, cc + 1).alignment = { horizontal: "center", vertical: "middle", shrinkToFit: true };
       });
