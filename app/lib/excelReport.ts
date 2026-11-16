@@ -756,7 +756,13 @@ export async function downloadMasterReport(input: ReportInput) {
       const pays: Record<string, any> = {};
       (s.student_payments || []).forEach((p: any) => (pays[p.month_year] = p));
       const totalPaid = (s.student_payments || []).filter((p: any) => p.status === "settled").reduce((a: number, p: any) => a + num(p.amount_paid), 0);
-      const pending = left ? allMonths.filter((m) => pays[m] && pays[m].status !== "settled").length : allMonths.filter((m) => !pays[m] || pays[m].status !== "settled").length;
+      // Months before the student joined are never "pending": count only from the joining month (IST) onwards.
+      const joinDay = istDay(s.created_at);
+      const joinMonth = joinDay ? joinDay.slice(0, 7) : ""; // YYYY-MM
+      const afterJoin = (m: string) => !joinMonth || m >= joinMonth;
+      const pending = left
+        ? allMonths.filter((m) => afterJoin(m) && pays[m] && pays[m].status !== "settled").length
+        : allMonths.filter((m) => afterJoin(m) && (!pays[m] || pays[m].status !== "settled")).length;
       const leftOn = left ? new Date(s.deleted_at).toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" }) : "";
       const row: any[] = [
         i + 1,
@@ -771,7 +777,7 @@ export async function downloadMasterReport(input: ReportInput) {
         pending,
       ];
       allMonths.forEach((m) => {
-        const p = pays[m];
+        const p = afterJoin(m) ? pays[m] : undefined; // before joining -> "—"
         row.push(!p ? "—" : p.status === "settled" ? "✔ SETTLED" : "✖ PENDING");
         row.push(p && p.collected_by ? p.collected_by : "-");
       });
