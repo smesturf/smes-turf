@@ -575,16 +575,21 @@ export async function downloadMasterReport(input: ReportInput) {
   {
     const ws = wb.addWorksheet("Bookings");
     setup(ws, "FF2563EB");
-    const headers = ["S.No.", "Date", "Time", "Customer", "Phone", "Sport", "Type", "Court", "Duration (min)", "Total (₹)", "Advance (₹)", "Balance (₹)", "Cash (₹)", "UPI / Online (₹)", "Payment Method", "Booking Status", "Payment", "Collected By", "Collector Role", "Collected At", "Booking ID"];
-    setWidths(ws, [5, 11, 8, 30, 12, 9, 10, 8, 8, 10, 10, 10, 9, 10, 12, 9, 9, 13, 11, 18, 8]); // fits one A4 page width
+    const headers = ["S.No.", "ID", "Date", "Time", "Customer", "Phone", "Sport", "Type", "Court", "Duration (min)", "Total (₹)", "Advance (₹)", "Balance (₹)", "Cash (₹)", "UPI / Online (₹)", "Payment Method", "Payment", "Collected By", "Collector Role", "Collected At"];
+    setWidths(ws, [5, 7, 11, 8, 30, 12, 9, 10, 8, 8, 10, 10, 10, 9, 10, 12, 9, 13, 11, 18]); // fits one A4 page width
     titleBar(ws, "BOOKINGS  ·  FULL HISTORY", `${bookings.length} bookings  ·  ${sub}`, headers.length, 4);
     const HR = 4;
     headerRow(ws, HR, headers);
     ws.getRow(HR).height = 44;
     const rows = bookings.map((b, i) => {
       const m = moneyOf(b);
+      // "Paid" only when the whole amount is in. Advance alone is not enough: if just part of the
+      // total was paid up front and nobody has collected the balance yet, it stays Pending.
+      const advanceOnly = m.adv > 0 && m.adv < m.total && !b.collected_at && !b.collected_by;
+      const fullyPaid = !!b.payment_completed && m.bal <= 0 && !advanceOnly;
       return [
         i + 1,
+        b.id,
         toDate(b.booking_date),
         b.start_time || "-",
         b.customer_name || "-",
@@ -599,36 +604,33 @@ export async function downloadMasterReport(input: ReportInput) {
         m.cash,
         m.upi,
         b.payment_method || "-",
-        b.payment_status || "-",
-        b.payment_completed ? "Paid" : "Pending",
+        fullyPaid ? "Paid" : "Pending",
         b.collected_by || "-",
         b.collected_by_role || "-",
         fmtIST(b.collected_at),
-        b.id,
       ] as any[];
     });
-    const fmts: (string | undefined)[] = [undefined, "dd-mmm-yyyy", undefined, undefined, undefined, undefined, undefined, undefined, "0", INR, INR, INR, INR, INR];
-    const aligns: (string | undefined)[] = ["center", "center", "center", undefined, undefined, "center", "center", "center", "center"];
+    const fmts: (string | undefined)[] = [undefined, undefined, "dd-mmm-yyyy", undefined, undefined, undefined, undefined, undefined, undefined, "0", INR, INR, INR, INR, INR];
+    const aligns: (string | undefined)[] = ["center", "center", "center", "center", undefined, undefined, "center", "center", "center", "center"];
     const [f, l] = bodyRows(ws, HR + 1, rows, fmts, aligns);
     rows.forEach((row, i) => {
       const rr = f + i;
       const pay = ws.getCell(rr, 17);
       tone(pay, row[16] === "Paid" ? "good" : "warn");
-      if (row[11] > 0) ws.getCell(rr, 12).font = { bold: true, size: 10, color: { argb: C.redTx } };
-      ws.getCell(rr, 4).font = { bold: true, size: 10 };
+      if (row[12] > 0) ws.getCell(rr, 13).font = { bold: true, size: 10, color: { argb: C.redTx } };
+      ws.getCell(rr, 5).font = { bold: true, size: 10 };
       if (row[17] !== "-") ws.getCell(rr, 18).font = { bold: true, size: 10, color: { argb: C.blueTx } };
       ws.getCell(rr, 19).alignment = { horizontal: "center", vertical: "middle" };
       // long text shrinks to fit its cell, so nothing is cut off when printed
-      ws.getCell(rr, 4).alignment = { horizontal: "left", vertical: "middle", shrinkToFit: true };
+      ws.getCell(rr, 5).alignment = { horizontal: "left", vertical: "middle", shrinkToFit: true };
       [18, 20].forEach((c) => (ws.getCell(rr, c).alignment = { horizontal: "center", vertical: "middle", shrinkToFit: true }));
     });
     if (rows.length > 0) {
-      totalsRow(ws, l + 1, "TOTAL (follows filters)", f, l, [10, 11, 12, 13, 14], { 10: sAll.total, 11: sAll.adv, 12: sAll.bal, 13: sAll.cash, 14: sAll.upi }, INR, headers.length);
+      totalsRow(ws, l + 1, "TOTAL (follows filters)", f, l, [11, 12, 13, 14, 15], { 11: sAll.total, 12: sAll.adv, 13: sAll.bal, 14: sAll.cash, 15: sAll.upi }, INR, headers.length);
       ws.autoFilter = { from: { row: HR, column: 1 }, to: { row: l, column: headers.length } };
     }
-    ws.views = [{ state: "frozen", xSplit: 4, showGridLines: false }];
-    // print: leave out the last column (Booking ID). It stays visible in Excel.
-    const printLast = headers.length - 1;
+    ws.views = [{ state: "frozen", xSplit: 5, showGridLines: false }];
+    const printLast = headers.length;
     finishPrint(ws, printLast, { titleRows: "4:4", pagesWide: 1, sideMargin: 0.25 });
     ws.pageSetup.printArea = `A1:${ws.getColumn(printLast).letter}${ws.rowCount}`;
   }
