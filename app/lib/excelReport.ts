@@ -639,13 +639,12 @@ export async function downloadMasterReport(input: ReportInput) {
   {
     const ws = wb.addWorksheet("Daily Summary");
     setup(ws, "FF0891B2");
-    // staff who collected money (biggest collector first) -> one column each
+    // staff who collected money (biggest collector first), used only for the text column
     const staffTotals: Record<string, number> = {};
     collectionEntries.forEach((p) => (staffTotals[p.collected_by || "Unknown"] = (staffTotals[p.collected_by || "Unknown"] || 0) + num(p.amount)));
     const staffNames = Object.keys(staffTotals).sort((a, b) => staffTotals[b] - staffTotals[a]);
-    const base = ["Date", "Day", "Bookings", "Revenue (₹)", "Advance (₹)", "Cash (₹)", "UPI / Online (₹)", "Money In Hand (₹)", "Pending (₹)", "Status"];
-    const headers = [...base, ...staffNames.map((n) => `Collected by ${n} (₹)`), "Total Collected by Staff (₹)", "Who Collected How Much"];
-    setWidths(ws, [14, 8, 11, 15, 15, 15, 17, 18, 15, 18, ...staffNames.map(() => 17), 17, 52]);
+    const headers = ["Date", "Day", "Bookings", "Revenue (₹)", "Advance (₹)", "Cash (₹)", "UPI / Online (₹)", "Money In Hand (₹)", "Pending (₹)", "Status", "Who Collected How Much"];
+    setWidths(ws, [14, 8, 11, 15, 15, 15, 17, 18, 15, 18, 52]);
     titleBar(ws, "DAILY SUMMARY", sub, headers.length, 1);
     headerRow(ws, 4, headers);
     ws.getRow(4).height = 44;
@@ -674,37 +673,31 @@ export async function downloadMasterReport(input: ReportInput) {
       const s = statsOf(byDay[d] || []);
       const dt = toDate(d);
       const dayName = dt ? dt.toLocaleDateString("en-IN", { weekday: "short", timeZone: "UTC" }) : "-";
-      const perStaff = staffNames.map((n) => (collByDay[d] && collByDay[d][n]) || 0);
       const status = s.count === 0 ? "-" : s.bal > 0 ? `⚠ ₹${s.bal.toLocaleString("en-IN")} DUE` : "✔ SETTLED";
       const detail =
         staffNames
-          .filter((n, k) => perStaff[k] > 0)
+          .filter((n) => collByDay[d] && collByDay[d][n] > 0)
           .map((n) => {
             const k = (collKind[d] && collKind[d][n]) || { b: 0, s: 0 };
             const parts = [k.b > 0 ? `Bookings ${inr(k.b)}` : "", k.s > 0 ? `Students ${inr(k.s)}` : ""].filter(Boolean).join(" · ");
             return `${n}: ${inr(k.b + k.s)}${parts ? ` (${parts})` : ""}`;
           })
           .join("\n") || "-";
-      return [dt || d, dayName, s.count, s.total, s.adv, s.cash, s.upi, s.inHand, s.bal, status, ...perStaff, perStaff.reduce((a, v) => a + v, 0), detail] as any[];
+      return [dt || d, dayName, s.count, s.total, s.adv, s.cash, s.upi, s.inHand, s.bal, status, detail] as any[];
     });
     const fm: (string | undefined)[] = ["dd-mmm-yyyy", undefined, "#,##0", INR, INR, INR, INR, INR, INR];
-    const [f, l] = bodyRows(ws, 5, rows, [...fm, undefined, ...staffNames.map(() => INR), INR, undefined], ["center", "center", "center"]);
+    const [f, l] = bodyRows(ws, 5, rows, [...fm, undefined, undefined], ["center", "center", "center"]);
     rows.forEach((row, i) => {
       tone(ws.getCell(f + i, 10), row[9] === "-" ? "grey" : row[8] > 0 ? "bad" : "good");
       ws.getCell(f + i, 8).font = { bold: true, size: 10, color: { argb: C.greenTx } };
-      for (let k = 0; k <= staffNames.length; k++) {
-        const cell = ws.getCell(f + i, 11 + k);
-        cell.font = { bold: row[10 + k] > 0, size: 10, color: { argb: row[10 + k] > 0 ? C.blueTx : C.mute } };
-        cell.alignment = { horizontal: "right", vertical: "middle" };
-      }
-      const dc = ws.getCell(f + i, 12 + staffNames.length);
+      const dc = ws.getCell(f + i, 11);
       dc.font = { size: 9, color: { argb: C.blueTx } };
       dc.alignment = { horizontal: "left", vertical: "middle", wrapText: true };
-      const lines = String(row[11 + staffNames.length]).split("\n").length;
+      const lines = String(row[10]).split("\n").length;
       ws.getRow(f + i).height = Math.max(20, lines * 13 + 6);
     });
     if (rows.length > 0) {
-      const sumCols = [3, 4, 5, 6, 7, 8, 9, ...staffNames.map((_, k) => 11 + k), 11 + staffNames.length];
+      const sumCols = [3, 4, 5, 6, 7, 8, 9];
       const colSum = (idx: number) => rows.reduce((a, r) => a + (Number(r[idx]) || 0), 0);
       const vals: Record<number, number> = {};
       sumCols.forEach((c) => (vals[c] = colSum(c - 1)));
