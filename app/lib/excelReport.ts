@@ -837,6 +837,54 @@ export async function downloadMasterReport(input: ReportInput) {
     finishPrint(ws, Math.max(lastCol, 10), { titleRows: "4:5", pagesWide: 1, sideMargin: 0.25 });
   }
 
+  /* ======================= 4B. COACHING EARNINGS (monthly coach / SMES split) ======================= */
+  {
+    const COACH_PCT = 0.4; // coach gets 40%, SMES keeps 60%  (change here if the split ever changes)
+    const pctLabel = Math.round(COACH_PCT * 100);
+    const ws = wb.addWorksheet("Coaching Earnings");
+    setup(ws, "FF16A34A", false);
+    const headers = ["Month", "Students Who Paid", "Total Collected (₹)", `Given to Coach ${pctLabel}% (₹)`, `Taken by SMES ${100 - pctLabel}% (₹)`];
+    setWidths(ws, [22, 16, 20, 22, 22]);
+    titleBar(ws, "COACHING EARNINGS  ·  MONTHLY SPLIT", sub, headers.length, headers.length);
+    headerRow(ws, 4, headers);
+    ws.getRow(4).height = 36;
+
+    // Money actually received each month: full, half and part payments all count (whatever amount was paid).
+    const everyone = [...sorted, ...leftSorted];
+    const rows = allMonths.map((m) => {
+      let students = 0;
+      let collected = 0;
+      everyone.forEach((s) =>
+        (s.student_payments || []).forEach((p: any) => {
+          if (p.month_year !== m) return;
+          const paid = num(p.amount_paid);
+          if (paid > 0) {
+            students++;
+            collected += paid;
+          }
+        })
+      );
+      const coach = Math.round(collected * COACH_PCT);
+      return [fmtMonth(m), students, collected, coach, collected - coach] as any[];
+    });
+    if (rows.length === 0) rows.push(["-", 0, 0, 0, 0]);
+
+    const [f, l] = bodyRows(ws, 5, rows, [undefined, "#,##0", INR, INR, INR], ["left", "center"]);
+    rows.forEach((_, i) => {
+      ws.getCell(f + i, 1).font = { bold: true, size: 10 };
+      ws.getCell(f + i, 3).font = { bold: true, size: 10 };
+      ws.getCell(f + i, 4).font = { bold: true, size: 10, color: { argb: C.amberTx } };
+      ws.getCell(f + i, 5).font = { bold: true, size: 10, color: { argb: C.greenTx } };
+    });
+    const colSum = (idx: number) => rows.reduce((a, r) => a + (Number(r[idx]) || 0), 0);
+    totalsRow(ws, l + 1, "TOTAL", f, l, [3, 4, 5], { 3: colSum(2), 4: colSum(3), 5: colSum(4) }, INR, headers.length);
+    ws.mergeCells(l + 3, 1, l + 3, headers.length);
+    ws.getCell(l + 3, 1).value = `Counts every rupee received in the month (full, half and part payments). Coach gets ${pctLabel}%, SMES keeps ${100 - pctLabel}%. Includes students who have left.`;
+    ws.getCell(l + 3, 1).font = { italic: true, size: 9, color: { argb: C.mute } };
+    ws.views = [{ state: "frozen", ySplit: 4, showGridLines: false }];
+    finishPrint(ws, headers.length, { titleRows: "4:4", pagesWide: 1, sideMargin: 0.4 });
+  }
+
   /* ======================= 5. ATTENDANCE ======================= */
   {
     const ws = wb.addWorksheet("Attendance");
