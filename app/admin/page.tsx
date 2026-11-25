@@ -269,11 +269,12 @@ export default function AdminPage() {
   const isHalfFeeEligible = Number(getTodayStr().slice(8, 10)) >= HALF_FEE_FROM_DAY;
   const enrollFee = isHalfFeeEligible && adminNewStudentFeeType === "half" ? HALF_COACHING_FEE : FIXED_COACHING_FEE;
   const currentMonthYear = getTodayStr().slice(0, 7); // ✅ IST month (was UTC, wrong just after midnight on the 1st)
+  const nextMonthYear = shiftMonth(currentMonthYear, 1); // 👈 NEW: the month after the current one (e.g. December)
   const currentMonthLabel = monthLabelOf(currentMonthYear);
   const feeMonthLabel = monthLabelOf(feeMonth);
   const feeMonthOptions = (() => {
-    const list = Array.from({ length: 36 }, (_, i) => shiftMonth(currentMonthYear, -i)).filter((ym) => ym >= COACHING_START_MONTH);
-    return list.length > 0 ? list : [currentMonthYear];
+    const past = Array.from({ length: 36 }, (_, i) => shiftMonth(currentMonthYear, -i)).filter((ym) => ym >= COACHING_START_MONTH);
+    return [nextMonthYear, ...(past.length > 0 ? past : [currentMonthYear])]; // 👈 NEW: next month listed first
   })();
 
   const convertToMins = (t: string) => {
@@ -2298,7 +2299,7 @@ export default function AdminPage() {
                 {/* New student requests (from the public registration link) */}
                 <StudentApplications role="admin" onAccepted={loadAcademyData} />
 
-                {/* Fee month picker — check or settle any past month */}
+                {/* Fee month picker — check or settle any past month, or next month */}
                 <div className="space-y-2">
                   <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 block">Fee Month</span>
                   <div className="flex items-stretch gap-2">
@@ -2318,14 +2319,15 @@ export default function AdminPage() {
                     >
                       {feeMonthOptions.map((ym) => (
                         <option key={ym} value={ym}>
-                          {monthLabelOf(ym)}{ym === currentMonthYear ? " (Current)" : ""}
+                          {monthLabelOf(ym)}
+                          {ym === currentMonthYear ? " (Current)" : ym === nextMonthYear ? " (Next)" : ""}
                         </option>
                       ))}
                     </select>
                     <button
                       type="button"
                       aria-label="Next month"
-                      disabled={feeMonth >= currentMonthYear}
+                      disabled={feeMonth >= nextMonthYear}
                       onClick={() => setFeeMonth(shiftMonth(feeMonth, 1))}
                       className="w-12 min-h-[48px] shrink-0 flex items-center justify-center bg-neutral-950 border border-neutral-800 text-lime-400 text-2xl active:bg-neutral-900 disabled:opacity-30"
                     >
