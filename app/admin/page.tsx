@@ -254,6 +254,8 @@ export default function AdminPage() {
 
   const FIXED_COACHING_FEE = 2500;
   const HALF_COACHING_FEE = Math.round(FIXED_COACHING_FEE / 2);
+  const COACH_SHARE_PCT = 40; // coach gets 40%, SMES keeps 60%  (change here if the split changes)
+  const [showCoachSplit, setShowCoachSplit] = useState(false);
   // Half fee can be offered for a student's joining month if they were added on/after the 13th
   const halfFeeAllowed = (student: any, ym: string) =>
     !!student?.created_at &&
@@ -2050,6 +2052,13 @@ export default function AdminPage() {
     return { morning: calc("Morning Batch"), evening: calc("Evening Batch") };
   }, [academyStudents]);
 
+  // 💰 Month split: coach 40% / SMES 60% of what was actually collected for the selected fee month
+  const coachSplit = useMemo(() => {
+    const total = academyStats.morning.collected + academyStats.evening.collected;
+    const coach = Math.round((total * COACH_SHARE_PCT) / 100);
+    return { total, coach, ours: total - coach };
+  }, [academyStats]);
+
   // 🔢 Serial numbers: 1, 2, 3... separately for Morning and Evening batch
   const academySerials = useMemo(() => {
     const map: Record<string, number> = {};
@@ -2687,10 +2696,59 @@ export default function AdminPage() {
                     <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Fees Due</span>
                   </div>
                   <div className="p-2.5 bg-neutral-950 border border-neutral-900">
-                    <span className="block text-lg sm:text-xl font-black text-emerald-400 leading-none">₹{(academyStats.morning.collected + academyStats.evening.collected).toLocaleString("en-IN")}</span>
-                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Collected</span>
+                    <span className="block text-lg sm:text-xl font-black text-emerald-400 leading-none">₹{coachSplit.total.toLocaleString("en-IN")}</span>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1">Collected · {feeMonthLabel}</span>
                   </div>
                 </div>
+
+                {/* Split button + panel */}
+                <button
+                  type="button"
+                  onClick={() => setShowCoachSplit((v) => !v)}
+                  aria-expanded={showCoachSplit}
+                  className={`w-full min-h-[48px] border font-mono font-black text-[11px] uppercase tracking-widest transition-colors ${
+                    showCoachSplit
+                      ? "bg-emerald-400 text-black border-emerald-400"
+                      : "bg-neutral-950 text-emerald-400 border-emerald-500/40 hover:bg-emerald-500/10"
+                  }`}
+                >
+                  💰 {showCoachSplit ? "Hide Split" : "Show Split"} · {100 - COACH_SHARE_PCT}% SMES / {COACH_SHARE_PCT}% Coach
+                </button>
+
+                <AnimatePresence initial={false}>
+                  {showCoachSplit && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.25, ease: easeOut }}
+                      className="overflow-hidden"
+                    >
+                      <div className="p-3 sm:p-4 bg-neutral-950 border border-emerald-500/30 space-y-3">
+                        <p className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+                          Split for {feeMonthLabel}
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div className="p-3 bg-neutral-900 border border-neutral-800 text-center">
+                            <span className="block text-xl font-black text-white leading-none">₹{coachSplit.total.toLocaleString("en-IN")}</span>
+                            <span className="block text-[9px] font-mono uppercase tracking-widest text-neutral-500 mt-1.5">Total Collected</span>
+                          </div>
+                          <div className="p-3 bg-lime-400/10 border border-lime-400/30 text-center">
+                            <span className="block text-xl font-black text-lime-400 leading-none">₹{coachSplit.ours.toLocaleString("en-IN")}</span>
+                            <span className="block text-[9px] font-mono uppercase tracking-widest text-lime-300/80 mt-1.5">Taken by SMES · {100 - COACH_SHARE_PCT}%</span>
+                          </div>
+                          <div className="p-3 bg-amber-500/10 border border-amber-500/30 text-center">
+                            <span className="block text-xl font-black text-amber-400 leading-none">₹{coachSplit.coach.toLocaleString("en-IN")}</span>
+                            <span className="block text-[9px] font-mono uppercase tracking-widest text-amber-300/80 mt-1.5">Given to Coach · {COACH_SHARE_PCT}%</span>
+                          </div>
+                        </div>
+                        <p className="text-[10px] font-mono text-neutral-500 leading-relaxed">
+                          Counts the amount actually paid (full and half fees). It follows the Fee Month picker above.
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                   {/* ---------- Roster (first on phones) ---------- */}
                   <div className="border border-neutral-900 bg-neutral-900/30 overflow-hidden flex flex-col">
